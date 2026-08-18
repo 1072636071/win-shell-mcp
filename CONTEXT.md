@@ -1,50 +1,29 @@
-# 词汇表
+# CONTEXT.md
 
-win-shell-mcp 的领域词汇。
+## 项目
 
-## 工具（tool）
+win-shell-mcp —— 「AI 原生的跨平台命令抽象层」。用 Node.js 实现一组确定性命令（`ls/cat/grep/curl/ps/find` 等的抽象），统一 JSON 输出、自动处理 Windows 路径/编码/引号差异，以 MCP Server 形态供 AI Agent 调用，替代 AI 直接编写 Windows shell 命令。
 
-MCP server 暴露给 AI 的一个可调用能力。本项目中的每个工具对应一个或多个 Windows 下易出错的命令。
+## 术语表
 
-## 短名（short name）
+| 术语 | 定义 |
+| --- | --- |
+| 命令抽象层 | 项目核心概念：一组跨平台的确定性命令，抹平 Win/Linux/macOS 差异，AI 调用它们而非直接写 shell 命令 |
+| 命令（command） | 抽象层提供的命令动词，如 `fs_read`、`text_grep`。名称稳定、参数简单、AI 友好 |
+| 工具（tool） | MCP 语境下的原子调用单元，AI 通过它执行一个命令 |
+| 输出契约（output contract） | 命令的标准化返回格式（JSON），含成功/失败、结果数据、错误信息 |
+| 极简输出 | 设计原则：返回内容尽可能简短、只含 AI 决策所需的最小信息，降低 token 消耗 |
+| 兜底执行（exec fallback） | 当抽象命令无法覆盖某个操作时，保留的原生命令执行通道（全权限，见 ADR-0002） |
 
-工具的主命名，采用 Unix 风格短名，如 `ls`、`cat`、`grep`。AI 对这类名字有本能调用习惯。参见 ADR-0001。
+## 已确定的决策
 
-## 别名（alias）
-
-工具的语义化副命名，如 `list_directory`、`read_file`，与短名指向同一实现。兼顾 MCP 生态命名惯例（与官方 filesystem MCP 命名兼容）。参见 ADR-0001。
-
-## 逃生舱（escape hatch）
-
-`run_command` 工具的定位：允许执行任意命令，但强制 `spawn(executable, args, {shell:false})`，不经过 shell 解析，从根源消灭引号/转义/注入问题。作为结构化工具无法覆盖的场景（启动服务、跑测试）的兜底出口。
-
-## 命令域（command domain）
-
-工具集按功能划分的领域，每个命令域对应一组短名工具。v1 覆盖八大域（参见 ADR-0002）：
-
-1. 文件系统：`ls` / `cd` / `mkdir` / `rm` / `cp` / `mv` / `touch` / `stat` / `find`
-2. 文本处理：`cat` / `head` / `tail` / `grep` / `sed` / `awk` / `wc` / `diff`
-3. 搜索：`which` / `where` / 文件名搜索 / 内容搜索
-4. 网络：HTTP 请求（替代 `curl` / `wget`）、`ping`、DNS 查询
-5. 进程：`ps` / `kill` / 环境变量
-6. 包管理：检测并执行 `npm` / `pip` / `cargo` 等
-7. 系统信息：OS 信息、磁盘用量、CPU 信息
-8. Git：常用 Git 操作封装
-
-域内具体命令清单在实施阶段以命令注册表形式维护，不在此处逐一列出。
-
-## 命令注册表（command registry）
-
-支撑「全命令域覆盖 + 持续扩展」的机制：每个命令域独立模块，声明式注册 短名 / 别名 / 参数 schema / 描述，server 启动时动态装载。参见 ADR-0002。
-
-## 信任模式（trust mode）
-
-工具集默认全权访问：文件/进程/run_command 均不做目录或命令白名单。注入风险已由 `spawn(executable, args)` 参数数组架构消除。参见 ADR-0004。
-
-## 输出精简（minimal output）
-
-所有工具输出遵循 token 最小化原则：结构化 JSON 只含必要字段、无装饰性格式化、长输出默认截断并提供取更多方式。参见 ADR-0003。
-
-## 纯 Node 实现原则（pure-node principle）
-
-工具内部一律基于 Node 跨平台 API（fs/path/child_process/os）实现，不依赖 cmd 或 PowerShell 作为执行后端。`run_command` 是唯一例外（AI 显式指定可执行文件，属逃生舱）。参见 ADR-0005。
+- **定位**：可发布开源产品（npm 包 + MCP Server），面向所有 AI 客户端。
+- **交付形态**：仅 MCP Server，命令以 MCP tool 暴露，无独立 CLI、不拆分核心库（见 `docs/adr/0001-mcp-server-only-delivery.md`）。
+- **技术栈**：TypeScript + 官方 `@modelcontextprotocol/sdk`，Node ≥ 18，tsup 打包。
+- **传输层**：stdio（本地 AI 客户端标准方式）；streamable HTTP 作为未来可选项，不在 MVP。
+- **命令域范围**：全命令域一版上齐——`fs`（读写）+ `text` + `search` + `net` + `process` + `system` + `pkg` + `git`，对应"尽量覆盖全部场景"的要求。
+- **安全模型**：无沙箱全权限，与裸 shell 等价（见 `docs/adr/0002-no-sandbox-full-permissions.md`）。
+- **输出契约**：极简 + `verbose` 开关——默认只返回 AI 决策所需的最小字段，长内容截断；需要完整数据时开启 verbose。
+- **测试原则**：严格测试、尽量覆盖全部场景。
+- 覆盖率阈值：lines/functions/statements ≥ 85%，branches ≥ 84%（跨平台工具含平台专属分支，单平台无法全覆盖）
+- **输出原则**：极简、token 高效。

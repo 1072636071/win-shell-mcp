@@ -1,4 +1,7 @@
 node_modules/
 dist/
-.temp/
+coverage/
 *.log
+.DS_Store
+.arts/
+.temp/
