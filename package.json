@@ -1,0 +1,50 @@
+{
+  "name": "win-shell-mcp",
+  "version": "0.1.0",
+  "description": "AI-native cross-platform command abstraction layer as MCP Server. Deterministic tools replacing raw shell commands, unified minimal JSON output, handles Windows path/encoding/quoting differences.",
+  "type": "module",
+  "bin": {
+    "win-shell-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "cross-platform",
+    "shell",
+    "windows",
+    "cli",
+    "ai",
+    "agent"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "iconv-lite": "^0.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0",
+    "tsup": "^8.5.0",
+    "vitest": "^3.2.0",
+    "@vitest/coverage-v8": "^3.2.0"
+  }
+}
