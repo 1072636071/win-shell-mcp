@@ -1,0 +1,28 @@
+{
+  "name": "win-shell-mcp",
+  "version": "0.1.0",
+  "description": "AI-native cross-platform shell abstraction: MCP server replacing error-prone Windows cmd/PowerShell commands",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "win-shell-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "windows",
+    "shell",
+    "cross-platform",
+    "ai"
+  ],
+  "license": "MIT"
+}
