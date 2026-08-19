@@ -167,9 +167,10 @@ export async function fsListHandler(args: Record<string, unknown>): Promise<AnyT
 export const fsListTool: Tool = {
   name: 'fs_list',
   description:
-    '列目录。极简返回相对路径列表；verbose 时含类型与大小；recursive 时递归列出子目录。',
+    '列目录（Unix ls 短名）。极简返回相对路径列表；verbose 时含类型与大小；recursive 时递归列出子目录。',
   inputSchema: fsListInputSchema,
   handler: fsListHandler,
+  aliases: ['ls', 'list_directory'],
 };
 
 // ===================== fs_read =====================

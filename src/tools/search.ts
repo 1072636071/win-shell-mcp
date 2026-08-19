@@ -147,6 +147,30 @@ async function validateCwd(cwd: string): Promise<AnyToolResult | null> {
   return null;
 }
 
+/**
+ * 解析并校验 exclude 列表，返回编译后的正则数组或错误结果。
+ *
+ * 供 search_glob 与 search_content 共用，消除重复校验逻辑。
+ *
+ * @param rawExclude 用户传入的 exclude 值（可能为 undefined）
+ * @returns 成功返回 RegExp[]；失败返回 fail 结果（通过 `isFail` 判别）
+ */
+function parseExclude(rawExclude: unknown): AnyToolResult | RegExp[] {
+  if (rawExclude === undefined) return [];
+  if (!Array.isArray(rawExclude)) {
+    return fail(ErrorCode.EINVAL, 'exclude 必须是字符串数组');
+  }
+  const patterns = rawExclude as string[];
+  const res: string[] = [];
+  for (const g of patterns) {
+    if (typeof g !== 'string' || !isValidGlob(g)) {
+      return fail(ErrorCode.EINVAL, `非法 exclude glob: ${String(g)}`);
+    }
+    res.push(g);
+  }
+  return res.map((g) => globToRegExp(g));
+}
+
 // ============================================================================
 // search_glob
 // ============================================================================
@@ -156,6 +180,10 @@ export const searchGlobInputSchema = z.object({
   cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
   recursive: z.boolean().optional().describe('是否递归搜索子目录，默认 true'),
   maxResults: z.number().int().positive().optional().describe('最大返回结果数'),
+  exclude: z
+    .array(z.string())
+    .optional()
+    .describe('排除的 glob 模式数组，相对路径匹配任一 exclude 的文件会被移除'),
 });
 
 export type SearchGlobInput = z.infer<typeof searchGlobInputSchema>;
@@ -168,6 +196,10 @@ export async function searchGlobHandler(args: Record<string, unknown>): Promise<
   const cwd = (args['cwd'] as string | undefined) ?? process.cwd();
   const recursive = (args['recursive'] as boolean | undefined) ?? true;
   const maxResults = args['maxResults'] as number | undefined;
+
+  // 解析并校验 exclude 列表
+  const excludeRes = parseExclude(args['exclude']);
+  if (!Array.isArray(excludeRes)) return excludeRes;
 
   if (!isValidGlob(pattern)) {
     return fail(ErrorCode.EINVAL, `非法 glob pattern: ${pattern}`);
@@ -188,7 +220,9 @@ export async function searchGlobHandler(args: Record<string, unknown>): Promise<
   }
 
   const re = globToRegExp(pattern);
-  let matched = files.filter((f) => re.test(f));
+  let matched = files.filter(
+    (f) => re.test(f) && !excludeRes.some((er) => er.test(f)),
+  );
   matched.sort();
 
   let truncated = false;
@@ -215,6 +249,10 @@ export const searchContentInputSchema = z.object({
   pattern: z.string().min(1).describe('搜索内容（字符串子串匹配）'),
   cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
   glob: z.string().optional().describe('文件名 glob 过滤，默认 **/*'),
+  exclude: z
+    .array(z.string())
+    .optional()
+    .describe('排除的 glob 模式数组，相对路径匹配任一 exclude 的文件会被跳过'),
   ignoreCase: z.boolean().optional().describe('忽略大小写，默认 false'),
   maxResults: z.number().int().positive().optional().describe('最大返回结果数'),
 });
@@ -237,6 +275,10 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
   const ignoreCase = (args['ignoreCase'] as boolean | undefined) ?? false;
   const maxResults = args['maxResults'] as number | undefined;
 
+  // 解析并校验 exclude 列表
+  const excludeRes = parseExclude(args['exclude']);
+  if (!Array.isArray(excludeRes)) return excludeRes;
+
   if (!isValidGlob(globPattern)) {
     return fail(ErrorCode.EINVAL, `非法 glob: ${globPattern}`);
   }
@@ -256,7 +298,9 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
   }
 
   const globRe = globToRegExp(globPattern);
-  const candidateFiles = files.filter((f) => globRe.test(f));
+  const candidateFiles = files.filter(
+    (f) => globRe.test(f) && !excludeRes.some((er) => er.test(f)),
+  );
 
   const allMatches: ContentMatch[] = [];
   const needle = ignoreCase ? pattern.toLowerCase() : pattern;

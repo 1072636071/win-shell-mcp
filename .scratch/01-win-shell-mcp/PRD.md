@@ -40,10 +40,19 @@ src/
 
 ## 5. 命令域与工具清单
 
+> 共 46 个工具。部分工具采用 Unix 短名为主 + 语义别名（ADR-0001），如 `find` 别名 `fs_find`、`fs_list` 别名 `ls`/`list_directory`；`tools/list` 与 `tools/call` 均支持别名解析（工单 02/04）。
+
+### core 域（src/commands/core.ts）
+| tool | 参数 | 行为 |
+| --- | --- | --- |
+| pwd | 无 | 返回当前工作目录绝对路径 |
+| echo | args[], [format] | 回显参数数组（text 空格拼接 / json 原始数组） |
+| run_command | command, args[], [cwd], [env], [timeoutMs] | 以参数数组直接执行，不经 shell 解析；超时返回 EXEC_TIMEOUT（工单 03） |
+
 ### fs 域（src/commands/fs.ts）
 | tool | 参数 | 行为 |
 | --- | --- | --- |
-| fs_list | path | 列目录：`{"names":[相对路径]}`，verbose 含 type/size |
+| fs_list | path | 列目录：`{"names":[相对路径]}`，verbose 含 type/size；别名 `ls`/`list_directory` |
 | fs_read | path, [range], [verbose] | 读文件（编码自动检测），支持行/字节范围 |
 | fs_write | path, content | 写文件（UTF-8，可指定 encoding） |
 | fs_mkdir | path, [recursive] | 建目录 |
@@ -60,14 +69,16 @@ src/
 | text_head | path, [n=10] | 前 n 行 |
 | text_tail | path, [n=10] | 后 n 行 |
 | text_wc | path | 行/词/字符数 |
-| text_diff | a, b | 两文件差异（简化 LCS，输出统一 diff 风格） |
+| text_diff | a, b | 两段文本差异（简化 LCS，输出统一 diff 风格） |
 | text_replace | path, pattern, replacement, [inPlace] | 替换（默认返回结果文本；inPlace 写回） |
+| cat | path, [encoding], [startLine], [endLine], [startByte], [endByte] | Unix cat：读文件，编码 auto 识别（GBK/UTF-8）、范围、截断 |
 
 ### search 域（src/commands/search.ts）
 | tool | 参数 | 行为 |
 | --- | --- | --- |
-| search_glob | dir, pattern, [recursive] | glob 匹配文件路径列表 |
-| search_content | dir, pattern, [text], [recursive] | 跨文件内容搜索：`[{file, line, text}]` |
+| find | pattern, [path], [maxDepth], [verbose] | Unix find：按文件名通配递归搜索；别名 `fs_find`/`search_file`/`find_files`（工单 04） |
+| search_glob | dir, pattern, [recursive], [exclude] | glob 匹配文件路径列表（支持忽略规则） |
+| search_content | dir, pattern, [text], [recursive], [exclude] | 跨文件内容搜索：`[{file, line, text}]`（支持忽略规则） |
 | search_which | command | 在 PATH 中定位可执行文件 |
 
 ### net 域（src/commands/net.ts）
@@ -77,12 +88,13 @@ src/
 | net_post | url, [body], [json] | HTTP POST（json 或 text） |
 | net_dns | host | DNS 解析：`{addresses}` |
 | net_tcp | host, port, [timeoutMs] | TCP 可达性检测：`{reachable}` |
+| ping | host, [count], [port], [timeoutMs] | 网络诊断：TCP 连通性探测 `{sent, received, loss, avg, alive}`（工单 07） |
 
 ### process 域（src/commands/process.ts）
 | tool | 参数 | 行为 |
 | --- | --- | --- |
 | process_list | [filter] | 进程列表（Windows tasklist / unix ps）：`[{pid, name}]` |
-| process_kill | pid, [force] | 终止进程（Windows taskkill / unix signal） |
+| process_kill | [pid] / [name], [force] | 终止进程（Windows taskkill / unix signal；支持按名称终止，工单 08） |
 | env_get | [name] | 读取环境变量 |
 | env_set | name, value | 设置子进程环境变量（作用于后续 shell_exec 会话） |
 | env_unset | name | 删除环境变量 |

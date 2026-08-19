@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs';
 import { z } from 'zod';
 import { ok, fail, withVerbose, type AnyToolResult } from '../contract/output.js';
 import { toErrorCode, toErrorMessage } from '../contract/errors.js';
+import { IS_WIN } from '../utils/platform.js';
 import type { Tool } from '../registry.js';
 
 /** 输入 schema：verbose 可选布尔。 */
@@ -39,8 +40,47 @@ interface SystemInfoFull extends SystemInfoMinimal {
   uptime: number;
   loadavg: number[];
   cpus: number;
+  cpuModel?: string;
+  cpuUsage?: number;
+  cpuUsagePerCore?: number[];
   totalmem: number;
   freemem: number;
+}
+
+/**
+ * 采样 CPU 使用率（尽力而为）。
+ *
+ * 对 os.cpus().times 进行两次采样，计算 idle/total 增量，得出平均使用率。
+ *
+ * @param delayMs 两次采样间隔
+ * @returns { cpuUsage: 平均使用率 0-100, cpuUsagePerCore: 每核使用率 }
+ */
+async function sampleCpuUsage(
+  delayMs = 80,
+): Promise<{ cpuUsage: number; cpuUsagePerCore: number[] }> {
+  const readTimes = () => os.cpus().map((c) => c.times);
+  const first = readTimes();
+  await new Promise((r) => setTimeout(r, delayMs));
+  const second = readTimes();
+
+  const perCore = second.map((t2, i) => {
+    const t1 = first[i];
+    if (!t1) return 0;
+    const idleDelta = t2.idle - t1.idle;
+    const totalDelta =
+      t2.user -
+      t1.user +
+      (t2.nice - t1.nice) +
+      (t2.sys - t1.sys) +
+      idleDelta +
+      (t2.irq - t1.irq);
+    if (totalDelta <= 0) return 0;
+    const usage = ((totalDelta - idleDelta) / totalDelta) * 100;
+    return Math.max(0, Math.min(100, usage));
+  });
+
+  const cpuUsage = perCore.length ? perCore.reduce((a, b) => a + b, 0) / perCore.length : 0;
+  return { cpuUsage, cpuUsagePerCore: perCore };
 }
 
 /**
@@ -61,11 +101,15 @@ export async function systemInfoHandler(args: Record<string, unknown>): Promise<
     node: process.version,
   };
 
+  const cpus = os.cpus();
+  const cpuUsage = verbose ? (await sampleCpuUsage()) : undefined;
   const full: SystemInfoFull = {
     ...minimal,
     uptime: os.uptime(),
     loadavg: os.loadavg(),
-    cpus: os.cpus().length,
+    cpus: cpus.length,
+    cpuModel: cpus[0]?.model,
+    ...(cpuUsage ?? {}),
     totalmem: os.totalmem(),
     freemem: os.freemem(),
   };
@@ -94,18 +138,28 @@ export const systemInfoTool: Tool = {
  * 返回 { total, free, used, path }，单位字节。
  */
 
-/** 输入 schema：path 可选，默认 process.cwd()。 */
+/** 输入 schema：path 可选，默认 process.cwd()；all 可选，枚举所有磁盘。 */
 export const systemDiskInputSchema = z.object({
   path: z
     .string()
     .optional()
     .describe('挂载点或目录路径，默认当前工作目录'),
+  all: z.boolean().optional().describe('若为 true，枚举所有磁盘/挂载点（返回 { disks: [...] }）'),
 });
 
 /** system_disk 输入类型。 */
 export type SystemDiskInput = z.infer<typeof systemDiskInputSchema>;
 
-/** system_disk 输出字段。 */
+/** system_disk 单条目输出字段。 */
+interface SystemDiskEntry {
+  total: number;
+  free: number;
+  used: number;
+  path: string;
+  type: string;
+}
+
+/** system_disk 单路径输出字段。 */
 interface SystemDiskResult {
   total: number;
   free: number;
@@ -113,21 +167,160 @@ interface SystemDiskResult {
   path: string;
 }
 
+/** system_disk 多盘输出字段。 */
+interface SystemDiskAllResult {
+  disks: SystemDiskEntry[];
+}
+
+/**
+ * 从 statfs 结果构造单盘条目。
+ *
+ * @param stats statfs 结果
+ * @param path 挂载点/盘符
+ * @param type 文件系统类型（尽力而为，未知时为空串）
+ * @returns 单盘条目
+ */
+function buildDiskEntry(
+  stats: Awaited<ReturnType<typeof statfs>>,
+  path: string,
+  type: string,
+): SystemDiskEntry {
+  // statfs 的 bsize/blocks/bfree 类型为 number | bigint，用 Number 归一为 number
+  const bsize = Number(stats.bsize);
+  const blocks = Number(stats.blocks);
+  const bfree = Number(stats.bfree);
+  const total = bsize * blocks;
+  const free = bsize * bfree;
+  const used = total - free;
+  return { total, free, used, path, type };
+}
+
+/**
+ * 枚举 Windows 存在的盘符根目录（A:-Z:）。
+ *
+ * 用 existsSync 探测每个盘符根是否存在。
+ *
+ * @returns 存在的盘符根列表（如 ['C:\\', 'D:\\']）
+ */
+function enumerateWindowsDrives(): string[] {
+  const roots: string[] = [];
+  for (let c = 65; c <= 90; c++) {
+    const root = `${String.fromCharCode(c)}:\\`;
+    try {
+      if (existsSync(root)) roots.push(root);
+    } catch {
+      // 忽略访问异常的盘符
+    }
+  }
+  return roots;
+}
+
+/**
+ * 枚举 unix 挂载点。
+ *
+ * Linux：解析 /proc/mounts，过滤伪文件系统；macOS：尽力而为仅探测根挂载。
+ *
+ * @returns 磁盘条目列表
+ */
+async function enumerateUnixDisks(): Promise<SystemDiskEntry[]> {
+  const entries: SystemDiskEntry[] = [];
+  if (os.platform() === 'linux') {
+    const skip = new Set([
+      'proc',
+      'sysfs',
+      'devpts',
+      'tmpfs',
+      'devtmpfs',
+      'cgroup',
+      'cgroup2',
+      'overlay',
+      'securityfs',
+      'mqueue',
+      'hugetlbfs',
+      'pstore',
+      'bpf',
+      'debugfs',
+      'tracefs',
+      'fusectl',
+      'configfs',
+      'autofs',
+      'binfmt_misc',
+    ]);
+    try {
+      const content = await readFile('/proc/mounts', 'utf8');
+      for (const line of content.split('\n')) {
+        if (!line.trim()) continue;
+        const parts = line.split(/\s+/);
+        const mountPoint = parts[1];
+        const fstype = parts[2];
+        if (!mountPoint || !fstype || skip.has(fstype)) continue;
+        try {
+          const stats = await statfs(mountPoint);
+          entries.push(buildDiskEntry(stats, mountPoint, fstype));
+        } catch {
+          // 跳过不可访问的挂载点
+        }
+      }
+    } catch {
+      // 读 /proc/mounts 失败则返回空
+    }
+  } else {
+    // macOS 及其他平台：尽力而为，仅探测根挂载
+    try {
+      const stats = await statfs('/');
+      entries.push(buildDiskEntry(stats, '/', ''));
+    } catch {
+      // 忽略
+    }
+  }
+  return entries;
+}
+
+/**
+ * 枚举所有磁盘/挂载点。
+ *
+ * Windows：盘符 A:-Z: 探测存在后逐个 statfs；unix：见 enumerateUnixDisks。
+ *
+ * @returns 磁盘条目列表
+ */
+async function enumerateDisks(): Promise<SystemDiskEntry[]> {
+  if (IS_WIN) {
+    const entries: SystemDiskEntry[] = [];
+    for (const root of enumerateWindowsDrives()) {
+      try {
+        const stats = await statfs(root);
+        entries.push(buildDiskEntry(stats, root, ''));
+      } catch {
+        // 跳过不可访问的盘符
+      }
+    }
+    return entries;
+  }
+  return enumerateUnixDisks();
+}
+
 /**
  * system_disk handler。
  *
- * @param args 已验证的参数（含可选 path）
- * @returns 统一输出契约；path 不存在时返回 ENOENT
+ * @param args 已验证的参数（含可选 path 与 all）
+ * @returns 统一输出契约；all=true 返回 { disks: [...] }；path 不存在时返回 ENOENT
  */
 export async function systemDiskHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
   const rawPath = args['path'];
+  const all = args['all'] === true;
+
+  // all=true：枚举多盘
+  if (all) {
+    const disks = await enumerateDisks();
+    const result: SystemDiskAllResult = { disks };
+    return ok(result) as unknown as AnyToolResult;
+  }
+
   const path = typeof rawPath === 'string' && rawPath.length > 0 ? rawPath : process.cwd();
 
   try {
     const stats = await statfs(path);
-    const total = stats.bsize * stats.blocks;
-    const free = stats.bsize * stats.bfree;
-    const used = total - free;
+    const { total, free, used } = buildDiskEntry(stats, path, '');
     const result: SystemDiskResult = { total, free, used, path };
     return ok(result) as unknown as AnyToolResult;
   } catch (err) {
@@ -139,7 +332,7 @@ export async function systemDiskHandler(args: Record<string, unknown>): Promise<
 export const systemDiskTool: Tool = {
   name: 'system_disk',
   description:
-    '获取磁盘用量（total/free/used，字节）。path 指定挂载点或目录，默认当前工作目录。',
+    '获取磁盘用量（total/free/used，字节）。path 指定挂载点或目录，默认当前工作目录；all=true 时枚举所有磁盘/挂载点并返回 { disks: [...] }。',
   inputSchema: systemDiskInputSchema,
   handler: systemDiskHandler,
 };

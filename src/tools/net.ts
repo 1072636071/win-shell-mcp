@@ -371,11 +371,35 @@ function isValidHostname(hostname: string): boolean {
 }
 
 /**
+ * 解析指定地址族记录（A=4 / AAAA=6）。
+ *
+ * 优先尝试 dns.resolve4/resolve6（走 DNS 查询）；若抛错或返回空数组，
+ * 回退到 dns.lookup（会咨询 hosts 文件），确保 `localhost` 可靠返回，
+ * 且在无对应地址族环境下（如无 IPv6 时 AAAA 回退 ::1）更稳妥。
+ *
+ * @param hostname 主机名
+ * @param family 地址族（4 或 6）
+ * @returns 地址数组
+ */
+async function resolveAddress(hostname: string, family: 4 | 6): Promise<string[]> {
+  const resolver = family === 4 ? dns.resolve4 : dns.resolve6;
+  try {
+    const addrs = await resolver(hostname);
+    if (addrs.length > 0) return addrs;
+  } catch {
+    // 走 lookup 回退
+  }
+  const { address } = await dns.lookup(hostname, { family });
+  return [address];
+}
+
+/**
  * net_dns handler：DNS 解析。
  *
  * 返回 `{ addresses, recordType }`。
  * 用 node:dns/promises。
  * MX 记录返回 `exchange` 地址；TXT 记录将片段拼接为字符串。
+ * A/AAAA 先 `resolve4/resolve6`，失败或为空时回退 `dns.lookup`（咨询 hosts 文件）。
  *
  * 错误：
  * - 非法 hostname → EINVAL
@@ -397,10 +421,10 @@ export async function netDnsHandler(args: Record<string, unknown>): Promise<AnyT
     let addresses: string[];
     switch (recordType) {
       case 'A':
-        addresses = await dns.resolve4(hostname);
+        addresses = await resolveAddress(hostname, 4);
         break;
       case 'AAAA':
-        addresses = await dns.resolve6(hostname);
+        addresses = await resolveAddress(hostname, 6);
         break;
       case 'CNAME':
         addresses = await dns.resolveCname(hostname);

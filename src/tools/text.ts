@@ -5,10 +5,11 @@
  * 长内容通过 truncate 截断，错误返回统一 fail 契约。
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode, toErrorCode, toErrorMessage } from '../contract/errors.js';
+import { readTextAutoDetect, splitLines } from '../utils/readText.js';
 import type { Tool } from '../registry.js';
 
 // ─── 辅助 ───────────────────────────────────────────────
@@ -25,30 +26,22 @@ class FileError extends Error {
 }
 
 /**
- * 读取文本文件，将 Node errno 映射为标准错误码。
+ * 读取文本文件并自动解码（GBK/UTF-8），将 Node errno 映射为标准错误码。
+ *
+ * 复用具生 `readTextAutoDetect` 完成 stat→readFile→decodeBuffer 链路，
+ * 保证 GBK 编码文件在文本处理链路中被正确还原为 UTF-8 字符串。
+ *
  * @throws {FileError} 文件不存在或为目录等
  */
 async function readTextFile(path: string): Promise<string> {
   try {
-    return await readFile(path, 'utf-8');
+    return await readTextAutoDetect(path);
   } catch (err) {
     const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
     if (code === 'ENOENT') throw new FileError(ErrorCode.ENOENT, `文件不存在: ${path}`);
     if (code === 'EISDIR') throw new FileError(ErrorCode.EISDIR, `是目录而非文件: ${path}`);
     throw new FileError(toErrorCode(err), toErrorMessage(err));
   }
-}
-
-/**
- * 将内容按行分割。
- * 空文件返回 []；末尾换行不产生额外空行。
- */
-function splitLines(content: string): string[] {
-  if (content === '') return [];
-  const lines = content.split('\n');
-  const last = lines[lines.length - 1];
-  if (last === '') lines.pop();
-  return lines;
 }
 
 /** 将捕获的错误转为失败结果。 */

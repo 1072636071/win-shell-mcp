@@ -1,6 +1,6 @@
 # win-shell-mcp
 
-> AI 原生跨平台命令抽象层 —— 以 MCP Server 形式提供 40 个确定性工具，替代裸 shell 调用，统一极简 JSON 输出，处理 Windows 路径/编码/引号差异。
+> AI 原生跨平台命令抽象层 —— 以 MCP Server 形式提供 46 个确定性工具，替代裸 shell 调用，统一极简 JSON 输出，处理 Windows 路径/编码/引号差异。
 
 [![CI](https://github.com/user/win-shell-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/user/win-shell-mcp/actions/workflows/ci.yml)
 
@@ -12,7 +12,7 @@
 - **输出难解析**：shell 命令输出格式随意，AI 难以可靠提取信息
 - **安全风险**：裸 shell 允许管道、重定向、命令注入
 
-`win-shell-mcp` 用 40 个**确定性工具**替代常见 shell 命令，每个工具：
+`win-shell-mcp` 用 46 个**确定性工具**替代常见 shell 命令，每个工具：
 
 - 接受结构化 JSON 参数，返回统一 `{ ok: true, ...data }` 或 `{ ok: false, error: { code, message } }`
 - 跨平台行为一致（Windows/macOS/Linux 同一份配置）
@@ -75,9 +75,9 @@ npx win-shell-mcp
 }
 ```
 
-启动后客户端将通过 stdio 与 server 通信，自动发现全部 40 个工具。
+启动后客户端将通过 stdio 与 server 通信，自动发现全部 46 个工具。
 
-## 工具清单（40 个）
+## 工具清单（46 个）
 
 按域分组。每个工具返回统一输出契约：成功 `{ ok: true, ...data }`，失败 `{ ok: false, error: { code, message } }`。
 
@@ -109,7 +109,7 @@ npx win-shell-mcp
 | `fs_mv` | 移动/重命名（dest 已存在则失败，不覆盖） |
 | `fs_touch` | 创建空文件或更新 mtime |
 
-### text（6）
+### text（7）
 
 | 工具 | 说明 |
 |------|------|
@@ -119,14 +119,16 @@ npx win-shell-mcp
 | `text_wc` | 统计行/词/字符数 |
 | `text_diff` | 两段文本差异 |
 | `text_replace` | 正则替换文本 |
+| `cat` | 连接/读取文件内容（类似 `cat`；别名 `text_cat`） |
 
-### search（3）
+### search（4）
 
 | 工具 | 说明 |
 |------|------|
 | `search_glob` | glob 模式匹配文件路径 |
 | `search_content` | 在文件中搜索内容 |
 | `search_which` | 查找可执行文件路径（类似 `which`/`where`） |
+| `find` | 按文件名模式递归搜索（Unix find 短名；别名 `fs_find`，支持 * 通配） |
 
 ### process（2）
 
@@ -149,7 +151,7 @@ npx win-shell-mcp
 | `env_set` | 设置环境变量 |
 | `env_unset` | 删除环境变量 |
 
-### net（4）
+### net（5）
 
 | 工具 | 说明 |
 |------|------|
@@ -157,6 +159,7 @@ npx win-shell-mcp
 | `net_post` | HTTP POST 请求 |
 | `net_dns` | DNS 解析 |
 | `net_tcp` | TCP 连接探测 |
+| `ping` | TCP 连通性探测（类似 `ping`；别名 `net_ping`） |
 
 ### pkg（2）
 
@@ -175,6 +178,19 @@ npx win-shell-mcp
 | `git_diff` | 差异 |
 | `git_add` | 暂存 |
 | `git_commit` | 提交 |
+
+### core（2）
+
+| 工具 | 说明 |
+|------|------|
+| `pwd` | 打印当前工作目录 |
+| `echo` | 输出文本 |
+
+### run_command（1）
+
+| 工具 | 说明 |
+|------|------|
+| `run_command` | 直接运行 shell 命令（精简版） |
 
 ## ⚠️ 安全说明
 
@@ -206,7 +222,7 @@ npm test
 # 测试（watch 模式）
 npm run test:watch
 
-# 覆盖率（阈值：lines/functions/statements ≥ 85%，branches ≥ 70%）
+# 覆盖率（阈值：lines/functions/statements ≥ 85%，branches ≥ 84%）
 npm run coverage
 
 # 构建
@@ -224,10 +240,10 @@ npm run dev
 src/
   index.ts          # 入口：启动 stdio server
   server.ts         # MCP Server 创建与工具分发
-  registry.ts       # 工具注册表（注册全部 40 个工具）
+  registry.ts       # 工具注册表（注册全部 46 个工具）
   contract/         # 输出契约与错误码
   encoding/         # 编码检测（GBK/UTF-8）
-  tools/            # 40 个工具实现，按域分文件
+  tools/            # 46 个工具实现，按域分文件
 tests/
   server.test.ts    # server 单元测试
   integration/      # 集成测试（Client + InMemoryTransport）

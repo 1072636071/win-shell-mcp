@@ -261,6 +261,100 @@ describe('searchGlobHandler 空结果', () => {
 });
 
 // ============================================================================
+// search_glob exclude
+// ============================================================================
+
+describe('searchGlobHandler exclude', () => {
+  it('empty-redact exclude 数组不过滤', async () => {
+    const result = await searchGlobHandler({
+      pattern: '**/*',
+      cwd: tmpDir,
+      exclude: [],
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect((result['files'] as string[]).length).toBe(6);
+    }
+  });
+
+  it('exclude **/*.tmp 移除匹配文件', async () => {
+    await fs.writeFile(path.join(tmpDir, 'x.tmp'), 'x');
+    await fs.writeFile(path.join(tmpDir, 'sub', 'y.tmp'), 'y');
+    const result = await searchGlobHandler({
+      pattern: '**/*',
+      cwd: tmpDir,
+      exclude: ['**/*.tmp'],
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const files = result['files'] as string[];
+      expect(files).toContain('a.ts');
+      expect(files).toContain('sub/d.ts');
+      expect(files).not.toContain('x.tmp');
+      expect(files).not.toContain('sub/y.tmp');
+    }
+  });
+
+  it('exclude node_modules/** 移除该目录下全部文件', async () => {
+    await fs.mkdir(path.join(tmpDir, 'node_modules'));
+    await fs.mkdir(path.join(tmpDir, 'node_modules', 'dep'));
+    await fs.writeFile(path.join(tmpDir, 'node_modules', 'dep', 'lib.js'), 'x');
+    const result = await searchGlobHandler({
+      pattern: '**/*',
+      cwd: tmpDir,
+      exclude: ['node_modules/**'],
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const files = result['files'] as string[];
+      expect(files).toContain('a.ts');
+      expect(files.filter((f) => f.startsWith('node_modules'))).toEqual([]);
+    }
+  });
+
+  it('多个 exclude 同时生效', async () => {
+    await fs.writeFile(path.join(tmpDir, 'x.tmp'), 'x');
+    await fs.writeFile(path.join(tmpDir, 'keep.log'), 'log');
+    const result = await searchGlobHandler({
+      pattern: '**/*',
+      cwd: tmpDir,
+      exclude: ['**/*.tmp', '**/*.log'],
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const files = result['files'] as string[];
+      expect(files).not.toContain('x.tmp');
+      expect(files).not.toContain('keep.log');
+      expect(files).toContain('a.ts');
+    }
+  });
+
+  it('非法 exclude glob 返回 EINVAL', async () => {
+    const result = await searchGlobHandler({
+      pattern: '**/*',
+      cwd: tmpDir,
+      exclude: ['[unclosed'],
+    });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
+    }
+  });
+
+  it('exclude 非数组返回 EINVAL', async () => {
+    const result = await searchGlobHandler({
+      pattern: '**/*',
+      cwd: tmpDir,
+      exclude: '**/*.tmp',
+    });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
+    }
+  });
+});
+
+// ============================================================================
 // search_glob 错误路径
 // ============================================================================
 
@@ -627,6 +721,77 @@ describe('searchContentHandler 空结果', () => {
       expect(result['matches']).toEqual([]);
       expect(result['count']).toBe(0);
       expect(result['truncated']).toBe(false);
+    }
+  });
+});
+
+// ============================================================================
+// search_content exclude
+// ============================================================================
+
+describe('searchContentHandler exclude', () => {
+  it('exclude **/*.ts 移除匹配文件', async () => {
+    // 只有 .ts 文件含 export 内容，排除后应无匹配
+    const result = await searchContentHandler({
+      pattern: 'export',
+      cwd: tmpDir,
+      exclude: ['**/*.ts'],
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['matches']).toEqual([]);
+      expect(result['count']).toBe(0);
+    }
+  });
+
+  it('exclude 与 glob 叠加生效', async () => {
+    // glob 限定 .js 再排除 sub/ 下文件
+    const result = await searchContentHandler({
+      pattern: 'const',
+      cwd: tmpDir,
+      glob: '**/*.js',
+      exclude: ['sub/**'],
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const matches = result['matches'] as Array<{ file: string }>;
+      expect(matches.map((m) => m.file)).toEqual(['b.js']);
+    }
+  });
+
+  it('空 exclude 数组不过滤', async () => {
+    const result = await searchContentHandler({
+      pattern: 'export',
+      cwd: tmpDir,
+      exclude: [],
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['count']).toBe(3);
+    }
+  });
+
+  it('非法 exclude glob 返回 EINVAL', async () => {
+    const result = await searchContentHandler({
+      pattern: 'x',
+      cwd: tmpDir,
+      exclude: ['[unclosed'],
+    });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
+    }
+  });
+
+  it('exclude 非数组返回 EINVAL', async () => {
+    const result = await searchContentHandler({
+      pattern: 'x',
+      cwd: tmpDir,
+      exclude: '**/*.tmp',
+    });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
     }
   });
 });

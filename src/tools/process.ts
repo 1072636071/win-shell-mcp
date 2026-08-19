@@ -264,7 +264,15 @@ export const processListTool: Tool = {
 
 /** process_kill 输入 schema。 */
 export const processKillInputSchema = z.object({
-  pid: z.number().int().describe('进程 ID'),
+  pid: z
+    .number()
+    .int()
+    .optional()
+    .describe('进程 ID（pid 与 name 至少提供其一）'),
+  name: z
+    .string()
+    .optional()
+    .describe('进程名（pid 与 name 至少提供其一；按名称终止所有匹配进程）'),
   signal: z
     .string()
     .optional()
@@ -307,14 +315,139 @@ function killUnixProcess(pid: number, signal: string): void {
 }
 
 /**
- * process_kill handler：按 PID 终止进程。
+ * 按给定参数终止单个 pid（跨平台）。
+ *
+ * 供按 PID 与按名称两个路径共用，消除重复的 IS_WIN 分支终止逻辑。
+ *
+ * @param pid 进程 ID
+ * @param force 是否强制
+ * @param signal 信号名（unix）
+ */
+async function killPid(pid: number, force: boolean, signal: string): Promise<void> {
+  if (IS_WIN) {
+    await killWindowsProcess(pid, force);
+  } else {
+    killUnixProcess(pid, signal);
+  }
+}
+
+/**
+ * 判断进程名是否与查询名匹配。
+ *
+ * Windows：大小写不敏感，忽略 '.exe' 后缀。
+ * unix：comm 与查询名精确匹配（等值，避免误杀名称以查询串结尾的无关注程）。
+ */
+function matchProcessName(entryName: string, query: string): boolean {
+  if (IS_WIN) {
+    const norm = (s: string) => s.toLowerCase().replace(/\.exe$/i, '');
+    return norm(entryName) === norm(query);
+  }
+  return entryName === query;
+}
+
+/**
+ * 统一映射 kill 错误到错误码。命中时返回 fail，未命中返回 null。
+ *
+ * @param err 捕获的错误
+ * @param target 目标描述（pid 或进程名），用于错误信息
+ * @returns fail 结果；无映射时返回 null
+ */
+function mapKillError(err: unknown, target: string): AnyToolResult | null {
+  const code = (err as NodeJS.ErrnoException).code;
+  const msg = toErrorMessage(err);
+
+  // unix: ESRCH（进程不存在）→ PROC_NOT_FOUND；EPERM（无权限）→ EACCES
+  if (code === 'ESRCH') return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
+  if (code === 'EPERM') return fail(ErrorCode.EACCES, `无权限终止进程: ${target}`);
+  if (code === 'EINVAL') return fail(ErrorCode.EINVAL, `pid 或信号非法: ${msg}`);
+
+  // Windows taskkill 错误识别：
+  // - code 为数字退出码（128=找不到进程，1=通用失败）
+  // - stderr 为 GBK 编码中文，需用 decodeBuffer 解码后匹配关键词
+  if (IS_WIN) {
+    const stderrBuf = (err as { stderr?: Buffer }).stderr;
+    const stderrText = Buffer.isBuffer(stderrBuf)
+      ? decodeBuffer(stderrBuf)
+      : typeof stderrBuf === 'string'
+        ? stderrBuf
+        : '';
+    const text = stderrText.toLowerCase();
+
+    // 退出码 128 → 进程不存在
+    if (Number(code) === 128) return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
+    // 中文/英文关键词匹配
+    if (TASKKILL_NOT_FOUND_PATTERNS.some((p) => text.includes(p))) {
+      return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
+    }
+    if (TASKKILL_ACCESS_DENIED_PATTERNS.some((p) => text.includes(p))) {
+      return fail(ErrorCode.EACCES, `无权限终止进程: ${target}`);
+    }
+    // "无法终止" / "只能强制终止" → 需 force，视为终止失败
+    if (text.includes('无法终止') || text.includes('强制终止')) {
+      return fail(ErrorCode.PROC_KILL_FAIL, `无法终止进程（可能需要 force=true）: ${target}`);
+    }
+  }
+
+  // 其他执行错误
+  return fail(ErrorCode.PROC_KILL_FAIL, `终止进程失败: ${msg}`);
+}
+
+/**
+ * 按名称终止进程（pid 未提供时）。
+ *
+ * 扫描进程列表，匹配所有同名进程并逐个终止。
+ * Windows：对每个命中 pid 执行 taskkill /PID；unix：对每个命中 pid 执行 process.kill。
+ * 无命中 → PROC_NOT_FOUND。
+ *
+ * @param name 进程名
+ * @param force 是否强制
+ * @param signal 信号名（unix）
+ * @returns 统一输出契约
+ */
+async function killProcessesByName(
+  name: string,
+  force: boolean,
+  signal: string,
+): Promise<AnyToolResult> {
+  let entries: ProcessEntry[];
+  try {
+    entries = IS_WIN ? await listWindowsProcesses() : await listUnixProcesses();
+  } catch (err) {
+    return fail(ErrorCode.EXEC_FAIL, `执行进程扫描失败: ${toErrorMessage(err)}`);
+  }
+
+  const matched = entries.filter((e) => matchProcessName(e.name, name));
+  if (matched.length === 0) {
+    return fail(ErrorCode.PROC_NOT_FOUND, `未找到名为 ${name} 的进程`);
+  }
+  const pids = matched.map((p) => p.pid);
+  const firstPid = pids[0]!;
+
+  try {
+    for (const pid of pids) {
+      await killPid(pid, force, signal);
+    }
+  } catch (err) {
+    const mapped = mapKillError(err, name);
+    if (mapped) return mapped;
+    return fail(ErrorCode.PROC_KILL_FAIL, `终止进程失败: ${toErrorMessage(err)}`);
+  }
+
+  const result: ProcessKillResult = { killed: true, pid: firstPid };
+  return ok(result) as unknown as AnyToolResult;
+}
+
+/**
+ * process_kill handler：按 PID 或进程名终止进程。
  *
  * signal 默认 'SIGTERM'；force 为 true 时 unix 用 'SIGKILL'，Windows 加 /F。
+ * pid 提供 → 按 PID 终止（原路径）；仅 name 提供 → 按名称终止所有匹配进程。
  * 返回 `{ killed: true, pid }`。
  *
  * 错误：
+ * - pid 与 name 均未提供 → EINVAL
  * - pid 非法（非整数）→ EINVAL
- * - PID 不存在 → PROC_NOT_FOUND（unix ESRCH 映射到 PROC_NOT_FOUND）
+ * - PID/进程名不存在 → PROC_NOT_FOUND（unix ESRCH 映射到 PROC_NOT_FOUND）
  * - 无权限 → EACCES（unix EPERM 映射到 EACCES）
  * - 命令执行失败 → PROC_KILL_FAIL
  *
@@ -323,14 +456,9 @@ function killUnixProcess(pid: number, signal: string): void {
  */
 export async function processKillHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
   const rawPid = args['pid'];
+  const rawName = args['name'];
   const force = args['force'] === true;
   const rawSignal = args['signal'];
-
-  // pid 非法检查
-  if (typeof rawPid !== 'number' || !Number.isInteger(rawPid)) {
-    return fail(ErrorCode.EINVAL, 'pid 必须是整数');
-  }
-  const pid = rawPid;
 
   // signal 决定：force 优先 SIGKILL，否则用显式 signal，否则默认 SIGTERM
   let signal: string;
@@ -342,50 +470,23 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
     signal = 'SIGTERM';
   }
 
+  // 按名称终止：pid 未提供但提供了 name
+  if (typeof rawPid !== 'number' && typeof rawName === 'string' && rawName.length > 0) {
+    return killProcessesByName(rawName, force, signal);
+  }
+
+  // pid 非法检查（pid 与 name 均未提供时也归入此处 → EINVAL）
+  if (typeof rawPid !== 'number' || !Number.isInteger(rawPid)) {
+    return fail(ErrorCode.EINVAL, 'pid 必须是整数，或用 name 指定进程名');
+  }
+  const pid = rawPid;
+
   try {
-    if (IS_WIN) {
-      await killWindowsProcess(pid, force);
-    } else {
-      killUnixProcess(pid, signal);
-    }
+    await killPid(pid, force, signal);
   } catch (err) {
-    // 映射错误码
-    const code = (err as NodeJS.ErrnoException).code;
-    const msg = toErrorMessage(err);
-    // unix: ESRCH（进程不存在）→ PROC_NOT_FOUND；EPERM（无权限）→ EACCES
-    if (code === 'ESRCH') return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${pid}`);
-    if (code === 'EPERM') return fail(ErrorCode.EACCES, `无权限终止进程: ${pid}`);
-    if (code === 'EINVAL') return fail(ErrorCode.EINVAL, `pid 或信号非法: ${msg}`);
-
-    // Windows taskkill 错误识别：
-    // - code 为数字退出码（128=找不到进程，1=通用失败）
-    // - stderr 为 GBK 编码中文，需用 decodeBuffer 解码后匹配关键词
-    if (IS_WIN) {
-      const stderrBuf = (err as { stderr?: Buffer }).stderr;
-      const stderrText = Buffer.isBuffer(stderrBuf)
-        ? decodeBuffer(stderrBuf)
-        : typeof stderrBuf === 'string'
-          ? stderrBuf
-          : '';
-      const text = stderrText.toLowerCase();
-
-      // 退出码 128 → 进程不存在
-      if (Number(code) === 128) return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${pid}`);
-      // 中文/英文关键词匹配
-      if (TASKKILL_NOT_FOUND_PATTERNS.some((p) => text.includes(p))) {
-        return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${pid}`);
-      }
-      if (TASKKILL_ACCESS_DENIED_PATTERNS.some((p) => text.includes(p))) {
-        return fail(ErrorCode.EACCES, `无权限终止进程: ${pid}`);
-      }
-      // "无法终止" / "只能强制终止" → 需 force，视为终止失败
-      if (text.includes('无法终止') || text.includes('强制终止')) {
-        return fail(ErrorCode.PROC_KILL_FAIL, `无法终止进程（可能需要 force=true）: ${pid}`);
-      }
-    }
-
-    // 其他执行错误
-    return fail(ErrorCode.PROC_KILL_FAIL, `终止进程失败: ${msg}`);
+    const mapped = mapKillError(err, String(pid));
+    if (mapped) return mapped;
+    return fail(ErrorCode.PROC_KILL_FAIL, `终止进程失败: ${toErrorMessage(err)}`);
   }
 
   const result: ProcessKillResult = { killed: true, pid };
@@ -396,7 +497,7 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
 export const processKillTool: Tool = {
   name: 'process_kill',
   description:
-    '按 PID 终止进程。signal 默认 SIGTERM；force 为 true 时 unix 用 SIGKILL，Windows 加 /F。返回 { killed, pid }。',
+    '按 PID 或进程名终止进程。pid 或 name 至少提供其一；提供 name 时按名称终止所有匹配进程。signal 默认 SIGTERM；force 为 true 时 unix 用 SIGKILL，Windows 加 /F。返回 { killed, pid }。',
   inputSchema: processKillInputSchema,
   handler: processKillHandler,
 };

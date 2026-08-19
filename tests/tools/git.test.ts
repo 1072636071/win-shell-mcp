@@ -37,7 +37,16 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(tmpDir, { recursive: true, force: true });
+  try {
+    await fs.rm(tmpDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
+  } catch {
+    // Windows 下 git 子进程可能仍短暂占用目录句柄（EBUSY），忽略清理失败。
+  }
 });
 
 /**

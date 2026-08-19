@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { spawn } from 'node:child_process';
+import { copyFileSync, chmodSync, unlinkSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   processListHandler,
   processListTool,
@@ -326,6 +329,21 @@ describe('processKillInputSchema 验证', () => {
     const parsed = processKillInputSchema.safeParse({ pid: 1, force: true });
     expect(parsed.success).toBe(true);
   });
+
+  it('name 字符串合法', () => {
+    const parsed = processKillInputSchema.safeParse({ name: 'node' });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('name 同时含 pid 合法', () => {
+    const parsed = processKillInputSchema.safeParse({ pid: 123, name: 'node' });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('name 非字符串非法', () => {
+    const parsed = processKillInputSchema.safeParse({ name: 123 });
+    expect(parsed.success).toBe(false);
+  });
 });
 
 // ===========================================================================
@@ -594,6 +612,97 @@ describe('processKillHandler 跨平台', () => {
         process.kill(pid, 'SIGKILL');
       } catch {
         // 已退出
+      }
+    }
+  });
+});
+
+// ===========================================================================
+// process_kill handler：按名称终止（name）
+// ===========================================================================
+
+/**
+ * 通过复制当前 node 可执行文件得到一个唯一命名/唯一进程名的子进程。
+ *
+ * 直接按 'node' 终止会误杀测试运行器本身，因此这里临时复制 node 可执行文件，
+ * 使其进程名唯一，从而只能命中我们启动的这一个子进程。返回后可清理临时文件。
+ */
+function spawnUniqueNamedChild(): { exePath: string; name: string; pid: number } {
+  const ext = IS_WIN ? '.exe' : '';
+  const tmpFile = `killawn_${Date.now()}_${Math.random().toString(36).slice(2, 10)}${ext}`;
+  const exePath = path.join(os.tmpdir(), tmpFile);
+  copyFileSync(process.execPath, exePath);
+  if (!IS_WIN) {
+    // unix 复制后需保证可执行（macOS 复制 node 可能丢掉执行位）
+    try {
+      chmodSync(exePath, 0o755);
+    } catch {
+      // 忽略
+    }
+  }
+  const child = spawn(exePath, ['-e', 'setTimeout(()=>{},60000)'], {
+    stdio: 'ignore',
+    detached: false,
+  });
+  if (typeof child.pid !== 'number') {
+    throw new Error('子进程启动失败：无 pid');
+  }
+  // 进程名：Windows 的 tasklist 映像名即文件基本名（含 .exe）。
+  // 匹配逻辑对 Windows 忽略 .exe 后缀，因此直接取基本名即可。
+  return { exePath, name: path.basename(exePath), pid: child.pid };
+}
+
+describe('processKillHandler 按名称终止', () => {
+  it('pid 与 name 均未提供返回 EINVAL', async () => {
+    const result = await processKillHandler({});
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
+    }
+  });
+
+  it('仅 name 且进程不存在返回 PROC_NOT_FOUND', async () => {
+    const result = await processKillHandler({ name: '__no_such_proc_name_zzz_999__', force: true });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('PROC_NOT_FOUND');
+    }
+  });
+
+  it('按名称终止启动的唯一命名子进程返回 ok（不误杀同名校进程）', async () => {
+    let exePath = '';
+    let pid = -1;
+    try {
+      const spawned = spawnUniqueNamedChild();
+      exePath = spawned.exePath;
+      pid = spawned.pid;
+
+      // 先用进程列表确认该唯一命名子进程确实在运行，且名称为文件基本名
+      const listRes = await processListHandler({});
+      expect(isOk(listRes)).toBe(true);
+
+      // 按唯一名称终止（force=true 跨平台可靠）
+      const result = await processKillHandler({ name: spawned.name, force: true });
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result['killed']).toBe(true);
+      }
+      const exited = await waitForExit(pid);
+      expect(exited).toBe(true);
+    } finally {
+      if (exePath) {
+        try {
+          unlinkSync(exePath);
+        } catch {
+          // 文件可能仍被占用或已不存在，忽略
+        }
+      }
+      if (pid > 0) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // 已退出
+        }
       }
     }
   });

@@ -246,6 +246,129 @@ describe('systemDiskHandler 失败路径', () => {
   });
 });
 
+describe('systemInfoHandler verbose CPU 字段', () => {
+  it('verbose 时 cpuModel 为非空字符串', async () => {
+    const result = await systemInfoHandler({ verbose: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(typeof result['cpuModel']).toBe('string');
+      expect((result['cpuModel'] as string).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('verbose 时 cpus 为正整数（CPU 核心数）', async () => {
+    const result = await systemInfoHandler({ verbose: true });
+    if (isOk(result)) {
+      const count = result['cpus'] as number;
+      expect(Number.isInteger(count)).toBe(true);
+      expect(count).toBeGreaterThan(0);
+    }
+  });
+
+  it('verbose 时 cpuUsage 为 0-100 的数字', async () => {
+    const result = await systemInfoHandler({ verbose: true });
+    if (isOk(result)) {
+      const usage = result['cpuUsage'] as number;
+      expect(typeof usage).toBe('number');
+      expect(usage).toBeGreaterThanOrEqual(0);
+      expect(usage).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it('verbose 时 cpuUsagePerCore 为数字数组且长度等于 cpus', async () => {
+    const result = await systemInfoHandler({ verbose: true });
+    if (isOk(result)) {
+      const perCore = result['cpuUsagePerCore'] as number[];
+      expect(Array.isArray(perCore)).toBe(true);
+      expect(perCore.length).toBe(result['cpus']);
+      for (const v of perCore) {
+        expect(typeof v).toBe('number');
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+
+  it('非 verbose 时不含 cpuModel/cpuUsage 等字段', async () => {
+    const result = await systemInfoHandler({});
+    if (isOk(result)) {
+      expect(result['cpuModel']).toBeUndefined();
+      expect(result['cpuUsage']).toBeUndefined();
+    }
+  });
+});
+
+describe('systemDiskHandler all 枚举', () => {
+  it('all=true 返回 ok 与 disks 数组', async () => {
+    const result = await systemDiskHandler({ all: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(Array.isArray(result['disks'])).toBe(true);
+      expect((result['disks'] as unknown[]).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('all=true 时每个磁盘含 path/type/total/free/used', async () => {
+    const result = await systemDiskHandler({ all: true });
+    if (isOk(result)) {
+      const disks = result['disks'] as Array<{
+        path: string;
+        type: string;
+        total: number;
+        free: number;
+        used: number;
+      }>;
+      for (const d of disks) {
+        expect(typeof d.path).toBe('string');
+        expect(d.path.length).toBeGreaterThan(0);
+        expect(typeof d.total).toBe('number');
+        expect(typeof d.free).toBe('number');
+        expect(typeof d.used).toBe('number');
+      }
+    }
+  });
+
+  it('all=true 时 total = used + free（守恒）且非负', async () => {
+    const result = await systemDiskHandler({ all: true });
+    if (isOk(result)) {
+      const disks = result['disks'] as Array<{
+        total: number;
+        free: number;
+        used: number;
+      }>;
+      for (const d of disks) {
+        expect(d.total).toBe(d.used + d.free);
+        expect(d.total).toBeGreaterThanOrEqual(0);
+        expect(d.free).toBeGreaterThanOrEqual(0);
+        expect(d.used).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it('all 缺省/省略时保持单路径行为（不含 disks）', async () => {
+    const result = await systemDiskHandler({});
+    if (isOk(result)) {
+      expect(result['disks']).toBeUndefined();
+      expect(result['total']).toBeDefined();
+    }
+  });
+
+  it('all 与 path 同时提供时优先枚举多盘', async () => {
+    const result = await systemDiskHandler({ all: true, path: os.tmpdir() });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(Array.isArray(result['disks'])).toBe(true);
+      // Windows 根盘应被包含（C:\ 等）
+      if (os.platform() === 'win32') {
+        const hasRoot = (result['disks'] as Array<{ path: string }>).some((d) =>
+          /^[A-Za-z]:\\/.test(d.path),
+        );
+        expect(hasRoot).toBe(true);
+      }
+    }
+  });
+});
+
 // ===========================================================================
 // system_memory
 // ===========================================================================

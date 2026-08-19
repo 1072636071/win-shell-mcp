@@ -1,0 +1,41 @@
+/**
+ * 核心命令域（工单 02）：pwd / echo。
+ *
+ * 这些工具是最基础的 shell 原语，作为后续命令注册表与别名机制的验证基线。
+ */
+
+import { z } from 'zod';
+import { ok, fail } from '../contract/output.js';
+import { ErrorCode } from '../contract/errors.js';
+import { toDisplay } from '../utils/path.js';
+import type { Tool } from '../registry.js';
+
+const pwdTool: Tool = {
+  name: 'pwd',
+  description: '返回当前工作目录（cwd）的绝对路径。',
+  inputSchema: z.object({}),
+  async handler() {
+    return ok({ cwd: toDisplay(process.cwd()) });
+  },
+};
+
+const echoTool: Tool = {
+  name: 'echo',
+  description: '原样回显传入的参数数组；format=text 返回空格拼接字符串，format=json 返回原始数组。',
+  inputSchema: z.object({
+    args: z.array(z.string()).describe('要回显的字符串数组'),
+    format: z.enum(['text', 'json']).optional().describe('输出格式，默认 text'),
+  }),
+  async handler(raw) {
+    const { args, format } = raw as { args: string[]; format?: 'text' | 'json' };
+    if (!Array.isArray(args)) {
+      return fail(ErrorCode.EINVAL, 'args 必须是字符串数组');
+    }
+    if (format === 'json') {
+      return ok({ args });
+    }
+    return ok({ output: args.join(' ') });
+  },
+};
+
+export { pwdTool, echoTool };

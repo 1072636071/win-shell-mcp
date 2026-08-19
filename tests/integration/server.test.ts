@@ -1,6 +1,6 @@
 /**
  * 集成测试：用 Client + InMemoryTransport 连接 createServer()，
- * 验证全部 40 个工具已注册、可列出、代表性工具可调用、未知工具失败、工具名唯一。
+ * 验证全部 46 个工具已注册、可列出、代表性工具可调用、未知工具失败、工具名唯一。
  *
  * 不启动真实 stdio，仅内存传输。
  */
@@ -9,13 +9,13 @@ import { describe, it, expect } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer, listTools, callTool } from '../../src/server.js';
-import { getAllTools } from '../../src/registry.js';
+import { getAllTools, findTool } from '../../src/registry.js';
 import { isOk, isFail } from '../../src/contract/output.js';
 
 /** 期望的工具总数。 */
-const EXPECTED_TOOL_COUNT = 40;
+const EXPECTED_TOOL_COUNT = 46;
 
-/** 期望的工具名（按域分组，共 40 个）。 */
+/** 期望的工具名（按域分组，共 46 个）。 */
 const EXPECTED_TOOL_NAMES = [
   // system
   'system_info',
@@ -68,6 +68,13 @@ const EXPECTED_TOOL_NAMES = [
   'git_diff',
   'git_add',
   'git_commit',
+  // core / shell / 各域新增（工单 02/03 + 各域新增）
+  'pwd',
+  'echo',
+  'run_command',
+  'find',
+  'cat',
+  'ping',
 ] as const;
 
 /** Client callTool 返回类型（content 退化为 unknown，统一断言）。 */
@@ -113,6 +120,12 @@ describe('集成测试 - 工具注册', () => {
     for (const expected of EXPECTED_TOOL_NAMES) {
       expect(names.has(expected)).toBe(true);
     }
+  });
+
+  it('短名/别名可解析到正名工具', () => {
+    expect(findTool('ls')?.name).toBe('fs_list');
+    expect(findTool('list_directory')?.name).toBe('fs_list');
+    expect(findTool('fs_find')?.name).toBe('find');
   });
 });
 

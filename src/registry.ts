@@ -2,7 +2,10 @@
  * 工具注册表。
  *
  * 维护所有已注册工具，提供查询接口供 server 层使用。
- * 工单 12：注册全部 40 个工具。
+ * 工单 12：注册全部 46 个工具（含 02/03 新增的 pwd/echo/run_command 与各域新增 find/cat/ping）。
+ *
+ * 别名机制（工单 02）：Tool 可声明 aliases，findTool 在精确名匹配失败后回退到别名匹配，
+ * 因此 `ls` / `list_directory` 等短名/别名调用与正名返回一致结果。
  */
 
 import type { z } from 'zod';
@@ -44,6 +47,11 @@ import {
   gitAddTool,
   gitCommitTool,
 } from './tools/git.js';
+import { pwdTool, echoTool } from './tools/core.js';
+import { runCommandTool } from './tools/run_command.js';
+import { fsFindTool } from './tools/fs_find.js';
+import { textCatTool } from './tools/text_cat.js';
+import { netPingTool } from './tools/net_ping.js';
 
 /** 工具定义。 */
 export interface Tool {
@@ -55,6 +63,8 @@ export interface Tool {
   inputSchema: z.ZodType;
   /** 处理函数，接收已验证参数，返回统一输出契约。 */
   handler: (args: Record<string, unknown>) => Promise<AnyToolResult> | AnyToolResult;
+  /** 别名（短名/同义名）；tools/call 可通过别名调用，返回与正名一致的结果。 */
+  aliases?: string[];
 }
 
 /** 内部工具存储。 */
@@ -77,13 +87,15 @@ export function getAllTools(): Tool[] {
 }
 
 /**
- * 按名称查找工具。
+ * 按名称查找工具。优先精确匹配工具名，失败则回退到别名匹配。
  *
- * @param name 工具名
+ * @param name 工具名或别名
  * @returns 工具定义或 undefined
  */
 export function findTool(name: string): Tool | undefined {
-  return tools.find((t) => t.name === name);
+  const exact = tools.find((t) => t.name === name);
+  if (exact) return exact;
+  return tools.find((t) => t.aliases?.includes(name));
 }
 
 /**
@@ -95,7 +107,7 @@ export function resetRegistry(): void {
   tools.length = 0;
 }
 
-// 注册内置工具（共 40 个，按域分组）
+// 注册内置工具（共 46 个，按域分组）
 // system 域
 registerTool(systemInfoTool);
 registerTool(systemDiskTool);
@@ -147,3 +159,12 @@ registerTool(gitBranchTool);
 registerTool(gitDiffTool);
 registerTool(gitAddTool);
 registerTool(gitCommitTool);
+// core 域（工单 02）
+registerTool(pwdTool);
+registerTool(echoTool);
+// run_command（工单 03）
+registerTool(runCommandTool);
+// 各域新增工具（桩由对应 agent 完善）
+registerTool(fsFindTool);
+registerTool(textCatTool);
+registerTool(netPingTool);

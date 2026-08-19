@@ -154,7 +154,7 @@ describe('shellExecHandler 超时', () => {
     if (isFail(result)) {
       expect(result.error.code).toBe('EXEC_TIMEOUT');
     }
-  }, 10000);
+  });
 
   it('超时消息含超时毫秒', async () => {
     const longCmd = IS_WIN ? 'ping -n 10 127.0.0.1 > nul' : 'sleep 5';
@@ -162,7 +162,7 @@ describe('shellExecHandler 超时', () => {
     if (isFail(result)) {
       expect(result.error.message).toContain('300');
     }
-  }, 10000);
+  });
 
   it('未超时正常完成', async () => {
     const result = await shellExecHandler({ command: 'echo fast', timeout: 5000 });
