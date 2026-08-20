@@ -33,13 +33,26 @@ async function spawnCommand(opts: {
   timeoutMs: number;
   maxOutputBytes: number;
   encoding?: 'utf8' | 'gbk';
+  stdin?: string;
 }): Promise<RunCommandResult> {
-  const { command, args, cwd, env, timeoutMs, maxOutputBytes, encoding } = opts;
+  const { command, args, cwd, env, timeoutMs, maxOutputBytes, encoding, stdin } = opts;
+  const hasStdin = typeof stdin === 'string';
   const proc = spawn(command, args, {
     cwd: cwd ?? process.cwd(),
     env: { ...process.env, ...(env ?? {}) },
     windowsHide: true,
+    stdio: hasStdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
   });
+
+  // 写入 stdin 后关闭
+  if (hasStdin && proc.stdin) {
+    try {
+      proc.stdin.write(stdin as string);
+      proc.stdin.end();
+    } catch {
+      // 子进程已关闭 stdin，忽略 EPIPE
+    }
+  }
 
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
@@ -99,7 +112,7 @@ async function spawnCommand(opts: {
 const runCommandTool: Tool = {
   name: 'run_command',
   description:
-    '以参数数组直接执行命令（不经过 shell 解析），返回 stdout/stderr/退出码/是否截断。适合调用带空格路径或需精确参数的程序。',
+    '以参数数组直接执行命令（不经过 shell 解析），返回 stdout/stderr/退出码/是否截断。支持 stdin。适合调用带空格路径或需精确参数的程序。',
   inputSchema: z.object({
     command: z.string().describe('可执行文件或命令名'),
     args: z.array(z.string()).default([]).describe('参数数组（不经由 shell 解析）'),
@@ -114,9 +127,10 @@ const runCommandTool: Tool = {
       .optional()
       .describe('输出截断阈值（字节），默认 5MiB'),
     encoding: z.enum(['utf8', 'gbk']).optional().describe('输出解码编码；缺省自动识别 GBK/UTF-8'),
+    stdin: z.string().optional().describe('写入子进程标准输入的字符串，写完即关闭'),
   }),
   async handler(raw) {
-    const { command, args, cwd, env, timeoutMs, maxOutputBytes, encoding } = raw as {
+    const { command, args, cwd, env, timeoutMs, maxOutputBytes, encoding, stdin } = raw as {
       command: string;
       args?: string[];
       cwd?: string;
@@ -124,6 +138,7 @@ const runCommandTool: Tool = {
       timeoutMs?: number;
       maxOutputBytes?: number;
       encoding?: 'utf8' | 'gbk';
+      stdin?: string;
     };
     if (!command) return fail(ErrorCode.EINVAL, 'command is required');
     try {
@@ -135,6 +150,7 @@ const runCommandTool: Tool = {
         timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxOutputBytes: maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
         encoding,
+        stdin,
       });
       return ok(res);
     } catch (e) {

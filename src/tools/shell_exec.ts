@@ -47,6 +47,14 @@ export const shellExecInputSchema = z.object({
     .boolean()
     .optional()
     .describe('若为 true，返回 pid、duration、truncated'),
+  shell: z
+    .enum(['auto', 'cmd'])
+    .optional()
+    .describe('shell 选择：auto（默认，Windows cmd.exe / unix sh）、cmd（Windows cmd.exe）'),
+  stdin: z
+    .string()
+    .optional()
+    .describe('写入子进程标准输入的字符串，写完即关闭'),
 });
 
 /** shell_exec 输入类型。 */
@@ -83,10 +91,24 @@ export async function shellExecHandler(args: Record<string, unknown>): Promise<A
   const encoding = args['encoding'];
   const envArg = args['env'];
   const verbose = args['verbose'] === true;
+  const shellOpt = (args['shell'] as string | undefined) ?? 'auto';
+  const stdinInput = args['stdin'];
+  const hasStdin = typeof stdinInput === 'string';
 
-  // 选择 shell：Windows 用 cmd.exe /c，unix 用 sh -c
-  const shell = IS_WIN ? 'cmd.exe' : 'sh';
-  const shellArgs = IS_WIN ? ['/c', command] : ['-c', command];
+  // 选择 shell
+  let shell: string;
+  let shellArgs: string[];
+  switch (shellOpt) {
+    case 'cmd':
+      shell = 'cmd.exe';
+      shellArgs = ['/c', command];
+      break;
+    case 'auto':
+    default:
+      shell = IS_WIN ? 'cmd.exe' : 'sh';
+      shellArgs = IS_WIN ? ['/c', command] : ['-c', command];
+      break;
+  }
 
   // 合并环境变量：以 process.env 为底，叠加显式 env
   const childEnv =
@@ -105,7 +127,7 @@ export async function shellExecHandler(args: Record<string, unknown>): Promise<A
       child = spawn(shell, shellArgs, {
         cwd: cwdOpt,
         env: childEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: hasStdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
       });
     } catch (err) {
       resolve(
@@ -115,6 +137,16 @@ export async function shellExecHandler(args: Record<string, unknown>): Promise<A
         ),
       );
       return;
+    }
+
+    // 写入 stdin 后关闭
+    if (hasStdin && child.stdin) {
+      try {
+        child.stdin.write(stdinInput as string);
+        child.stdin.end();
+      } catch {
+        // 子进程已关闭 stdin，忽略 EPIPE
+      }
     }
 
     const stdoutChunks: Buffer[] = [];
@@ -201,7 +233,7 @@ export async function shellExecHandler(args: Record<string, unknown>): Promise<A
 export const shellExecTool: Tool = {
   name: 'shell_exec',
   description:
-    '执行 shell 命令，返回 {exitCode, stdout, stderr}。Windows 用 cmd.exe /c，unix 用 sh -c。支持 cwd、timeout、env、encoding、verbose。非零退出码是正常结果。',
+    '执行 shell 命令，返回 {exitCode, stdout, stderr}。shell 可选 auto/cmd；支持 stdin、cwd、timeout、env、encoding、verbose。非零退出码是正常结果。',
   inputSchema: shellExecInputSchema,
   handler: shellExecHandler,
 };

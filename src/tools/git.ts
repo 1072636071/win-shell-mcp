@@ -440,6 +440,10 @@ export const gitBranchTool: Tool = {
 export const gitDiffInputSchema = z.object({
   cwd: z.string().optional().describe('git 仓库路径，默认当前工作目录'),
   staged: z.boolean().optional().describe('若为 true，显示暂存区差异（git diff --cached）'),
+  against: z
+    .string()
+    .optional()
+    .describe('目标 ref（commit/分支/HEAD~1），比较工作区或暂存区与之的差异'),
   path: z.string().optional().describe('限制差异范围的文件路径'),
   verbose: z.boolean().optional().describe('若为 true，不截断 diff 输出'),
 });
@@ -467,9 +471,13 @@ export async function gitDiffHandler(args: Record<string, unknown>): Promise<Any
   const staged = args['staged'] === true;
   const verbose = args['verbose'] === true;
   const rawPath = args['path'];
+  const rawAgainst = args['against'];
 
   const diffArgs = ['diff'];
   if (staged) diffArgs.push('--cached');
+  if (typeof rawAgainst === 'string' && rawAgainst.length > 0) {
+    diffArgs.push(rawAgainst);
+  }
   if (typeof rawPath === 'string' && rawPath.length > 0) {
     diffArgs.push('--', rawPath);
   }
@@ -495,7 +503,7 @@ export async function gitDiffHandler(args: Record<string, unknown>): Promise<Any
 export const gitDiffTool: Tool = {
   name: 'git_diff',
   description:
-    '获取 git 差异内容。返回 { diff, truncated, files }。staged 显示暂存区差异，path 限制范围，输出默认截断。',
+    '获取 git 差异内容。返回 { diff, truncated, files }。staged 显示暂存区差异，against 指定目标 ref（如 HEAD~1、main），path 限制范围，输出默认截断。',
   inputSchema: gitDiffInputSchema,
   handler: gitDiffHandler,
 };
@@ -610,4 +618,234 @@ export const gitCommitTool: Tool = {
   description: '提交暂存的变更。返回 { committed, hash, message }。amend 修改上一个提交。不推送。',
   inputSchema: gitCommitInputSchema,
   handler: gitCommitHandler,
+};
+
+// ===================== git_checkout =====================
+
+/** git_checkout 输入 schema。 */
+export const gitCheckoutInputSchema = z.object({
+  branch: z.string().min(1).optional().describe('分支名或提交 ref；与 paths 同时提供时作为还原源'),
+  create: z.boolean().optional().describe('true 时创建新分支（git checkout -b），仅 branch 单独使用时有效'),
+  paths: z.array(z.string().min(1)).optional().describe('要还原的文件路径数组；提供时执行 git checkout [branch] -- paths'),
+  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+});
+
+/** git_checkout handler：切换/创建分支或还原文件。 */
+export async function gitCheckoutHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+  const cwd = getCwd(args);
+  const branch = args['branch'];
+  const create = args['create'] === true;
+  const paths = args['paths'];
+
+  const hasBranch = typeof branch === 'string' && branch.length > 0;
+  const hasPaths = Array.isArray(paths) && paths.length > 0;
+
+  if (!hasBranch && !hasPaths) {
+    return fail(ErrorCode.EINVAL, 'branch 与 paths 至少提供其一');
+  }
+
+  if (create && !hasBranch) {
+    return fail(ErrorCode.EINVAL, 'create=true 时必须提供 branch');
+  }
+
+  if (create && hasPaths) {
+    return fail(ErrorCode.EINVAL, 'create=true 时不能同时提供 paths');
+  }
+
+  const gitArgs = ['checkout'];
+  if (create) {
+    gitArgs.push('-b', branch as string);
+  } else if (hasBranch && !hasPaths) {
+    gitArgs.push(branch as string);
+  } else if (hasBranch && hasPaths) {
+    gitArgs.push(branch as string, '--', ...(paths as string[]));
+  } else {
+    gitArgs.push('--', ...(paths as string[]));
+  }
+
+  const result = await runGit(gitArgs, cwd);
+  if (result.exitCode !== 0) {
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'checkout'));
+  }
+
+  return ok({ checkedOut: true, ...(hasBranch ? { branch } : {}), ...(hasPaths ? { paths } : {}) }) as unknown as AnyToolResult;
+}
+
+/** git_checkout 工具定义。 */
+export const gitCheckoutTool: Tool = {
+  name: 'git_checkout',
+  description: '切换/创建分支或还原文件（≈ git checkout）。branch 单独提供时切换分支；create=true 创建分支；paths 提供时还原文件，可配合 branch 指定源 ref。返回 { checkedOut, branch?, paths? }。',
+  inputSchema: gitCheckoutInputSchema,
+  handler: gitCheckoutHandler,
+  aliases: ['checkout'],
+};
+
+// ===================== git_push =====================
+
+/** git_push 输入 schema。 */
+export const gitPushInputSchema = z.object({
+  remote: z.string().optional().describe('远程名，默认 origin'),
+  branch: z.string().optional().describe('分支名，默认当前分支'),
+  force: z.boolean().optional().describe('true 时强制推送（--force）'),
+  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+});
+
+/** git_push handler：推送提交到远程。 */
+export async function gitPushHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+  const cwd = getCwd(args);
+  const remote = (args['remote'] as string | undefined) ?? 'origin';
+  const branch = args['branch'] as string | undefined;
+  const force = args['force'] === true;
+
+  const gitArgs = ['push'];
+  if (force) gitArgs.push('--force');
+  gitArgs.push(remote);
+  if (typeof branch === 'string' && branch.length > 0) gitArgs.push(branch);
+
+  const result = await runGit(gitArgs, cwd);
+  if (result.exitCode !== 0) {
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'push'));
+  }
+
+  return ok({ pushed: true, remote, branch: branch ?? '' }) as unknown as AnyToolResult;
+}
+
+/** git_push 工具定义。 */
+export const gitPushTool: Tool = {
+  name: 'git_push',
+  description: '推送提交到远程（≈ git push）。remote 默认 origin；force 强制推送。返回 { pushed, remote, branch }。',
+  inputSchema: gitPushInputSchema,
+  handler: gitPushHandler,
+  aliases: ['push'],
+};
+
+// ===================== git_pull =====================
+
+/** git_pull 输入 schema。 */
+export const gitPullInputSchema = z.object({
+  remote: z.string().optional().describe('远程名，默认 origin'),
+  branch: z.string().optional().describe('分支名，默认当前分支'),
+  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+});
+
+/** git_pull handler：从远程拉取并合并。 */
+export async function gitPullHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+  const cwd = getCwd(args);
+  const remote = (args['remote'] as string | undefined) ?? 'origin';
+  const branch = args['branch'] as string | undefined;
+
+  const gitArgs = ['pull', remote];
+  if (typeof branch === 'string' && branch.length > 0) gitArgs.push(branch);
+
+  const result = await runGit(gitArgs, cwd);
+  if (result.exitCode !== 0) {
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'pull'));
+  }
+
+  return ok({ pulled: true, remote, branch: branch ?? '' }) as unknown as AnyToolResult;
+}
+
+/** git_pull 工具定义。 */
+export const gitPullTool: Tool = {
+  name: 'git_pull',
+  description: '从远程拉取并合并（≈ git pull）。remote 默认 origin。返回 { pulled, remote, branch }。',
+  inputSchema: gitPullInputSchema,
+  handler: gitPullHandler,
+  aliases: ['pull'],
+};
+
+// ===================== git_clone =====================
+
+/** git_clone 输入 schema。 */
+export const gitCloneInputSchema = z.object({
+  url: z.string().min(1).describe('仓库 URL'),
+  path: z.string().optional().describe('目标目录'),
+  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+});
+
+/** git_clone handler：克隆仓库。 */
+export async function gitCloneHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+  const cwd = getCwd(args);
+  const url = args['url'];
+  const targetPath = args['path'] as string | undefined;
+
+  if (typeof url !== 'string' || url.length === 0) {
+    return fail(ErrorCode.EINVAL, 'url 不能为空');
+  }
+
+  const gitArgs = ['clone', url];
+  if (typeof targetPath === 'string' && targetPath.length > 0) gitArgs.push(targetPath);
+
+  const result = await runGit(gitArgs, cwd);
+  if (result.exitCode !== 0) {
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'clone'));
+  }
+
+  return ok({ cloned: true, path: targetPath ?? '' }) as unknown as AnyToolResult;
+}
+
+/** git_clone 工具定义。 */
+export const gitCloneTool: Tool = {
+  name: 'git_clone',
+  description: '克隆仓库（≈ git clone）。返回 { cloned, path }。',
+  inputSchema: gitCloneInputSchema,
+  handler: gitCloneHandler,
+  aliases: ['clone'],
+};
+
+// ===================== git_stash =====================
+
+/** git_stash 输入 schema。 */
+export const gitStashInputSchema = z.object({
+  action: z
+    .enum(['push', 'pop', 'list', 'drop'])
+    .optional()
+    .describe('操作，默认 push'),
+  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+});
+
+/** git_stash handler：暂存/恢复工作区变更。 */
+export async function gitStashHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+  const cwd = getCwd(args);
+  const action = (args['action'] as string | undefined) ?? 'push';
+
+  let gitArgs: string[];
+  switch (action) {
+    case 'pop':
+      gitArgs = ['stash', 'pop'];
+      break;
+    case 'list':
+      gitArgs = ['stash', 'list'];
+      break;
+    case 'drop':
+      gitArgs = ['stash', 'drop'];
+      break;
+    default:
+      gitArgs = ['stash', 'push'];
+      break;
+  }
+
+  const result = await runGit(gitArgs, cwd);
+  if (result.exitCode !== 0) {
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'stash'));
+  }
+
+  if (action === 'list') {
+    const stashes = result.stdout
+      .trim()
+      .split('\n')
+      .filter((l) => l.length > 0);
+    return ok({ action, stashes }) as unknown as AnyToolResult;
+  }
+
+  return ok({ action, success: true }) as unknown as AnyToolResult;
+}
+
+/** git_stash 工具定义。 */
+export const gitStashTool: Tool = {
+  name: 'git_stash',
+  description: '暂存/恢复工作区变更（≈ git stash）。action 支持 push/pop/list/drop，默认 push。',
+  inputSchema: gitStashInputSchema,
+  handler: gitStashHandler,
+  aliases: ['stash'],
 };

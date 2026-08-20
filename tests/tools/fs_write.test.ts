@@ -134,13 +134,24 @@ describe('fs_write', () => {
     expect(text).toBe('new');
   });
 
-  it('父目录不存在 → ENOENT', async () => {
+  it('父目录不存在且 mkdirParents: false → ENOENT', async () => {
     const file = p('missing', 'a.txt');
-    const result = await fsWriteHandler({ path: file, content: 'x' });
+    const result = await fsWriteHandler({ path: file, content: 'x', mkdirParents: false });
 
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe(ErrorCode.ENOENT);
+    }
+  });
+
+  it('父目录不存在且默认（mkdirParents: true）自动创建', async () => {
+    const file = p('auto-parent', 'sub', 'a.txt');
+    const result = await fsWriteHandler({ path: file, content: 'x' });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const text = await fs.readFile(file, 'utf8');
+      expect(text).toBe('x');
     }
   });
 
@@ -437,6 +448,53 @@ describe('fs_mv', () => {
     // 源未被破坏
     const text = await fs.readFile(src, 'utf8');
     expect(text).toBe('a');
+  });
+
+  it('overwrite: true 覆盖已存在的目标', async () => {
+    const src = p('ow-src.txt');
+    const dest = p('ow-dest.txt');
+    await fs.writeFile(src, 'new', 'utf8');
+    await fs.writeFile(dest, 'old', 'utf8');
+
+    const result = await fsMvHandler({ src, dest, overwrite: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['moved']).toBe(true);
+      expect(result['dest']).toBe(dest);
+    }
+    await assertNotExists(src);
+    const text = await fs.readFile(dest, 'utf8');
+    expect(text).toBe('new');
+  });
+
+  it('dest 是目录时移入该目录', async () => {
+    const src = p('movein-src.txt');
+    const destDir = p('movein-dest');
+    await fs.writeFile(src, 'x', 'utf8');
+    await fs.mkdir(destDir);
+
+    const result = await fsMvHandler({ src, dest: destDir });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['moved']).toBe(true);
+      expect(result['dest']).toBe(path.join(destDir, 'movein-src.txt'));
+    }
+    await assertNotExists(src);
+    await assertExists(path.join(destDir, 'movein-src.txt'));
+  });
+
+  it('dest 是目录且目标已存在且 overwrite: true 覆盖', async () => {
+    const src = p('movein-ow-src.txt');
+    const destDir = p('movein-ow-dest');
+    await fs.writeFile(src, 'new', 'utf8');
+    await fs.mkdir(destDir);
+    await fs.writeFile(path.join(destDir, 'movein-ow-src.txt'), 'old', 'utf8');
+
+    const result = await fsMvHandler({ src, dest: destDir, overwrite: true });
+    expect(isOk(result)).toBe(true);
+    await assertNotExists(src);
+    const text = await fs.readFile(path.join(destDir, 'movein-ow-src.txt'), 'utf8');
+    expect(text).toBe('new');
   });
 });
 

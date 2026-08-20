@@ -46,12 +46,23 @@ import {
   gitDiffTool,
   gitAddTool,
   gitCommitTool,
+  gitCheckoutTool,
+  gitPushTool,
+  gitPullTool,
+  gitCloneTool,
+  gitStashTool,
 } from './tools/git.js';
 import { pwdTool, echoTool } from './tools/core.js';
 import { runCommandTool } from './tools/run_command.js';
 import { fsFindTool } from './tools/fs_find.js';
 import { textCatTool } from './tools/text_cat.js';
 import { netPingTool } from './tools/net_ping.js';
+import { hashFileTool } from './tools/hash.js';
+import { fsDuTool } from './tools/fs_du.js';
+import { jsonGetTool } from './tools/json.js';
+import { netListenTool } from './tools/net_listen.js';
+import { netDownloadTool } from './tools/net_download.js';
+import { archiveCreateTool, archiveExtractTool } from './tools/archive.js';
 
 /** 工具定义。 */
 export interface Tool {
@@ -107,7 +118,7 @@ export function resetRegistry(): void {
   tools.length = 0;
 }
 
-// 注册内置工具（共 46 个，按域分组）
+// 注册内置工具（共 58 个，按域分组）
 // system 域
 registerTool(systemInfoTool);
 registerTool(systemDiskTool);
@@ -159,6 +170,11 @@ registerTool(gitBranchTool);
 registerTool(gitDiffTool);
 registerTool(gitAddTool);
 registerTool(gitCommitTool);
+registerTool(gitCheckoutTool);
+registerTool(gitPushTool);
+registerTool(gitPullTool);
+registerTool(gitCloneTool);
+registerTool(gitStashTool);
 // core 域（工单 02）
 registerTool(pwdTool);
 registerTool(echoTool);
@@ -168,3 +184,11 @@ registerTool(runCommandTool);
 registerTool(fsFindTool);
 registerTool(textCatTool);
 registerTool(netPingTool);
+// 工单 02 新增命令
+registerTool(fsDuTool);
+registerTool(hashFileTool);
+registerTool(jsonGetTool);
+registerTool(netListenTool);
+registerTool(netDownloadTool);
+registerTool(archiveCreateTool);
+registerTool(archiveExtractTool);

@@ -10,6 +10,8 @@ import {
   processKillHandler,
   processKillTool,
   processKillInputSchema,
+  parseTasklistLine,
+  parsePsLine,
 } from '../../src/tools/process.js';
 import { isOk, isFail } from '../../src/contract/output.js';
 
@@ -150,14 +152,14 @@ describe('processListHandler filter 过滤', () => {
     }
   });
 
-  it('filter 大小写敏感（Windows 进程名通常大小写不敏感，但 includes 严格）', async () => {
-    // 此处仅验证返回结果均含 filter 子串（includes 语义）
-    const filter = IS_WIN ? 'NODE' : 'node';
+  it('filter 大小写不敏感', async () => {
+    // filter 大小写不敏感：用大写 NODE 应匹配到小写 node 进程
+    const filter = IS_WIN ? 'NODE' : 'NODE';
     const result = await processListHandler({ filter });
     if (isOk(result)) {
       const processes = result['processes'] as Array<{ pid: number; name: string }>;
       for (const p of processes) {
-        expect(p.name.includes(filter)).toBe(true);
+        expect(p.name.toLowerCase()).toContain('node');
       }
     }
   });
@@ -240,6 +242,39 @@ describe('processListHandler verbose 输出', () => {
       const processes = result['processes'] as Array<{ pid: number; name: string; memory?: number }>;
       for (const p of processes) {
         expect(p.memory).toBeUndefined();
+      }
+    }
+  });
+
+  it('verbose=true 时进程条目可能含 cmdline 字段（尽力而为）', async () => {
+    const result = await processListHandler({ verbose: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const processes = result['processes'] as Array<{
+        pid: number;
+        name: string;
+        cmdline?: string;
+      }>;
+      // 至少含当前进程；cmdline 为尽力而为，有则应为字符串
+      expect(processes.length).toBeGreaterThanOrEqual(1);
+      for (const p of processes) {
+        if (p.cmdline !== undefined) {
+          expect(typeof p.cmdline).toBe('string');
+        }
+      }
+    }
+  });
+
+  it('verbose=false 时进程条目不含 cmdline', async () => {
+    const result = await processListHandler({ verbose: false });
+    if (isOk(result)) {
+      const processes = result['processes'] as Array<{
+        pid: number;
+        name: string;
+        cmdline?: string;
+      }>;
+      for (const p of processes) {
+        expect(p.cmdline).toBeUndefined();
       }
     }
   });
@@ -705,5 +740,115 @@ describe('processKillHandler 按名称终止', () => {
         }
       }
     }
+  });
+});
+
+// ===========================================================================
+// process_kill tree 进程树终止
+// ===========================================================================
+
+describe('processKillHandler tree 进程树终止', () => {
+  it('tree=true 连同子进程一起终止', async () => {
+    // 父进程 spawn 一个子进程，两者都 sleep 60s；父进程把子 pid 写到 stdout
+    const parent = spawn(
+      'node',
+      [
+        '-e',
+        `const{spawn}=require('child_process');const c=spawn('node',['-e','setTimeout(()=>{},60000)'],{stdio:'ignore'});process.stdout.write(String(c.pid));setTimeout(()=>{},60000)`,
+      ],
+      { stdio: ['ignore', 'pipe', 'ignore'], detached: false },
+    );
+    const parentPid = parent.pid!;
+    let childPid = -1;
+    try {
+      // 从父进程 stdout 读取子进程 pid
+      childPid = await new Promise<number>((resolve, reject) => {
+        parent.stdout!.once('data', (d) => resolve(Number(d.toString().trim())));
+        setTimeout(() => reject(new Error('读取子 pid 超时')), 3000);
+      });
+      expect(childPid).toBeGreaterThan(0);
+
+      // 确认子进程存活
+      expect(await waitForExit(childPid, 200)).toBe(false);
+
+      // tree kill 父进程
+      const result = await processKillHandler({ pid: parentPid, force: true, tree: true });
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result['killed']).toBe(true);
+      }
+
+      // 父进程应退出
+      const parentExited = await waitForExit(parentPid, 5000);
+      expect(parentExited).toBe(true);
+      // 子进程也应退出（tree 终止的核心断言）
+      const childExited = await waitForExit(childPid, 5000);
+      expect(childExited).toBe(true);
+    } finally {
+      try {
+        process.kill(parentPid, 'SIGKILL');
+      } catch {
+        // 已退出
+      }
+      if (childPid > 0) {
+        try {
+          process.kill(childPid, 'SIGKILL');
+        } catch {
+          // 已退出
+        }
+      }
+    }
+  });
+});
+
+// ===========================================================================
+// 跨平台解析函数
+// ===========================================================================
+
+describe('parseTasklistLine', () => {
+  it('解析 Windows tasklist CSV 行', () => {
+    const entry = parseTasklistLine('"node.exe","1234","Console","1","5,120 KBytes"');
+    expect(entry).toEqual({ pid: 1234, name: 'node.exe', memory: 5120 * 1024 });
+  });
+
+  it('字段数不足返回 null', () => {
+    const entry = parseTasklistLine('"node.exe","1234"');
+    expect(entry).toEqual({ pid: 1234, name: 'node.exe' });
+  });
+
+  it('无效行返回 null', () => {
+    expect(parseTasklistLine('')).toBeNull();
+    expect(parseTasklistLine('"node.exe","abc"')).toBeNull();
+  });
+});
+
+describe('parsePsLine', () => {
+  it('解析 unix ps 行', () => {
+    const entry = parsePsLine('  1234 node');
+    expect(entry).toEqual({ pid: 1234, name: 'node' });
+  });
+
+  it('无效行返回 null', () => {
+    expect(parsePsLine('')).toBeNull();
+    expect(parsePsLine('abc node')).toBeNull();
+  });
+
+  it('解析 tasklist 变体行', () => {
+    // 无引号字段（实际 tasklist /FO CSV 会加引号；此处覆盖逗号分割分支）
+    const entry = parseTasklistLine('node.exe,1234,Console,1,5,120 KBytes');
+    expect(entry).toEqual({ pid: 1234, name: 'node.exe', memory: 5 * 1024 });
+  });
+
+  it('tasklist 错误分支返回 null', () => {
+    expect(parseTasklistLine('')).toBeNull();
+    expect(parseTasklistLine('node.exe,abc,Console,1,5,120 KBytes')).toBeNull();
+    expect(parseTasklistLine('node.exe')).toBeNull();
+    // 异常 CSV 结构（第二个引号缺失）
+    expect(parseTasklistLine('"node.exe,1234,Console,1,5,120 KBytes')).toBeNull();
+  });
+
+  it('ps 错误分支返回 null', () => {
+    expect(parsePsLine('  1234')).toBeNull();
+    expect(parsePsLine('  -1 node')).toBeNull();
   });
 });

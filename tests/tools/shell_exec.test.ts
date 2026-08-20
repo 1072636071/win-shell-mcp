@@ -81,6 +81,12 @@ describe('shellExecInputSchema 验证', () => {
     const parsed = shellExecInputSchema.safeParse({ command: 'echo', verbose: true });
     expect(parsed.success).toBe(true);
   });
+
+  it('shell 只允许 auto/cmd', () => {
+    expect(shellExecInputSchema.safeParse({ command: 'echo', shell: 'auto' }).success).toBe(true);
+    expect(shellExecInputSchema.safeParse({ command: 'echo', shell: 'cmd' }).success).toBe(true);
+    expect(shellExecInputSchema.safeParse({ command: 'echo', shell: 'powershell' }).success).toBe(false);
+  });
 });
 
 // ===================== 正常执行 =====================
@@ -332,6 +338,65 @@ describe('shellExecHandler 参数校验', () => {
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('EINVAL');
+    }
+  });
+});
+
+// ===================== shell 选项 =====================
+
+describe('shellExecHandler shell 选项', () => {
+  it('shell: auto 等价于默认行为', async () => {
+    const result = await shellExecHandler({ command: 'echo hello', shell: 'auto' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['stdout']).toContain('hello');
+    }
+  });
+
+  it('shell: cmd 在 Windows 上执行', async () => {
+    if (!IS_WIN) return;
+    const result = await shellExecHandler({ command: 'echo hello', shell: 'cmd' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['stdout']).toContain('hello');
+    }
+  });
+
+  it('shell: cmd 在非 Windows 上不存在', async () => {
+    if (IS_WIN) return;
+    const result = await shellExecHandler({ command: 'echo hello', shell: 'cmd' });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EXEC_FAIL');
+    }
+  });
+
+  it('shell: powershell 已移除', async () => {
+    const parsed = shellExecInputSchema.safeParse({ command: 'echo', shell: 'powershell' });
+    expect(parsed.success).toBe(false);
+  });
+});
+
+// ===========================================================================
+// shell_exec stdin
+// ===========================================================================
+
+describe('shellExecHandler stdin', () => {
+  it('stdin 字符串被写入子进程标准输入', async () => {
+    // Windows cmd.exe /c 不转发 stdin 给子命令，因此用 cmd 内建命令 sort 读取自身 stdin
+    const command = IS_WIN ? 'sort' : `node -e 'process.stdin.pipe(process.stdout)'`;
+    const result = await shellExecHandler({ command, stdin: 'hello' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['stdout']).toContain('hello');
+    }
+  });
+
+  it('未传 stdin 时子进程 stdin 关闭', async () => {
+    const result = await shellExecHandler({ command: 'echo no-stdin' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['stdout']).toContain('no-stdin');
     }
   });
 });

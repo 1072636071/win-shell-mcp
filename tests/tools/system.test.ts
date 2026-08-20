@@ -106,6 +106,22 @@ describe('systemInfoHandler 极简输出', () => {
       expect((result['node'] as string).startsWith('v')).toBe(true);
     }
   });
+
+  it('含 time 字段（ISO 8601 当前时间）', async () => {
+    const before = new Date();
+    const result = await systemInfoHandler({});
+    const after = new Date();
+    if (isOk(result)) {
+      expect(result['time']).toBeDefined();
+      expect(typeof result['time']).toBe('string');
+      const time = result['time'] as string;
+      // ISO 8601 格式
+      expect(time).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      const parsed = new Date(time);
+      expect(parsed.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(parsed.getTime()).toBeLessThanOrEqual(after.getTime());
+    }
+  });
 });
 
 describe('systemInfoHandler verbose 输出', () => {

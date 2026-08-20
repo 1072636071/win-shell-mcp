@@ -16,6 +16,7 @@ import { ok, fail, truncate, withVerbose, type AnyToolResult } from '../contract
 import { ErrorCode } from '../contract/errors.js';
 import { failFromError } from '../utils/errors.js';
 import { decodeBuffer } from '../encoding/detect.js';
+import { globToRegExp, isValidGlob } from './search.js';
 import type { Tool } from '../registry.js';
 
 /** 条目类型。 */
@@ -47,8 +48,15 @@ export const fsListInputSchema = z.object({
   verbose: z
     .boolean()
     .optional()
-    .describe('若为 true，返回每个条目的类型与大小'),
+    .describe('若为 true，返回每个条目的类型、大小与修改时间'),
   recursive: z.boolean().optional().describe('若为 true，递归列出子目录'),
+  sort: z.enum(['name', 'size', 'mtime']).optional().describe('排序字段，默认 name'),
+  sortOrder: z.enum(['asc', 'desc']).optional().describe('排序方向，默认 asc'),
+  type: z
+    .enum(['file', 'dir', 'symlink'])
+    .optional()
+    .describe('只返回该类型条目'),
+  glob: z.string().optional().describe('按 glob 模式过滤条目名称（支持 *、?、[]）'),
 });
 
 /** verbose 条目结构。 */
@@ -56,49 +64,45 @@ interface VerboseEntry {
   name: string;
   type: EntryType;
   size: number;
+  mtime: string;
+}
+
+/** 内部完整条目（用于过滤与排序）。 */
+interface FullEntry {
+  name: string;
+  type: EntryType;
+  size: number;
+  mtimeMs: number;
 }
 
 /**
- * 递归列出目录（极简模式）。
+ * 递归收集目录条目（含 type/size/mtime）。
  *
  * @param root 根目录（用于计算相对路径）
  * @param dir 当前目录
- * @returns 相对路径列表
+ * @param recursive 是否递归
+ * @returns 完整条目列表
  */
-async function listSimpleRecursive(root: string, dir: string): Promise<string[]> {
+async function collectEntries(
+  root: string,
+  dir: string,
+  recursive: boolean,
+): Promise<FullEntry[]> {
   const entries = await readdir(dir, { withFileTypes: true });
-  const result: string[] = [];
+  const result: FullEntry[] = [];
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     const relPath = relative(root, fullPath);
-    result.push(relPath);
-    if (entry.isDirectory()) {
-      const subEntries = await listSimpleRecursive(root, fullPath);
-      result.push(...subEntries);
-    }
-  }
-  return result;
-}
-
-/**
- * 递归列出目录（verbose 模式）。
- *
- * @param root 根目录（用于计算相对路径）
- * @param dir 当前目录
- * @returns verbose 条目列表
- */
-async function listVerboseRecursive(root: string, dir: string): Promise<VerboseEntry[]> {
-  const entries = await readdir(dir, { withFileTypes: true });
-  const result: VerboseEntry[] = [];
-  for (const entry of entries) {
-    const fullPath = join(dir, entry.name);
-    const relPath = relative(root, fullPath);
-    // 用 lstat 以正确识别 symlink
     const stats = await lstat(fullPath);
-    result.push({ name: relPath, type: toEntryType(stats), size: stats.size });
-    if (entry.isDirectory()) {
-      const subEntries = await listVerboseRecursive(root, fullPath);
-      result.push(...subEntries);
+    result.push({
+      name: relPath,
+      type: toEntryType(stats),
+      size: stats.size,
+      mtimeMs: stats.mtimeMs,
+    });
+    if (recursive && entry.isDirectory()) {
+      const sub = await collectEntries(root, fullPath, recursive);
+      result.push(...sub);
     }
   }
   return result;
@@ -108,8 +112,9 @@ async function listVerboseRecursive(root: string, dir: string): Promise<VerboseE
  * fs_list handler：列目录。
  *
  * 极简返回 `{ entries: string[] }`（相对路径）。
- * verbose 返回 `{ entries: [{ name, type, size }] }`。
+ * verbose 返回 `{ entries: [{ name, type, size, mtime }] }`。
  * recursive 时递归列出子目录。
+ * sort/sortOrder 控制排序；type/glob 控制过滤。
  *
  * 错误：ENOENT（不存在）/ ENOTDIR（不是目录）/ EACCES（无权限）
  */
@@ -117,42 +122,59 @@ export async function fsListHandler(args: Record<string, unknown>): Promise<AnyT
   const path = args['path'];
   const verbose = args['verbose'] === true;
   const recursive = args['recursive'] === true;
+  const sort = (args['sort'] as string | undefined) ?? 'name';
+  const sortOrder = (args['sortOrder'] as string | undefined) ?? 'asc';
+  const typeFilter = args['type'] as string | undefined;
+  const glob = args['glob'] as string | undefined;
 
   if (typeof path !== 'string') {
     return fail(ErrorCode.EINVAL, 'path 必须是字符串');
   }
+  if (glob !== undefined && !isValidGlob(glob)) {
+    return fail(ErrorCode.EINVAL, `非法 glob: ${glob}`);
+  }
 
   try {
-    // 先检查路径是否存在且为目录
     const stats = await stat(path);
     if (!stats.isDirectory()) {
       return fail(ErrorCode.ENOTDIR, `不是目录: ${path}`);
     }
 
-    if (recursive) {
-      // withVerbose 不适用：minimal 与 full 计算路径不同（避免不必要的 lstat IO）
-      if (verbose) {
-        const entries = await listVerboseRecursive(path, path);
-        return ok({ entries }) as unknown as AnyToolResult;
-      }
-      const entries = await listSimpleRecursive(path, path);
-      return ok({ entries }) as unknown as AnyToolResult;
+    let entries = await collectEntries(path, path, recursive);
+
+    // type 过滤
+    if (typeFilter !== undefined) {
+      entries = entries.filter((e) => e.type === typeFilter);
     }
 
-    // 非递归
-    const entries = await readdir(path, { withFileTypes: true });
-    // withVerbose 不适用：minimal 与 full 计算路径不同（避免不必要的 lstat IO）
-    if (verbose) {
-      const verboseEntries: VerboseEntry[] = [];
-      for (const entry of entries) {
-        const fullPath = join(path, entry.name);
-        const entryStats = await lstat(fullPath);
-        verboseEntries.push({
-          name: entry.name,
-          type: toEntryType(entryStats),
-          size: entryStats.size,
-        });
+    // glob 过滤（匹配相对路径名）
+    if (glob !== undefined) {
+      const re = globToRegExp(glob);
+      entries = entries.filter((e) => re.test(e.name));
+    }
+
+    // 排序
+    const dirMul = sortOrder === 'desc' ? -1 : 1;
+    entries.sort((a, b) => {
+      let cmp = 0;
+      if (sort === 'size') {
+        cmp = a.size - b.size;
+      } else if (sort === 'mtime') {
+        cmp = a.mtimeMs - b.mtimeMs;
+      } else {
+        cmp = a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
       }
+      return cmp * dirMul;
+    });
+
+    // 输出
+    if (verbose) {
+      const verboseEntries: VerboseEntry[] = entries.map((e) => ({
+        name: e.name,
+        type: e.type,
+        size: e.size,
+        mtime: new Date(e.mtimeMs).toISOString(),
+      }));
       return ok({ entries: verboseEntries }) as unknown as AnyToolResult;
     }
 
@@ -167,7 +189,7 @@ export async function fsListHandler(args: Record<string, unknown>): Promise<AnyT
 export const fsListTool: Tool = {
   name: 'fs_list',
   description:
-    '列目录（Unix ls 短名）。极简返回相对路径列表；verbose 时含类型与大小；recursive 时递归列出子目录。',
+    '列目录（≈ Unix ls）。极简返回相对路径列表；verbose 含类型、大小与修改时间；recursive 递归；sort/sortOrder 排序；type/glob 过滤。',
   inputSchema: fsListInputSchema,
   handler: fsListHandler,
   aliases: ['ls', 'list_directory'],
@@ -183,7 +205,7 @@ export const fsReadInputSchema = z.object({
     .optional()
     .describe('显式指定编码（如 gbk、utf-8），不指定则自动检测'),
   start: z.number().int().positive().optional().describe('起始行号（1-indexed，含）'),
-  end: z.number().int().positive().optional().describe('结束行号（1-indexed，不含）'),
+  end: z.number().int().positive().optional().describe('结束行号（1-indexed，含；与 cat 的 startLine/endLine 语义一致）'),
   maxLen: z.number().int().positive().optional().describe('最大字符数，默认 2000'),
 });
 
@@ -217,14 +239,14 @@ export async function fsReadHandler(args: Record<string, unknown>): Promise<AnyT
     const buf = await readFile(path);
     let content = decodeBuffer(buf, typeof encoding === 'string' ? encoding : undefined);
 
-    // 行范围处理（1-indexed，含 start 不含 end）
+    // 行范围处理（1-indexed，闭区间：含 start 含 end，与 cat 的 startLine/endLine 语义一致）
     const startLine = typeof start === 'number' && start > 0 ? Math.floor(start) : 1;
     const endLine = typeof end === 'number' && end > 0 ? Math.floor(end) : undefined;
 
     if (startLine > 1 || endLine !== undefined) {
       const lines = content.split('\n');
       const sliceStart = startLine - 1; // 转 0-indexed
-      const sliceEnd = endLine !== undefined ? endLine - 1 : lines.length;
+      const sliceEnd = endLine !== undefined ? endLine : lines.length; // 闭区间：含 end 行 → slice 上界 exclusive 取 endLine
       content = lines.slice(sliceStart, sliceEnd).join('\n');
     }
 
@@ -247,7 +269,7 @@ export async function fsReadHandler(args: Record<string, unknown>): Promise<AnyT
 export const fsReadTool: Tool = {
   name: 'fs_read',
   description:
-    '读文件。支持行范围（start/end，1-indexed，含 start 不含 end）、编码自动检测（GBK/UTF-8）、截断。',
+    '读文件。支持行范围（start/end，1-indexed 闭区间含端点，与 cat 的 startLine/endLine 语义一致）、编码自动检测（GBK/UTF-8）、截断。',
   inputSchema: fsReadInputSchema,
   handler: fsReadHandler,
 };

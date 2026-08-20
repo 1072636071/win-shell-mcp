@@ -108,6 +108,135 @@ describe('fs_list verbose 列目录', () => {
   });
 });
 
+describe('fs_list verbose 含 mtime', () => {
+  it('verbose 条目含 mtime（ISO 8601 字符串）', async () => {
+    const dir = join(root, 'list-mtime');
+    await mkdir(dir);
+    await writeFile(join(dir, 'a.txt'), 'hello');
+
+    const result = await fsListHandler({ path: dir, verbose: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const entries = result['entries'] as Array<{
+        name: string;
+        mtime: string;
+      }>;
+      const aEntry = entries.find((e) => e.name === 'a.txt');
+      expect(aEntry).toBeDefined();
+      expect(typeof aEntry?.mtime).toBe('string');
+      // ISO 8601 格式检查
+      expect(aEntry?.mtime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    }
+  });
+});
+
+describe('fs_list sort 排序', () => {
+  it('sort: size 按大小升序', async () => {
+    const dir = join(root, 'list-sort-size');
+    await mkdir(dir);
+    await writeFile(join(dir, 'big.txt'), 'aaaaa');
+    await writeFile(join(dir, 'small.txt'), 'a');
+
+    const result = await fsListHandler({ path: dir, sort: 'size' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const entries = result['entries'] as string[];
+      expect(entries[0]).toBe('small.txt');
+      expect(entries[1]).toBe('big.txt');
+    }
+  });
+
+  it('sort: size + sortOrder: desc 降序', async () => {
+    const dir = join(root, 'list-sort-size-desc');
+    await mkdir(dir);
+    await writeFile(join(dir, 'big.txt'), 'aaaaa');
+    await writeFile(join(dir, 'small.txt'), 'a');
+
+    const result = await fsListHandler({ path: dir, sort: 'size', sortOrder: 'desc' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const entries = result['entries'] as string[];
+      expect(entries[0]).toBe('big.txt');
+      expect(entries[1]).toBe('small.txt');
+    }
+  });
+
+  it('sort: name 默认升序', async () => {
+    const dir = join(root, 'list-sort-name');
+    await mkdir(dir);
+    await writeFile(join(dir, 'b.txt'), 'x');
+    await writeFile(join(dir, 'a.txt'), 'x');
+
+    const result = await fsListHandler({ path: dir });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const entries = result['entries'] as string[];
+      expect(entries[0]).toBe('a.txt');
+      expect(entries[1]).toBe('b.txt');
+    }
+  });
+});
+
+describe('fs_list type 过滤', () => {
+  it('type: file 只返回文件', async () => {
+    const dir = join(root, 'list-type-file');
+    await mkdir(dir);
+    await writeFile(join(dir, 'a.txt'), 'x');
+    await mkdir(join(dir, 'sub'));
+
+    const result = await fsListHandler({ path: dir, type: 'file' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const entries = result['entries'] as string[];
+      expect(entries).toContain('a.txt');
+      expect(entries).not.toContain('sub');
+    }
+  });
+
+  it('type: dir 只返回目录', async () => {
+    const dir = join(root, 'list-type-dir');
+    await mkdir(dir);
+    await writeFile(join(dir, 'a.txt'), 'x');
+    await mkdir(join(dir, 'sub'));
+
+    const result = await fsListHandler({ path: dir, type: 'dir' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const entries = result['entries'] as string[];
+      expect(entries).toContain('sub');
+      expect(entries).not.toContain('a.txt');
+    }
+  });
+});
+
+describe('fs_list glob 过滤', () => {
+  it('glob: *.txt 只返回 .txt 文件', async () => {
+    const dir = join(root, 'list-glob-txt');
+    await mkdir(dir);
+    await writeFile(join(dir, 'a.txt'), 'x');
+    await writeFile(join(dir, 'b.md'), 'x');
+
+    const result = await fsListHandler({ path: dir, glob: '*.txt' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const entries = result['entries'] as string[];
+      expect(entries).toContain('a.txt');
+      expect(entries).not.toContain('b.md');
+    }
+  });
+
+  it('非法 glob 返回 EINVAL', async () => {
+    const dir = join(root, 'list-glob-invalid');
+    await mkdir(dir);
+
+    const result = await fsListHandler({ path: dir, glob: '[unclosed' });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
+    }
+  });
+});
+
 describe('fs_list recursive 列目录', () => {
   it('极简递归列出子目录内容', async () => {
     const dir = join(root, 'list-recursive');
@@ -227,15 +356,15 @@ describe('fs_read 读 GBK 文件', () => {
 });
 
 describe('fs_read 行范围', () => {
-  it('start/end 提取行切片（含 start 不含 end）', async () => {
+  it('start/end 提取行切片（闭区间含端点，与 cat 语义一致）', async () => {
     const file = join(root, 'read-range.txt');
     await writeFile(file, 'L1\nL2\nL3\nL4\nL5');
 
     const result = await fsReadHandler({ path: file, start: 2, end: 4 });
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
-      expect(result['content']).toBe('L2\nL3');
-      expect(result['lines']).toBe(2);
+      expect(result['content']).toBe('L2\nL3\nL4');
+      expect(result['lines']).toBe(3);
     }
   });
 
@@ -249,13 +378,13 @@ describe('fs_read 行范围', () => {
     }
   });
 
-  it('仅 end 从开头到指定行', async () => {
+  it('仅 end 从开头到指定行（闭区间含 end）', async () => {
     const file = join(root, 'read-end-only.txt');
     await writeFile(file, 'L1\nL2\nL3\nL4');
 
     const result = await fsReadHandler({ path: file, end: 2 });
     if (isOk(result)) {
-      expect(result['content']).toBe('L1');
+      expect(result['content']).toBe('L1\nL2');
     }
   });
 });

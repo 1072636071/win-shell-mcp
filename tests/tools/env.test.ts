@@ -151,6 +151,62 @@ describe('envGetHandler 读取全部变量', () => {
       }
     }
   });
+
+  it('filter 按变量名过滤（大小写不敏感）', async () => {
+    // 用一个肯定存在的变量名片段过滤；PATH 在所有平台都存在
+    const result = await envGetHandler({ filter: 'path' });
+    if (isOk(result)) {
+      const vars = result['vars'] as Record<string, string>;
+      const keys = Object.keys(vars);
+      // 过滤后所有键应含 PATH（大小写不敏感）
+      expect(keys.length).toBeGreaterThan(0);
+      for (const k of keys) {
+        expect(k.toLowerCase()).toContain('path');
+      }
+    }
+  });
+
+  it('filter 不匹配时返回空 vars', async () => {
+    const result = await envGetHandler({ filter: 'ZZZ_NOT_EXIST_VAR_ZZZ' });
+    if (isOk(result)) {
+      const vars = result['vars'] as Record<string, string>;
+      expect(Object.keys(vars)).toHaveLength(0);
+      expect(result['count']).toBe(0);
+    }
+  });
+
+  it('maxLen 截断每个变量值', async () => {
+    // 设一个超长值的环境变量
+    process.env['WSMCP_TEST_LONG'] = 'x'.repeat(100);
+    try {
+      const result = await envGetHandler({ filter: 'WSMCP_TEST_LONG', maxLen: 10 });
+      if (isOk(result)) {
+        const vars = result['vars'] as Record<string, string>;
+        const val = vars['WSMCP_TEST_LONG']!;
+        expect(val.length).toBeLessThan(100);
+        expect(val).toContain('truncated');
+        expect(val.startsWith('xxxxxxxxxx')).toBe(true);
+      }
+    } finally {
+      delete process.env['WSMCP_TEST_LONG'];
+    }
+  });
+
+  it('name 指定时 filter 与 maxLen 不生效', async () => {
+    process.env['WSMCP_TEST_NAME'] = 'value';
+    try {
+      const result = await envGetHandler({
+        name: 'WSMCP_TEST_NAME',
+        filter: 'nope',
+        maxLen: 1,
+      });
+      if (isOk(result)) {
+        expect(result['value']).toBe('value');
+      }
+    } finally {
+      delete process.env['WSMCP_TEST_NAME'];
+    }
+  });
 });
 
 // ===================== env_set =====================

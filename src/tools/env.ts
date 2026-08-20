@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { ok, fail, type AnyToolResult } from '../contract/output.js';
+import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode } from '../contract/errors.js';
 import type { Tool } from '../registry.js';
 
@@ -22,6 +22,16 @@ export const envGetInputSchema = z.object({
     .string()
     .optional()
     .describe('变量名，省略则返回全部环境变量'),
+  filter: z
+    .string()
+    .optional()
+    .describe('按变量名过滤（includes 匹配，大小写不敏感），仅 name 省略时生效'),
+  maxLen: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('每个变量值截断到 N 字符（控制全量返回的 token 成本），仅 name 省略时生效'),
 });
 
 /** env_get 输入类型。 */
@@ -44,6 +54,8 @@ interface EnvGetAllResult {
  *
  * - name 指定：返回 `{ name, value }`，value 为 null 表示未设置
  * - name 省略：返回 `{ vars, count }`，vars 为所有环境变量
+ *   - filter：按变量名 includes 匹配（大小写不敏感）过滤
+ *   - maxLen：每个变量值截断到 N 字符（控制全量返回 token 成本）
  *
  * @param args 已验证的参数
  * @returns 统一输出契约
@@ -57,12 +69,17 @@ export async function envGetHandler(args: Record<string, unknown>): Promise<AnyT
     return ok(result) as unknown as AnyToolResult;
   }
 
-  // 返回全部环境变量
+  // 返回全部环境变量（可选 filter 与 maxLen）
+  const filter = args['filter'];
+  const maxLen = args['maxLen'];
+  const filterStr = typeof filter === 'string' && filter.length > 0 ? filter.toLowerCase() : null;
+  const limit = typeof maxLen === 'number' && maxLen > 0 ? Math.floor(maxLen) : null;
+
   const vars: Record<string, string> = {};
   for (const [key, val] of Object.entries(process.env)) {
-    if (typeof val === 'string') {
-      vars[key] = val;
-    }
+    if (typeof val !== 'string') continue;
+    if (filterStr !== null && !key.toLowerCase().includes(filterStr)) continue;
+    vars[key] = limit !== null ? truncate(val, limit) : val;
   }
   const result: EnvGetAllResult = { vars, count: Object.keys(vars).length };
   return ok(result) as unknown as AnyToolResult;
@@ -72,7 +89,7 @@ export async function envGetHandler(args: Record<string, unknown>): Promise<AnyT
 export const envGetTool: Tool = {
   name: 'env_get',
   description:
-    '读取环境变量。name 指定时返回 {name, value}（value 为 null 表示未设置）；省略时返回全部 {vars, count}。',
+    '读取环境变量。name 指定时返回 {name, value}（value 为 null 表示未设置）；省略时返回全部 {vars, count}，可用 filter 按名过滤、maxLen 截断每个值以控制 token 成本。',
   inputSchema: envGetInputSchema,
   handler: envGetHandler,
 };

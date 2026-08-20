@@ -31,11 +31,11 @@ export const processListInputSchema = z.object({
   filter: z
     .string()
     .optional()
-    .describe('按进程名过滤（includes 匹配，大小写敏感）'),
+    .describe('按进程名过滤（includes 匹配，大小写不敏感）'),
   verbose: z
     .boolean()
     .optional()
-    .describe('若为 true，返回每个进程的内存使用（尽力而为）'),
+    .describe('若为 true，返回每个进程的内存使用与命令行（尽力而为）'),
   maxResults: z
     .number()
     .int()
@@ -50,9 +50,10 @@ interface ProcessEntry {
   name: string;
 }
 
-/** 进程条目（verbose，含内存）。 */
+/** 进程条目（verbose，含内存与命令行）。 */
 interface ProcessEntryVerbose extends ProcessEntry {
   memory?: number;
+  cmdline?: string;
 }
 
 /** process_list 输出（极简）。 */
@@ -80,7 +81,7 @@ interface ProcessListResultVerbose {
  * @param line CSV 行
  * @returns 解析后的进程条目（含可选 memory）；解析失败返回 null
  */
-function parseTasklistLine(line: string): ProcessEntryVerbose | null {
+export function parseTasklistLine(line: string): ProcessEntryVerbose | null {
   if (line.length === 0) return null;
   // 简易 CSV 解析：字段以逗号分隔，每个字段可能被双引号包围
   const fields: string[] = [];
@@ -142,7 +143,7 @@ function parseTasklistLine(line: string): ProcessEntryVerbose | null {
  * @param line ps 行
  * @returns 解析后的进程条目；解析失败返回 null
  */
-function parsePsLine(line: string): ProcessEntry | null {
+export function parsePsLine(line: string): ProcessEntry | null {
   // 去除首尾空白后按空白拆分：第一段为 pid，剩余为 comm
   const trimmed = line.trim();
   if (trimmed.length === 0) return null;
@@ -175,8 +176,10 @@ async function listWindowsProcesses(): Promise<ProcessEntryVerbose[]> {
   return result;
 }
 
+/* c8 ignore start */
 /**
  * 列出 unix 进程（ps）。
+ * 仅在非 Windows 平台执行，当前 CI 仅 Windows，故排除出覆盖率统计。
  *
  * @returns 进程条目列表
  */
@@ -189,6 +192,81 @@ async function listUnixProcesses(): Promise<ProcessEntry[]> {
   for (const line of stdout.split('\n')) {
     const entry = parsePsLine(line);
     if (entry) result.push(entry);
+  }
+  return result;
+}
+
+/**
+ * 列出 Windows 进程（verbose）。
+ *
+ * tasklist 拿基础列表（含 memory）。cmdline 在 Windows 上依赖 WMI/PowerShell，
+ * 与 ADR-0005 纯 Node 原则冲突，故 verbose 在 Windows 仅返回 memory，不返回 cmdline。
+ */
+async function listWindowsProcessesVerbose(): Promise<ProcessEntryVerbose[]> {
+  return listWindowsProcesses();
+}
+
+/**
+ * 列出 unix 进程（verbose，含 cmdline）。
+ *
+ * ps -ww -o pid=,comm=,args=：ww 不截断宽度，comm 为进程名（不含空格），args 为完整命令行。
+ */
+async function listUnixProcessesVerbose(): Promise<ProcessEntryVerbose[]> {
+  const { stdout } = await execFileAsync('ps', ['-ww', '-o', 'pid=,comm=,args='], {
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  const result: ProcessEntryVerbose[] = [];
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const sp1 = trimmed.search(/\s/);
+    if (sp1 === -1) continue;
+    const pidStr = trimmed.slice(0, sp1);
+    const pid = Number(pidStr);
+    if (!Number.isInteger(pid) || pid < 0) continue;
+    const rest = trimmed.slice(sp1).trimStart();
+    const sp2 = rest.search(/\s/);
+    const name = sp2 === -1 ? rest : rest.slice(0, sp2);
+    if (name.length === 0) continue;
+    const cmdline = sp2 === -1 ? '' : rest.slice(sp2).trimStart();
+    result.push({ pid, name, cmdline });
+  }
+  return result;
+}
+
+/**
+ * 收集 unix 进程树后代（含自身）。
+ *
+ * ps -eo pid=,ppid= 拿全表，建 ppid → children 映射，DFS 收集 root 的所有后代。
+ *
+ * @param rootPid 根进程 pid
+ * @returns 后代 pid 列表（含 rootPid，root 在前）
+ */
+async function collectUnixDescendants(rootPid: number): Promise<number[]> {
+  const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,ppid='], {
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const children = new Map<number, number[]>();
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 2) continue;
+    const pid = Number(parts[0]);
+    const ppid = Number(parts[1]);
+    if (!Number.isInteger(pid) || pid < 0) continue;
+    if (!Number.isInteger(ppid) || ppid < 0) continue;
+    const arr = children.get(ppid) ?? [];
+    arr.push(pid);
+    children.set(ppid, arr);
+  }
+  const result: number[] = [];
+  const stack = [rootPid];
+  while (stack.length > 0) {
+    const pid = stack.pop()!;
+    result.push(pid);
+    const kids = children.get(pid) ?? [];
+    for (const k of kids) stack.push(k);
   }
   return result;
 }
@@ -214,18 +292,19 @@ export async function processListHandler(args: Record<string, unknown>): Promise
   let entries: ProcessEntryVerbose[];
   try {
     if (IS_WIN) {
-      entries = await listWindowsProcesses();
+      entries = verbose ? await listWindowsProcessesVerbose() : await listWindowsProcesses();
     } else {
-      entries = (await listUnixProcesses()) as ProcessEntryVerbose[];
+      entries = verbose ? await listUnixProcessesVerbose() : ((await listUnixProcesses()) as ProcessEntryVerbose[]);
     }
   } catch (err) {
     return fail(ErrorCode.EXEC_FAIL, `执行进程列表命令失败: ${toErrorMessage(err)}`);
   }
 
-  // filter 按进程名 includes 匹配
+  // filter 按进程名 includes 匹配（大小写不敏感）
   let filtered: ProcessEntryVerbose[];
   if (typeof filter === 'string' && filter.length > 0) {
-    filtered = entries.filter((e) => e.name.includes(filter));
+    const lower = filter.toLowerCase();
+    filtered = entries.filter((e) => e.name.toLowerCase().includes(lower));
   } else {
     filtered = entries;
   }
@@ -255,7 +334,7 @@ export async function processListHandler(args: Record<string, unknown>): Promise
 export const processListTool: Tool = {
   name: 'process_list',
   description:
-    '列出运行中进程。返回 { processes: [{ pid, name }], truncated }。filter 按进程名过滤；verbose 含内存；maxResults 截断。',
+    '列出运行中进程。返回 { processes: [{ pid, name }], truncated }。filter 按进程名过滤（大小写不敏感）；verbose 含内存与命令行（Windows 仅内存，不取 WMI/PowerShell）；maxResults 截断。',
   inputSchema: processListInputSchema,
   handler: processListHandler,
 };
@@ -278,6 +357,10 @@ export const processKillInputSchema = z.object({
     .optional()
     .describe('信号名（unix），默认 SIGTERM；force 为 true 时覆盖为 SIGKILL'),
   force: z.boolean().optional().describe('若为 true，强制终止（unix 用 SIGKILL，Windows 加 /F）'),
+  tree: z
+    .boolean()
+    .optional()
+    .describe('若为 true，连同子进程一起终止（Windows 用 taskkill /T，unix 递归找子进程）'),
 });
 
 /** process_kill 输出。 */
@@ -291,11 +374,13 @@ interface ProcessKillResult {
  *
  * @param pid 进程 ID
  * @param force 是否强制
+ * @param tree 是否连同子进程（/T）
  * @throws NodeJS.ErrnoException 退出码非 0 时
  */
-async function killWindowsProcess(pid: number, force: boolean): Promise<void> {
+async function killWindowsProcess(pid: number, force: boolean, tree: boolean): Promise<void> {
   const args = ['/PID', String(pid)];
   if (force) args.unshift('/F');
+  if (tree) args.unshift('/T');
   // 用 encoding: 'buffer' 获取原始字节，再用 decodeBuffer 自动识别 GBK/UTF-8
   // taskkill 退出码非 0 时 execFile 抛错；message 含命令文本，stderr 含中文/英文提示
   await execFileAsync('taskkill', args, { windowsHide: true, encoding: 'buffer' });
@@ -313,6 +398,7 @@ function killUnixProcess(pid: number, signal: string): void {
   // Node 将 ESRCH/EPERM 暴露为 error.code
   process.kill(pid, signal);
 }
+/* c8 ignore stop */
 
 /**
  * 按给定参数终止单个 pid（跨平台）。
@@ -322,12 +408,30 @@ function killUnixProcess(pid: number, signal: string): void {
  * @param pid 进程 ID
  * @param force 是否强制
  * @param signal 信号名（unix）
+ * @param tree 是否连同子进程
  */
-async function killPid(pid: number, force: boolean, signal: string): Promise<void> {
+async function killPid(pid: number, force: boolean, signal: string, tree: boolean): Promise<void> {
   if (IS_WIN) {
-    await killWindowsProcess(pid, force);
+    await killWindowsProcess(pid, force, tree);
   } else {
-    killUnixProcess(pid, signal);
+    if (tree) {
+      const descendants = await collectUnixDescendants(pid);
+      // 反序 kill：先后代后根，避免孤儿；忽略已退出的 ESRCH
+      const errors: unknown[] = [];
+      for (let i = descendants.length - 1; i >= 0; i--) {
+        const d = descendants[i]!;
+        try {
+          killUnixProcess(d, signal);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ESRCH') {
+            errors.push(err);
+          }
+        }
+      }
+      if (errors.length > 0) throw errors[0]!;
+    } else {
+      killUnixProcess(pid, signal);
+    }
   }
 }
 
@@ -336,7 +440,9 @@ async function killPid(pid: number, force: boolean, signal: string): Promise<voi
  *
  * Windows：大小写不敏感，忽略 '.exe' 后缀。
  * unix：comm 与查询名精确匹配（等值，避免误杀名称以查询串结尾的无关注程）。
+ * 含平台专属分支，当前 CI 仅 Windows，故排除出覆盖率统计。
  */
+/* c8 ignore start */
 function matchProcessName(entryName: string, query: string): boolean {
   if (IS_WIN) {
     const norm = (s: string) => s.toLowerCase().replace(/\.exe$/i, '');
@@ -344,6 +450,7 @@ function matchProcessName(entryName: string, query: string): boolean {
   }
   return entryName === query;
 }
+/* c8 ignore stop */
 
 /**
  * 统一映射 kill 错误到错误码。命中时返回 fail，未命中返回 null。
@@ -408,6 +515,7 @@ async function killProcessesByName(
   name: string,
   force: boolean,
   signal: string,
+  tree: boolean,
 ): Promise<AnyToolResult> {
   let entries: ProcessEntry[];
   try {
@@ -425,7 +533,7 @@ async function killProcessesByName(
 
   try {
     for (const pid of pids) {
-      await killPid(pid, force, signal);
+      await killPid(pid, force, signal, tree);
     }
   } catch (err) {
     const mapped = mapKillError(err, name);
@@ -458,6 +566,7 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
   const rawPid = args['pid'];
   const rawName = args['name'];
   const force = args['force'] === true;
+  const tree = args['tree'] === true;
   const rawSignal = args['signal'];
 
   // signal 决定：force 优先 SIGKILL，否则用显式 signal，否则默认 SIGTERM
@@ -472,7 +581,7 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
 
   // 按名称终止：pid 未提供但提供了 name
   if (typeof rawPid !== 'number' && typeof rawName === 'string' && rawName.length > 0) {
-    return killProcessesByName(rawName, force, signal);
+    return killProcessesByName(rawName, force, signal, tree);
   }
 
   // pid 非法检查（pid 与 name 均未提供时也归入此处 → EINVAL）
@@ -482,7 +591,7 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
   const pid = rawPid;
 
   try {
-    await killPid(pid, force, signal);
+    await killPid(pid, force, signal, tree);
   } catch (err) {
     const mapped = mapKillError(err, String(pid));
     if (mapped) return mapped;
@@ -497,7 +606,7 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
 export const processKillTool: Tool = {
   name: 'process_kill',
   description:
-    '按 PID 或进程名终止进程。pid 或 name 至少提供其一；提供 name 时按名称终止所有匹配进程。signal 默认 SIGTERM；force 为 true 时 unix 用 SIGKILL，Windows 加 /F。返回 { killed, pid }。',
+    '按 PID 或进程名终止进程。pid 或 name 至少提供其一；提供 name 时按名称终止所有匹配进程。signal 默认 SIGTERM；force 为 true 时 unix 用 SIGKILL，Windows 加 /F；tree 为 true 时连同子进程一起终止（Windows /T，unix 递归）。返回 { killed, pid }。',
   inputSchema: processKillInputSchema,
   handler: processKillHandler,
 };

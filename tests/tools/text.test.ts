@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { encode as iconvEncode, decode as iconvDecode } from 'iconv-lite';
+import { isLikelyGBK } from '../../src/encoding/detect.js';
 import {
   textGrepHandler,
   textGrepTool,
@@ -494,6 +496,36 @@ describe('text_diff', () => {
       expect(result['diff']).toBe('');
     }
   });
+
+  it('真行级 diff：在开头插入一行，其余行不被误报为变更', async () => {
+    // 朴素逐行对比会把 b 的所有行都标记为 del+add；LCS 应只产生 1 个 add
+    const a = await createFile('l1\nl2\nl3\nl4\nl5\n');
+    const b = await createFile('INSERTED\nl1\nl2\nl3\nl4\nl5\n');
+    const result = await textDiffHandler({ a, b, context: 0 });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const diff = result['diff'] as string;
+      // 应只有 1 个 - 行（无删除）和 1 个 + 行（插入）
+      const delLines = diff.split('\n').filter((l) => l.startsWith('-') && !l.startsWith('---'));
+      const addLines = diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
+      expect(delLines).toHaveLength(0);
+      expect(addLines).toEqual(['+INSERTED']);
+    }
+  });
+
+  it('真行级 diff：中间修改一行，前后行保持 eq', async () => {
+    const a = await createFile('a\nb\nc\nd\ne\n');
+    const b = await createFile('a\nb\nCHANGED\nd\ne\n');
+    const result = await textDiffHandler({ a, b, context: 0 });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const diff = result['diff'] as string;
+      const delLines = diff.split('\n').filter((l) => l.startsWith('-') && !l.startsWith('---'));
+      const addLines = diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
+      expect(delLines).toEqual(['-c']);
+      expect(addLines).toEqual(['+CHANGED']);
+    }
+  });
 });
 
 // ─── text_replace ───────────────────────────────────────
@@ -651,6 +683,50 @@ describe('text_replace', () => {
       expect(result['content']).toBe('');
       expect(result['written']).toBe(false);
     }
+  });
+
+  it('write=true 写回 GBK 文件保持 GBK 编码（不静默改写为 UTF-8）', async () => {
+    // 构造 GBK 文件：含中文，用 iconv-lite 编码为 GBK 字节
+    const gbkPath = join(tmpDir, `gbk-${++fileCounter}.txt`);
+    const original = '你好 world\n';
+    await writeFile(gbkPath, iconvEncode(original, 'gbk'));
+
+    // 替换 ASCII 部分，写回
+    const result = await textReplaceHandler({
+      path: gbkPath,
+      pattern: 'world',
+      replacement: 'earth',
+      write: true,
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['replaced']).toBe(1);
+      expect(result['written']).toBe(true);
+    }
+
+    // 验证写回后仍是 GBK 编码
+    const buf = await readFile(gbkPath);
+    expect(isLikelyGBK(buf)).toBe(true);
+    // 用 GBK 解码应得到预期内容
+    const decoded = iconvDecode(buf, 'gbk');
+    expect(decoded).toBe('你好 earth\n');
+  });
+
+  it('write=true 写回 UTF-8 文件保持 UTF-8 编码', async () => {
+    const path = await createFile('hello world\n');
+    const result = await textReplaceHandler({
+      path,
+      pattern: 'world',
+      replacement: 'earth',
+      write: true,
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['written']).toBe(true);
+    }
+    const buf = await readFile(path);
+    expect(isLikelyGBK(buf)).toBe(false);
+    expect(buf.toString('utf8')).toBe('hello earth\n');
   });
 });
 

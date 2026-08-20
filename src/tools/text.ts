@@ -5,11 +5,13 @@
  * 长内容通过 truncate 截断，错误返回统一 fail 契约。
  */
 
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile, stat } from 'node:fs/promises';
 import { z } from 'zod';
+import { encode as iconvEncode } from 'iconv-lite';
 import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode, toErrorCode, toErrorMessage } from '../contract/errors.js';
 import { readTextAutoDetect, splitLines } from '../utils/readText.js';
+import { isLikelyGBK, decodeBuffer } from '../encoding/detect.js';
 import type { Tool } from '../registry.js';
 
 // ─── 辅助 ───────────────────────────────────────────────
@@ -74,18 +76,28 @@ function escapeRegex(s: string): string {
  * 支持可选 flags，如 /foo/i。
  * ignoreCase 为 true 时，字面量也转为大小写不敏感正则。
  */
-function parseGrepPattern(pattern: string, ignoreCase: boolean): RegExp | string {
+type GrepPatternResult = { ok: RegExp | string } | { error: string };
+
+function parseGrepPattern(pattern: string, ignoreCase: boolean): GrepPatternResult {
   const m = /^\/(.*)\/([gimsuy]*)$/.exec(pattern);
   if (m) {
     const body = m[1] ?? '';
     let flags = m[2] ?? '';
     if (ignoreCase && !flags.includes('i')) flags += 'i';
-    return new RegExp(body, flags);
+    try {
+      return { ok: new RegExp(body, flags) };
+    } catch {
+      return { error: '非法正则表达式' };
+    }
   }
   if (ignoreCase) {
-    return new RegExp(escapeRegex(pattern), 'i');
+    try {
+      return { ok: new RegExp(escapeRegex(pattern), 'i') };
+    } catch {
+      return { error: '非法搜索模式' };
+    }
   }
-  return pattern;
+  return { ok: pattern };
 }
 
 export async function textGrepHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
@@ -102,8 +114,13 @@ export async function textGrepHandler(args: Record<string, unknown>): Promise<An
     return toFailResult(err);
   }
 
+  const grepRes = parseGrepPattern(pattern, ignoreCase);
+  if ('error' in grepRes) {
+    return fail(ErrorCode.EINVAL, grepRes.error);
+  }
+  const matcher = grepRes.ok;
+
   const lines = splitLines(content);
-  const matcher = parseGrepPattern(pattern, ignoreCase);
   const isRegex = matcher instanceof RegExp;
 
   // 找出所有匹配行（0-indexed）
@@ -272,8 +289,11 @@ interface DiffOp {
   line: string;
 }
 
-/** 逐行比较生成 diff 操作序列。 */
-function lineDiff(aLines: string[], bLines: string[]): DiffOp[] {
+/** LCS DP 表大小上限（n*m 超此则回退朴素逐行对比，避免内存爆炸）。 */
+const LCS_MAX_CELLS = 5_000_000;
+
+/** 朴素逐行对比（LCS 回退用，超大输入时避免 O(n*m) 内存）。 */
+function naiveLineDiff(aLines: string[], bLines: string[]): DiffOp[] {
   const ops: DiffOp[] = [];
   const maxLen = Math.max(aLines.length, bLines.length);
   for (let i = 0; i < maxLen; i++) {
@@ -286,6 +306,63 @@ function lineDiff(aLines: string[], bLines: string[]): DiffOp[] {
       if (b !== undefined) ops.push({ type: 'add', line: b });
     }
   }
+  return ops;
+}
+
+/**
+ * 基于 LCS（最长公共子序列）的真行级 diff。
+ *
+ * 用动态规划计算两序列的 LCS，回溯生成 eq/del/add 操作序列，
+ * 保证「插入一行仅产生 1 个 add 操作」，而非朴素逐行对比的「其后所有行 del+add」失真。
+ *
+ * 超大输入（n*m > LCS_MAX_CELLS）回退朴素对比，避免 O(n*m) 内存爆炸。
+ *
+ * @param aLines 文件 A 的行数组
+ * @param bLines 文件 B 的行数组
+ * @returns diff 操作序列
+ */
+function lineDiff(aLines: string[], bLines: string[]): DiffOp[] {
+  const n = aLines.length;
+  const m = bLines.length;
+  if (n * m > LCS_MAX_CELLS) {
+    return naiveLineDiff(aLines, bLines);
+  }
+  // LCS DP：dp[i][j] = LCS(aLines[0..i), bLines[0..j))
+  const dp: Int32Array[] = new Array(n + 1);
+  dp[0] = new Int32Array(m + 1);
+  for (let i = 1; i <= n; i++) {
+    const a = aLines[i - 1]!;
+    const prev = dp[i - 1]!;
+    const cur = new Int32Array(m + 1);
+    for (let j = 1; j <= m; j++) {
+      if (a === bLines[j - 1]) {
+        cur[j] = prev[j - 1]! + 1;
+      } else {
+        const up = prev[j]!;
+        const left = cur[j - 1]!;
+        cur[j] = up >= left ? up : left;
+      }
+    }
+    dp[i] = cur;
+  }
+  // 回溯生成操作序列
+  const ops: DiffOp[] = [];
+  let i = n;
+  let j = m;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && aLines[i - 1] === bLines[j - 1]) {
+      ops.push({ type: 'eq', line: aLines[i - 1]! });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i]![j - 1]! >= dp[i - 1]![j]!)) {
+      ops.push({ type: 'add', line: bLines[j - 1]! });
+      j--;
+    } else {
+      ops.push({ type: 'del', line: aLines[i - 1]! });
+      i--;
+    }
+  }
+  ops.reverse();
   return ops;
 }
 
@@ -396,7 +473,8 @@ export async function textDiffHandler(args: Record<string, unknown>): Promise<An
 
 export const textDiffTool: Tool = {
   name: 'text_diff',
-  description: '逐行比较两文件，生成 unified diff 文本。same 表示是否完全相同。',
+  description:
+    '基于 LCS 的真行级 diff，生成 unified diff 文本。插入一行仅影响对应 hunk，不会其后行全被误报。same 表示是否完全相同。',
   inputSchema: textDiffInputSchema,
   handler: textDiffHandler,
 };
@@ -460,6 +538,51 @@ function applyReplace(
   return { content: result, replaced };
 }
 
+/** 源文件编码检测结果。 */
+interface SourceEncoding {
+  content: string;
+  encoding: 'gbk' | 'utf-8';
+  bom: boolean;
+}
+
+/**
+ * 读取文本文件并保留源编码信息（供 text_replace 写回时沿用原编码）。
+ *
+ * - 路径是目录 → 抛错 code=EISDIR
+ * - 不存在 → 抛错 code=ENOENT
+ * - 其余 errno 原样上抛
+ *
+ * @param path 文件路径
+ * @returns 解码后内容与源编码标识（gbk / utf-8，含 BOM 标记）
+ */
+async function readTextWithEncoding(path: string): Promise<SourceEncoding> {
+  const stats = await stat(path);
+  if (stats.isDirectory()) {
+    throw Object.assign(new Error(`是目录而非文件: ${path}`), { code: 'EISDIR' });
+  }
+  const buf = await readFile(path);
+  const bom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
+  const isGbk = isLikelyGBK(buf);
+  const content = decodeBuffer(buf);
+  return { content, encoding: isGbk ? 'gbk' : 'utf-8', bom };
+}
+
+/**
+ * 按指定编码把字符串编码为 Buffer，保留 UTF-8 BOM（若源有）。
+ *
+ * @param content 文本内容
+ * @param encoding 源编码（gbk / utf-8）
+ * @param bom 是否保留 UTF-8 BOM
+ * @returns 编码后的 Buffer
+ */
+function encodeWithEncoding(content: string, encoding: 'gbk' | 'utf-8', bom: boolean): Buffer {
+  const body = encoding === 'gbk' ? iconvEncode(content, 'gbk') : Buffer.from(content, 'utf8');
+  if (bom && encoding === 'utf-8') {
+    return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), body]);
+  }
+  return body;
+}
+
 export async function textReplaceHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
   const path = args['path'] as string;
   const pattern = args['pattern'] as string;
@@ -467,19 +590,28 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
   const write = args['write'] === true;
   const maxReplace = args['maxReplace'] as number | undefined;
 
-  let content: string;
+  let source: SourceEncoding;
   try {
-    content = await readTextFile(path);
+    source = await readTextWithEncoding(path);
   } catch (err) {
     return toFailResult(err);
   }
 
-  const { content: newContent, replaced } = applyReplace(content, pattern, replacement, maxReplace);
+  let newContent: string;
+  let replaced: number;
+  try {
+    const res = applyReplace(source.content, pattern, replacement, maxReplace);
+    newContent = res.content;
+    replaced = res.replaced;
+  } catch {
+    return fail(ErrorCode.EINVAL, '非法替换正则');
+  }
 
   let written = false;
   if (write && replaced > 0) {
     try {
-      await writeFile(path, newContent, 'utf-8');
+      const buf = encodeWithEncoding(newContent, source.encoding, source.bom);
+      await writeFile(path, buf);
       written = true;
     } catch (err) {
       return toFailResult(err);
@@ -495,7 +627,8 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
 
 export const textReplaceTool: Tool = {
   name: 'text_replace',
-  description: '按正则替换文件内容。write 为 true 时原地写回，否则只返回结果。支持 $1 回引用。',
+  description:
+    '按正则替换文件内容。write 为 true 时原地写回（沿用源文件编码，GBK 不被静默改写为 UTF-8），否则只返回结果。支持 $1 回引用。',
   inputSchema: textReplaceInputSchema,
   handler: textReplaceHandler,
 };

@@ -1,6 +1,6 @@
 /**
  * 集成测试：用 Client + InMemoryTransport 连接 createServer()，
- * 验证全部 46 个工具已注册、可列出、代表性工具可调用、未知工具失败、工具名唯一。
+ * 验证全部 58 个工具已注册、可列出、代表性工具可调用、未知工具失败、工具名唯一。
  *
  * 不启动真实 stdio，仅内存传输。
  */
@@ -13,9 +13,9 @@ import { getAllTools, findTool } from '../../src/registry.js';
 import { isOk, isFail } from '../../src/contract/output.js';
 
 /** 期望的工具总数。 */
-const EXPECTED_TOOL_COUNT = 46;
+const EXPECTED_TOOL_COUNT = 58;
 
-/** 期望的工具名（按域分组，共 46 个）。 */
+/** 期望的工具名（按域分组，共 58 个）。 */
 const EXPECTED_TOOL_NAMES = [
   // system
   'system_info',
@@ -68,6 +68,11 @@ const EXPECTED_TOOL_NAMES = [
   'git_diff',
   'git_add',
   'git_commit',
+  'git_checkout',
+  'git_push',
+  'git_pull',
+  'git_clone',
+  'git_stash',
   // core / shell / 各域新增（工单 02/03 + 各域新增）
   'pwd',
   'echo',
@@ -75,6 +80,14 @@ const EXPECTED_TOOL_NAMES = [
   'find',
   'cat',
   'ping',
+  // 工单 02 新增命令
+  'fs_du',
+  'hash_file',
+  'json_get',
+  'net_listen',
+  'net_download',
+  'archive_create',
+  'archive_extract',
 ] as const;
 
 /** Client callTool 返回类型（content 退化为 unknown，统一断言）。 */

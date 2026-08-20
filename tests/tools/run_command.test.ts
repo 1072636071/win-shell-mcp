@@ -58,4 +58,39 @@ describe('run_command', () => {
     expect(isFail(r)).toBe(true);
     if (isFail(r)) expect(r.error.code).toBe('EXEC_TIMEOUT');
   });
+
+  it('stdin 字符串被写入子进程标准输入', async () => {
+    const r = await callTool('run_command', {
+      command: 'node',
+      args: ['-e', 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(s.toUpperCase()))'],
+      stdin: 'hello',
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r['stdout']).toContain('HELLO');
+    }
+  });
+
+  it('不传 stdin 时正常执行', async () => {
+    const r = await callTool('run_command', {
+      command: 'node',
+      args: ['-e', 'console.log("no-stdin")'],
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r['stdout']).toContain('no-stdin');
+    }
+  });
+
+  it('输出超过 maxOutputBytes 时截断', async () => {
+    const r = await callTool('run_command', {
+      command: 'node',
+      args: ['-e', 'process.stdout.write("x".repeat(10000))'],
+      maxOutputBytes: 100,
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r['truncated']).toBe(true);
+    }
+  });
 });

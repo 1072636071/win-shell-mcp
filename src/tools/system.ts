@@ -33,6 +33,7 @@ interface SystemInfoMinimal {
   hostname: string;
   cwd: string;
   node: string;
+  time: string;
 }
 
 /** verbose 输出字段。 */
@@ -99,6 +100,7 @@ export async function systemInfoHandler(args: Record<string, unknown>): Promise<
     hostname: os.hostname(),
     cwd: process.cwd(),
     node: process.version,
+    time: new Date().toISOString(),
   };
 
   const cpus = os.cpus();
@@ -122,7 +124,7 @@ export async function systemInfoHandler(args: Record<string, unknown>): Promise<
 export const systemInfoTool: Tool = {
   name: 'system_info',
   description:
-    '获取当前系统信息（os、arch、platform、hostname、cwd、node 版本）。开启 verbose 时返回完整信息（uptime、loadavg、cpus、内存）。',
+    '获取当前系统信息（os、arch、platform、hostname、cwd、node 版本、当前时间 ISO 8601）。开启 verbose 时返回完整信息（uptime、loadavg、cpus、内存）。',
   inputSchema: systemInfoInputSchema,
   handler: systemInfoHandler,
 };
@@ -209,6 +211,7 @@ function enumerateWindowsDrives(): string[] {
     try {
       if (existsSync(root)) roots.push(root);
     } catch {
+      /* c8 ignore next */
       // 忽略访问异常的盘符
     }
   }
@@ -217,11 +220,13 @@ function enumerateWindowsDrives(): string[] {
 
 /**
  * 枚举 unix 挂载点。
+ * 仅在非 Windows 平台执行，当前 CI 仅 Windows，故排除出覆盖率统计。
  *
  * Linux：解析 /proc/mounts，过滤伪文件系统；macOS：尽力而为仅探测根挂载。
  *
  * @returns 磁盘条目列表
  */
+/* c8 ignore start */
 async function enumerateUnixDisks(): Promise<SystemDiskEntry[]> {
   const entries: SystemDiskEntry[] = [];
   if (os.platform() === 'linux') {
@@ -275,6 +280,7 @@ async function enumerateUnixDisks(): Promise<SystemDiskEntry[]> {
   }
   return entries;
 }
+/* c8 ignore stop */
 
 /**
  * 枚举所有磁盘/挂载点。
@@ -296,6 +302,7 @@ async function enumerateDisks(): Promise<SystemDiskEntry[]> {
     }
     return entries;
   }
+  /* c8 ignore next */
   return enumerateUnixDisks();
 }
 
@@ -381,6 +388,7 @@ interface SystemMemoryFull extends SystemMemoryMinimal {
  */
 async function readSwapInfo(): Promise<{ swapTotal?: number; swapFree?: number }> {
   if (os.platform() !== 'linux') return {};
+  /* c8 ignore start */
   try {
     const content = await readFile('/proc/meminfo', 'utf8');
     let swapTotal: number | undefined;
@@ -398,6 +406,7 @@ async function readSwapInfo(): Promise<{ swapTotal?: number; swapFree?: number }
   } catch {
     return {};
   }
+  /* c8 ignore stop */
 }
 
 /**

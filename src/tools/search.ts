@@ -41,7 +41,7 @@ function escapeRegex(s: string): string {
  * @param pattern glob pattern
  * @returns RegExp
  */
-function globToRegExp(pattern: string): RegExp {
+export function globToRegExp(pattern: string): RegExp {
   let re = '';
   let i = 0;
   while (i < pattern.length) {
@@ -90,7 +90,7 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 /** 判断 glob pattern 是否合法（非空且括号配对）。 */
-function isValidGlob(pattern: string): boolean {
+export function isValidGlob(pattern: string): boolean {
   if (pattern.length === 0) return false;
   let depthSquare = 0;
   let depthCurly = 0;
@@ -246,7 +246,7 @@ export const searchGlobTool: Tool = {
 // ============================================================================
 
 export const searchContentInputSchema = z.object({
-  pattern: z.string().min(1).describe('搜索内容（字符串子串匹配）'),
+  pattern: z.string().min(1).describe('搜索内容：字符串字面量或 /正则/ 形式（与 text_grep 对齐）'),
   cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
   glob: z.string().optional().describe('文件名 glob 过滤，默认 **/*'),
   exclude: z
@@ -263,6 +263,38 @@ interface ContentMatch {
   file: string;
   line: number;
   text: string;
+}
+
+/**
+ * 解析 search pattern：若以 / 包裹则为正则，否则为字符串字面量。
+ * 与 text_grep 的 parseGrepPattern 行为对齐。
+ *
+ * @param pattern 搜索模式
+ * @param ignoreCase 是否忽略大小写
+ * @returns RegExp（正则模式）或 string（字面量）
+ */
+type SearchPatternResult = { ok: RegExp | string } | { error: string };
+
+function parseSearchPattern(pattern: string, ignoreCase: boolean): SearchPatternResult {
+  const m = /^\/(.*)\/([gimsuy]*)$/.exec(pattern);
+  if (m) {
+    const body = m[1] ?? '';
+    let flags = m[2] ?? '';
+    if (ignoreCase && !flags.includes('i')) flags += 'i';
+    try {
+      return { ok: new RegExp(body, flags) };
+    } catch {
+      return { error: '非法正则表达式' };
+    }
+  }
+  if (ignoreCase) {
+    try {
+      return { ok: new RegExp(escapeRegex(pattern), 'i') };
+    } catch {
+      return { error: '非法搜索模式' };
+    }
+  }
+  return { ok: pattern };
 }
 
 export async function searchContentHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
@@ -302,8 +334,19 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     (f) => globRe.test(f) && !excludeRes.some((er) => er.test(f)),
   );
 
+  const patternRes = parseSearchPattern(pattern, ignoreCase);
+  if ('error' in patternRes) {
+    return fail(ErrorCode.EINVAL, patternRes.error);
+  }
+  const matcher = patternRes.ok;
+
   const allMatches: ContentMatch[] = [];
-  const needle = ignoreCase ? pattern.toLowerCase() : pattern;
+  const isRegex = matcher instanceof RegExp;
+  const needle = !isRegex
+    ? ignoreCase
+      ? (matcher as string).toLowerCase()
+      : (matcher as string)
+    : '';
 
   for (const file of candidateFiles) {
     const full = path.join(cwd, file);
@@ -321,8 +364,12 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line === undefined) continue;
-      const hay = ignoreCase ? line.toLowerCase() : line;
-      if (hay.includes(needle)) {
+      const matched = isRegex
+        ? (matcher as RegExp).test(line)
+        : ignoreCase
+          ? line.toLowerCase().includes(needle)
+          : line.includes(needle);
+      if (matched) {
         allMatches.push({ file, line: i + 1, text: truncate(line) });
       }
     }
@@ -346,7 +393,8 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
 
 export const searchContentTool: Tool = {
   name: 'search_content',
-  description: '跨文件内容搜索，返回 [{file, line, text}]。自动跳过二进制文件。',
+  description:
+    '跨文件内容搜索（≈ grep），返回 [{file, line, text}]。pattern 支持 /正则/ 形式，自动跳过二进制文件。',
   inputSchema: searchContentInputSchema,
   handler: searchContentHandler,
 };

@@ -570,6 +570,105 @@ describe('searchContentHandler ignoreCase', () => {
 });
 
 // ============================================================================
+// search_content 正则 pattern
+// ============================================================================
+
+describe('searchContentHandler 正则 pattern', () => {
+  beforeEach(async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'regex.txt'),
+      'foo123bar\nfoo456bar\nbaz789qux\nabc\n',
+    );
+  });
+
+  it('/正则/ 形式匹配', async () => {
+    const result = await searchContentHandler({
+      pattern: '/foo\\d+bar/',
+      cwd: tmpDir,
+      glob: 'regex.txt',
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const matches = result['matches'] as Array<{
+        file: string;
+        line: number;
+        text: string;
+      }>;
+      expect(matches.length).toBe(2);
+      expect(matches[0]!.line).toBe(1);
+      expect(matches[1]!.line).toBe(2);
+    }
+  });
+
+  it('正则带 i flag 忽略大小写', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'regex2.txt'),
+      'Hello\nHELLO\nhello\n',
+    );
+    const result = await searchContentHandler({
+      pattern: '/HELLO/i',
+      cwd: tmpDir,
+      glob: 'regex2.txt',
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const matches = result['matches'] as Array<{
+        file: string;
+        line: number;
+        text: string;
+      }>;
+      expect(matches.length).toBe(3);
+    }
+  });
+
+  it('正则不匹配时返回空', async () => {
+    const result = await searchContentHandler({
+      pattern: '/^\\d+$/',
+      cwd: tmpDir,
+      glob: 'regex.txt',
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const matches = result['matches'] as Array<{
+        file: string;
+        line: number;
+        text: string;
+      }>;
+      expect(matches.length).toBe(0);
+    }
+  });
+
+  it('字面量 pattern 仍正常工作（不含 / 包裹）', async () => {
+    const result = await searchContentHandler({
+      pattern: 'foo',
+      cwd: tmpDir,
+      glob: 'regex.txt',
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const matches = result['matches'] as Array<{
+        file: string;
+        line: number;
+        text: string;
+      }>;
+      expect(matches.length).toBe(2);
+    }
+  });
+
+  it('非法正則返回 EINVAL', async () => {
+    const result = await searchContentHandler({
+      pattern: '/[invalid/',
+      cwd: tmpDir,
+      glob: 'regex.txt',
+    });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
+    }
+  });
+});
+
+// ============================================================================
 // search_content glob 过滤
 // ============================================================================
 

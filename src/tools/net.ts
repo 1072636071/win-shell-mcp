@@ -76,6 +76,28 @@ function headersToObject(headers: Headers): Record<string, string> {
 }
 
 /**
+ * 将用户传入的 headers 合并到基础 headers 对象。
+ *
+ * 仅合并键值均为字符串的条目，跳过非法值。用户 headers 覆盖基础 headers。
+ *
+ * @param base 基础请求头
+ * @param userHeaders 用户传入的请求头（unknown 类型，经 schema 验证后为 Record<string,string>）
+ * @returns 合并后的请求头
+ */
+function mergeHeaders(
+  base: Record<string, string>,
+  userHeaders: unknown,
+): Record<string, string> {
+  const result = { ...base };
+  if (userHeaders && typeof userHeaders === 'object') {
+    for (const [k, v] of Object.entries(userHeaders as Record<string, unknown>)) {
+      if (typeof k === 'string' && typeof v === 'string') result[k] = v;
+    }
+  }
+  return result;
+}
+
+/**
  * 解析并验证 URL 字符串。
  *
  * @param url 待验证的 URL
@@ -185,6 +207,10 @@ function httpErrorToFail(err: unknown): AnyToolResult {
 /** net_get 输入 schema。 */
 export const netGetInputSchema = z.object({
   url: z.string().describe('请求 URL'),
+  headers: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe('自定义请求头（如 Authorization、API key）'),
   timeoutMs: z
     .number()
     .int()
@@ -219,16 +245,22 @@ export async function netGetHandler(args: Record<string, unknown>): Promise<AnyT
   const url = args['url'];
   const timeoutMs = args['timeoutMs'];
   const verbose = args['verbose'] === true;
+  const userHeaders = args['headers'];
 
   const urlError = validateUrl(url);
   if (urlError !== null) return urlError;
 
+  const reqHeaders = mergeHeaders({}, userHeaders);
   const timeout =
     typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : DEFAULT_HTTP_TIMEOUT_MS;
   const start = Date.now();
 
   try {
-    const response = await fetchWithTimeout(url as string, { method: 'GET' }, timeout);
+    const response = await fetchWithTimeout(
+      url as string,
+      { method: 'GET', headers: reqHeaders },
+      timeout,
+    );
     const duration = Date.now() - start;
     return await buildHttpResult(response, duration, verbose);
   } catch (err) {
@@ -240,7 +272,7 @@ export async function netGetHandler(args: Record<string, unknown>): Promise<AnyT
 export const netGetTool: Tool = {
   name: 'net_get',
   description:
-    '发起 HTTP GET 请求。返回 { status, body }，body 截断至 2000 字符。timeoutMs 默认 30000。verbose 含 headers/ok/statusText/duration/truncated。',
+    '发起 HTTP GET 请求。返回 { status, body }，body 截断至 2000 字符。headers 自定义请求头。timeoutMs 默认 30000。verbose 含 headers/ok/statusText/duration/truncated。',
   inputSchema: netGetInputSchema,
   handler: netGetHandler,
 };
@@ -255,6 +287,10 @@ export const netPostInputSchema = z.object({
     .boolean()
     .optional()
     .describe('若为 true，设置 Content-Type: application/json'),
+  headers: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe('自定义请求头（如 Authorization、API key；覆盖 json 的 Content-Type）'),
   timeoutMs: z
     .number()
     .int()
@@ -292,15 +328,17 @@ export async function netPostHandler(args: Record<string, unknown>): Promise<Any
   const json = args['json'] === true;
   const timeoutMs = args['timeoutMs'];
   const verbose = args['verbose'] === true;
+  const userHeaders = args['headers'];
 
   const urlError = validateUrl(url);
   if (urlError !== null) return urlError;
 
-  // 构造请求头
-  const reqHeaders: Record<string, string> = {};
+  // 构造请求头：json 自动加 Content-Type，用户 headers 覆盖之
+  const baseHeaders: Record<string, string> = {};
   if (json) {
-    reqHeaders['Content-Type'] = 'application/json';
+    baseHeaders['Content-Type'] = 'application/json';
   }
+  const reqHeaders = mergeHeaders(baseHeaders, userHeaders);
 
   // 构造请求体
   const reqBody: string | undefined =
@@ -327,7 +365,7 @@ export async function netPostHandler(args: Record<string, unknown>): Promise<Any
 export const netPostTool: Tool = {
   name: 'net_post',
   description:
-    '发起 HTTP POST 请求。返回 { status, body }，body 截断至 2000 字符。json=true 时设 Content-Type: application/json。timeoutMs 默认 30000。verbose 含 headers/ok/statusText/duration/truncated。',
+    '发起 HTTP POST 请求。返回 { status, body }，body 截断至 2000 字符。json=true 时设 Content-Type: application/json。headers 自定义请求头（覆盖 json 的 Content-Type）。timeoutMs 默认 30000。verbose 含 headers/ok/statusText/duration/truncated。',
   inputSchema: netPostInputSchema,
   handler: netPostHandler,
 };
