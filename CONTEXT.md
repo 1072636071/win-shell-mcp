@@ -20,11 +20,18 @@ win-shell-mcp —— 「AI 原生的跨平台命令抽象层」。用 Node.js �
 | 破坏性操作保护 | 回收站型保护机制：破坏操作（删/覆盖/移动等）前先备份原数据到 `backup/<操作ID>/`，可经 `fs_restore` 还原，默认关闭（`WIN_SHELL_PROTECT=1` 开启），见 ADR-0008 |
 | 低价值名单 | 内置 + 环境变量追加的路径名单（node_modules/.git/dist/build/.cache 等），命中名单的破坏操作直接真删不备份，见 ADR-0009 |
 | 审计日志流 | `logs/operations.jsonl`：每个破坏性操作一行的结构化审计记录（时间/工具/参数/操作 ID/备份路径/结果），与批次 meta.json 互补 |
+| deepseek-harness（dsh） | DeepSeek 的 Cordis 插件框架式 agent harness；win-shell-mcp 的第二交付入口（见 ADR-0010） |
+| Cordis 插件 | dsh 的插件形态：`export name/inject/Config/apply`，经 ctx 服务（如 `ctx.tools`）协作 |
+| ctx.tools / defineTool | dsh 工具注册服务与注册 API（`@deepseek-ai/dsh-tools`），工具以 Cordis 插件注册 |
+| 薄壳双入口 | 架构：核心库（现有 src/ 纯逻辑）+ MCP server 薄壳 + dsh 插件薄壳，只改构建不改目录（见 ADR-0010） |
+| 同包多入口 | 单 npm 包经 tsup 多 entry + exports 子路径（`./core` / `./plugin`）切分边界（见 ADR-0012） |
+| tool-win-shell | win-shell-mcp 的 Cordis 插件名，dsh 侧 `require: "win-shell-mcp/plugin"` 加载 |
+| dsh mcp-client | dsh 原生 MCP 客户端桥（stdio/streamable-http），零代码接入替代方案，被否决（见 ADR-0010） |
 
 ## 已确定的决策
 
 - **定位**：可发布开源产品（npm 包 + MCP Server），面向所有 AI 客户端。
-- **交付形态**：仅 MCP Server，命令以 MCP tool 暴露，无独立 CLI、不拆分核心库（见 `docs/adr/0001-mcp-server-only-delivery.md`）。
+- **交付形态**：MCP Server + dsh 插件双入口（2026-08-20 取代 ADR-0001，见 `docs/adr/0010-dual-entry-thin-shell.md`）：核心库 + 薄壳双入口，命令以 MCP tool 暴露，同时以 Cordis 插件（`tool-win-shell`）注册 58 工具到 dsh `ctx.tools`。同包多入口（`./core` / `./mcp` / `./plugin`，见 `docs/adr/0012-single-package-multi-entry.md`），插件薄壳不接 dsh 审批/沙箱/后台，输出保持统一 `{ok, data}` JSON 契约（见 `docs/adr/0011-full-tool-registration.md`）。
 - **技术栈**：TypeScript + 官方 `@modelcontextprotocol/sdk`，Node ≥ 18，tsup 打包。
 - **传输层**：stdio（本地 AI 客户端标准方式）；streamable HTTP 作为未来可选项，不在 MVP。
 - **命令域范围**：全命令域一版上齐——`fs`（读写）+ `text` + `search` + `net` + `process` + `system` + `pkg` + `git`，对应"尽量覆盖全部场景"的要求。
