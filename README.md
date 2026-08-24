@@ -113,12 +113,12 @@ npx win-shell-mcp
 
 | 工具 | 说明 |
 |------|------|
-| `text_grep` | 正则搜索文本 |
+| `text_grep` | 文本搜索（默认字面量，/正则/ 形式启用正则） |
 | `text_head` | 取前 N 行 |
 | `text_tail` | 取后 N 行 |
 | `text_wc` | 统计行/词/字符数 |
 | `text_diff` | 两段文本差异 |
-| `text_replace` | 正则替换文本 |
+| `text_replace` | 文本替换（默认字面量，/正则/ 形式启用正则；多命中需显式表态） |
 | `cat` | 连接/读取文件内容（类似 `cat`；别名 `text_cat`） |
 
 ### search（4）
@@ -126,7 +126,7 @@ npx win-shell-mcp
 | 工具 | 说明 |
 |------|------|
 | `search_glob` | glob 模式匹配文件路径 |
-| `search_content` | 在文件中搜索内容 |
+| `search_content` | 跨文件内容搜索（默认字面量，/正则/ 形式启用正则） |
 | `search_which` | 查找可执行文件路径（类似 `which`/`where`） |
 | `find` | 按文件名模式递归搜索（Unix find 短名；别名 `fs_find`，支持 * 通配） |
 

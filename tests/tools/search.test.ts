@@ -14,6 +14,8 @@ import {
   searchWhichInputSchema,
 } from '../../src/tools/search.js';
 import { isOk, isFail } from '../../src/contract/output.js';
+import type { AnyToolResult } from '../../src/contract/output.js';
+import { textGrepHandler } from '../../src/tools/text.js';
 
 let tmpDir: string;
 
@@ -947,6 +949,266 @@ describe('searchContentHandler 错误路径', () => {
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('EINVAL');
+    }
+  });
+});
+
+// ============================================================================
+// search_content patternMode 与双向 hint（工单03 · ADR-0013 对齐）
+// ============================================================================
+
+describe('searchContentHandler patternMode 与双向 hint', () => {
+  beforeEach(async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'pm.txt'),
+      'foo123bar\n/usr/bin/env node\npath C:\\Users\\alice home\nplain filler line\n',
+    );
+  });
+
+  it('字面量命中：patternMode=literal 且不占位 hint', async () => {
+    const result = await searchContentHandler({ pattern: 'foo123bar', cwd: tmpDir, glob: 'pm.txt' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['patternMode']).toBe('literal');
+      expect(result['hint']).toBeUndefined();
+    }
+  });
+
+  it('正则命中：patternMode=regex 且不占位 hint', async () => {
+    const result = await searchContentHandler({ pattern: '/foo\\d+bar/', cwd: tmpDir, glob: 'pm.txt' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['patternMode']).toBe('regex');
+      expect(result['hint']).toBeUndefined();
+    }
+  });
+
+  it('多斜杠路径按字面量解释并命中', async () => {
+    const result = await searchContentHandler({ pattern: '/usr/bin/env', cwd: tmpDir, glob: 'pm.txt' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['patternMode']).toBe('literal');
+      const matches = result['matches'] as Array<{ file: string }>;
+      expect(matches.length).toBe(1);
+      expect(matches[0]!.file).toBe('pm.txt');
+    }
+  });
+
+  it('字面量 0 命中且含元字符 → 提示①（像正则但按字面量搜了）', async () => {
+    const result = await searchContentHandler({ pattern: 'a|b', cwd: tmpDir, glob: 'pm.txt' });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['patternMode']).toBe('literal');
+      expect(result['count']).toBe(0);
+      const hint = result['hint'] as string;
+      expect(hint).toContain('已按【字面量】');
+      expect(hint).toContain('/a|b/');
+      expect(hint).toContain('ims');
+    }
+  });
+
+  it('字面量 0 命中普通词 → 提示②（拼写/大小写方向）', async () => {
+    const result = await searchContentHandler({
+      pattern: 'zznomatch',
+      cwd: tmpDir,
+      glob: 'pm.txt',
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const hint = result['hint'] as string;
+      expect(hint).toContain('拼写与大小写');
+    }
+  });
+
+  it('结构似正则但 flags 单字母非法 → EINVAL 列明合法标志', async () => {
+    const result = await searchContentHandler({ pattern: '/foo/q', cwd: tmpDir, glob: 'pm.txt' });
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe('EINVAL');
+      expect(result.error.message).toContain('非法 flags "q"');
+      expect(result.error.message).toContain('合法标志为 ims');
+    }
+  });
+
+  it('搜索场景出现 g 标志 → EINVAL（/foo/g 与 /foo/ig）', async () => {
+    for (const pattern of ['/foo/g', '/foo/ig']) {
+      const result = await searchContentHandler({ pattern, cwd: tmpDir, glob: 'pm.txt' });
+      expect(isFail(result)).toBe(true);
+      if (isFail(result)) {
+        expect(result.error.code).toBe('EINVAL');
+        expect(result.error.message).toContain('g');
+      }
+    }
+  });
+
+  it('目录递归场景（默认 glob **/*）提示照常工作', async () => {
+    // 不传 glob：递归扫描含 sub/deep 的整棵树，hint 引擎照常触发
+    const result = await searchContentHandler({ pattern: 'zznomatch', cwd: tmpDir });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['patternMode']).toBe('literal');
+      expect(result['count']).toBe(0);
+      expect(result['hint'] as string).toContain('拼写与大小写');
+    }
+  });
+
+  it('正则模式反斜杠路径样 0 命中 → 提示④（转义吃反斜杠，改字面量）', async () => {
+    // 原始串 /C:\Users\alice/：体内单反斜杠 \U \a 被当转义，无法命中含真实反斜杠的行
+    const result = await searchContentHandler({
+      pattern: '/C:\\Users\\alice/',
+      cwd: tmpDir,
+      glob: 'pm.txt',
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['patternMode']).toBe('regex');
+      expect(result['count']).toBe(0);
+      const hint = result['hint'] as string;
+      expect(hint).toContain('转义');
+      expect(hint).toContain('【字面量】');
+    }
+  });
+
+  it('hint③ 防回归：maxResults 截断后仍按截断前真实命中数判异常偏多', async () => {
+    // 300 行匹配但 maxResults=5：hint③ 判据必须吃截断前的真实总数，否则截断调用永远漏提示
+    const big = Array.from({ length: 300 }, (_, i) => `under tmp dir ${i + 1}`).join('\n') + '\n';
+    await fs.writeFile(path.join(tmpDir, 'big.txt'), big);
+    const result = await searchContentHandler({
+      pattern: '/tmp/',
+      cwd: tmpDir,
+      glob: 'big.txt',
+      maxResults: 5,
+    });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['count']).toBe(5);
+      expect(result['truncated']).toBe(true);
+      expect(result['patternMode']).toBe('regex');
+      const hint = result['hint'] as string | undefined;
+      expect(hint).toBeDefined();
+      expect(hint).toContain('疑似');
+    }
+  });
+});
+
+// ============================================================================
+// search_content 与 text_grep 一致性对照用例表（工单03 防回归核心）
+// ============================================================================
+
+describe('searchContentHandler 与 textGrepHandler 一致性对照', () => {
+  beforeEach(async () => {
+    // 同一份内容分别供两个工具检索：text_grep 直接读文件；search_content 以 glob 圈定同一文件
+    const lines = [
+      'foo123bar',
+      '/usr/bin/env node',
+      'path C:\\Users\\alice home',
+      ...Array.from({ length: 30 }, (_, i) => `tmp entry ${i}`),
+    ];
+    await fs.writeFile(path.join(tmpDir, 'consistency.txt'), lines.join('\n') + '\n');
+  });
+
+  /**
+   * 一致性断言：同一 pattern 在两个搜索工具上解释完全一致——
+   * 成败一致、错误码与错误消息逐字一致、patternMode 相同、
+   * hint 触发与否及文案逐字一致、命中数相同。
+   */
+  async function expectConsistent(
+    pattern: string,
+  ): Promise<{ grep: AnyToolResult; search: AnyToolResult }> {
+    const grep = await textGrepHandler({ path: path.join(tmpDir, 'consistency.txt'), pattern });
+    const search = await searchContentHandler({ cwd: tmpDir, glob: 'consistency.txt', pattern });
+    expect(isOk(search)).toBe(isOk(grep));
+    if (isFail(grep) && isFail(search)) {
+      expect(search.error.code).toBe(grep.error.code);
+      expect(search.error.message).toBe(grep.error.message);
+    }
+    if (isOk(grep) && isOk(search)) {
+      expect(search['patternMode']).toBe(grep['patternMode']);
+      expect(search['hint'] === undefined).toBe(grep['hint'] === undefined);
+      if (grep['hint'] !== undefined) {
+        expect(search['hint']).toBe(grep['hint']);
+      }
+      expect(search['count']).toBe(grep['count']);
+    }
+    return { grep, search };
+  }
+
+  it.each([
+    [
+      '多斜杠路径收敛字面量',
+      '/usr/bin/env',
+      { mode: 'literal', count: 1, hint: false },
+    ],
+    [
+      '恰好首尾斜杠短字面量判正则（残余洞 + 提示③兜底）',
+      '/tmp/',
+      { mode: 'regex', count: 30, hint: true },
+    ],
+    [
+      '元字符字面量 0 命中触发提示①',
+      'a|b',
+      { mode: 'literal', count: 0, hint: true },
+    ],
+    ['合法 flags 正则', '/foo\\d+bar/', { mode: 'regex', count: 1, hint: false }],
+    ['非法单字母 flags 报 EINVAL', '/foo/q', { mode: 'EINVAL' }],
+    ['搜索场景 g 标志报 EINVAL', '/foo/ig', { mode: 'EINVAL' }],
+    [
+      '反斜杠路径字面量免转义',
+      'C:\\Users\\alice',
+      { mode: 'literal', count: 1, hint: false },
+    ],
+    [
+      '反斜杠路径样正则 0 命中触发提示④',
+      '/C:\\Users\\alice/',
+      { mode: 'regex', count: 0, hint: true },
+    ],
+    [
+      '空体 // 收敛字面量',
+      '//',
+      { mode: 'literal', count: 0, hint: true },
+    ],
+    [
+      '末段非纯字母 /api/v1/ 收敛字面量',
+      '/api/v1/',
+      { mode: 'literal', count: 0, hint: true },
+    ],
+  ] as Array<[string, string, { mode?: string; count?: number; hint?: boolean }]>)(
+    '%s',
+    async (_name, pattern, expected) => {
+      const { grep, search } = await expectConsistent(pattern);
+      if (expected.mode === 'EINVAL') {
+        expect(isFail(grep)).toBe(true);
+        return;
+      }
+      expect(isOk(grep)).toBe(true);
+      if (isOk(grep) && isOk(search)) {
+        expect(grep['patternMode']).toBe(expected.mode);
+        if (expected.count !== undefined) {
+          expect(grep['count']).toBe(expected.count);
+        }
+        expect(grep['hint'] !== undefined).toBe(expected.hint ?? false);
+      }
+    },
+  );
+
+  it('一致性表之外：ignoreCase 参数在两工具间语义一致（对两种模式均生效）', async () => {
+    const grep = await textGrepHandler({
+      path: path.join(tmpDir, 'consistency.txt'),
+      pattern: 'FOO123BAR',
+      ignoreCase: true,
+    });
+    const search = await searchContentHandler({
+      cwd: tmpDir,
+      glob: 'consistency.txt',
+      pattern: 'FOO123BAR',
+      ignoreCase: true,
+    });
+    expect(isOk(grep)).toBe(true);
+    expect(isOk(search)).toBe(true);
+    if (isOk(grep) && isOk(search)) {
+      expect(grep['count']).toBe(search['count']);
+      expect(grep['count']).toBe(1);
+      expect(grep['patternMode']).toBe(search['patternMode']);
     }
   });
 });

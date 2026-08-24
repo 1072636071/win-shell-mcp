@@ -15,13 +15,16 @@ import path from 'node:path';
 import { z } from 'zod';
 import { ok, fail, truncate, withVerbose, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode } from '../contract/errors.js';
+import { parsePattern, SEARCH_PATTERN_FLAGS } from '../utils/pattern.js';
+import { buildSearchHint } from '../utils/hints.js';
+import { splitLines } from '../utils/readText.js';
 import type { Tool } from '../registry.js';
 
 // ============================================================================
 // 内部工具函数
 // ============================================================================
 
-/** 转义正则元字符。 */
+/** 转义正则元字符（供 globToRegExp 做 glob→RegExp 转换时逐字符转义）。 */
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -246,7 +249,12 @@ export const searchGlobTool: Tool = {
 // ============================================================================
 
 export const searchContentInputSchema = z.object({
-  pattern: z.string().min(1).describe('搜索内容：字符串字面量或 /正则/ 形式（与 text_grep 对齐）'),
+  pattern: z
+    .string()
+    .min(1)
+    .describe(
+      '搜索模式：默认字面量子串匹配（元字符原样，如 C:\\Users 免转义）；/正则/ 形式启用正则，尾部可选 flags i/m/s',
+    ),
   cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
   glob: z.string().optional().describe('文件名 glob 过滤，默认 **/*'),
   exclude: z
@@ -263,38 +271,6 @@ interface ContentMatch {
   file: string;
   line: number;
   text: string;
-}
-
-/**
- * 解析 search pattern：若以 / 包裹则为正则，否则为字符串字面量。
- * 与 text_grep 的 parseGrepPattern 行为对齐。
- *
- * @param pattern 搜索模式
- * @param ignoreCase 是否忽略大小写
- * @returns RegExp（正则模式）或 string（字面量）
- */
-type SearchPatternResult = { ok: RegExp | string } | { error: string };
-
-function parseSearchPattern(pattern: string, ignoreCase: boolean): SearchPatternResult {
-  const m = /^\/(.*)\/([gimsuy]*)$/.exec(pattern);
-  if (m) {
-    const body = m[1] ?? '';
-    let flags = m[2] ?? '';
-    if (ignoreCase && !flags.includes('i')) flags += 'i';
-    try {
-      return { ok: new RegExp(body, flags) };
-    } catch {
-      return { error: '非法正则表达式' };
-    }
-  }
-  if (ignoreCase) {
-    try {
-      return { ok: new RegExp(escapeRegex(pattern), 'i') };
-    } catch {
-      return { error: '非法搜索模式' };
-    }
-  }
-  return { ok: pattern };
 }
 
 export async function searchContentHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
@@ -334,19 +310,19 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     (f) => globRe.test(f) && !excludeRes.some((er) => er.test(f)),
   );
 
-  const patternRes = parseSearchPattern(pattern, ignoreCase);
-  if ('error' in patternRes) {
-    return fail(ErrorCode.EINVAL, patternRes.error);
+  // 双模解析（工单03）：与 text_grep 共用同一严格判定解析器（src/utils/pattern.ts），
+  // 同一 pattern 的解释结果与错误逐字一致；结构似正则但 flags 非法 → EINVAL 列明合法标志
+  const parsed = parsePattern(pattern, ignoreCase, SEARCH_PATTERN_FLAGS);
+  if (!parsed.ok) {
+    return fail(ErrorCode.EINVAL, parsed.error);
   }
-  const matcher = patternRes.ok;
+  const isRegex = parsed.mode === 'regex';
+  const regex = isRegex ? parsed.regex : null;
+  // 字面量匹配针：ignoreCase 时两侧统一小写比较（与 text_grep 一致），元字符不参与任何转义
+  const needle = isRegex ? '' : ignoreCase ? parsed.value.toLowerCase() : parsed.value;
 
   const allMatches: ContentMatch[] = [];
-  const isRegex = matcher instanceof RegExp;
-  const needle = !isRegex
-    ? ignoreCase
-      ? (matcher as string).toLowerCase()
-      : (matcher as string)
-    : '';
+  let totalLines = 0;
 
   for (const file of candidateFiles) {
     const full = path.join(cwd, file);
@@ -360,12 +336,14 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     if (isBinary(buf)) continue;
 
     const content = buf.toString('utf8');
-    const lines = content.split('\n');
+    // 与 text_grep 共用 splitLines：末尾换行不产生幻影空行，行号与总行数口径一致
+    const lines = splitLines(content);
+    totalLines += lines.length;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line === undefined) continue;
-      const matched = isRegex
-        ? (matcher as RegExp).test(line)
+      const matched = regex
+        ? regex.test(line)
         : ignoreCase
           ? line.toLowerCase().includes(needle)
           : line.includes(needle);
@@ -388,13 +366,31 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     matches = allMatches.slice(0, maxResults);
   }
 
-  return ok({ matches, count: matches.length, truncated }) as unknown as AnyToolResult;
+  const payload: Record<string, unknown> = {
+    matches,
+    count: matches.length,
+    truncated,
+    // 模式标识：告知调用方 pattern 被按哪种模式解释（literal=字面量 / regex=正则）
+    patternMode: parsed.mode,
+  };
+  // 双向 hint（工单02 引擎共享，与 text_grep 提示行为逐行一致）；无规则触发不占位。
+  // matchCount 必须传截断前真实总数（t6/H1）：否则 maxResults 截断场景下
+  // 「命中异常偏多」判据永远够不到阈值，残余洞兜底失效。
+  const hint = buildSearchHint({
+    patternMode: parsed.mode,
+    pattern,
+    matchCount: allMatches.length,
+    totalLines,
+  });
+  if (hint !== undefined) payload['hint'] = hint;
+
+  return ok(payload) as unknown as AnyToolResult;
 }
 
 export const searchContentTool: Tool = {
   name: 'search_content',
   description:
-    '跨文件内容搜索（≈ grep），返回 [{file, line, text}]。pattern 支持 /正则/ 形式，自动跳过二进制文件。',
+    '跨文件内容搜索（≈ grep），返回 [{file, line, text}]，自动跳过二进制文件。pattern 默认按字面量子串匹配——元字符一律原样，含反斜杠的路径免转义直接可搜，如 C:\\Users\\alice 反斜杠原样参与匹配；写 "a|b" 只匹配 a|b 本身。需要正则时用首尾斜杠包裹并附尾部可选 flags i/m/s，如 "/a|b/" 匹配 a 或 b、"/\\d{3}/im" 忽略大小写匹配三位数字，体内斜杠须写作 \\/。判定永远向字面量收敛：/usr/bin、/api/v1/ 等不符合规范的写法整体按字面量处理。已知残余洞：形如 /tmp/ 的首尾斜杠短字面量会被判为正则 tmp——命中异常偏多时结果附 hint 兜底。与 text_grep 对同一 pattern 的解释完全一致，返回 count 与 patternMode（literal/regex）。',
   inputSchema: searchContentInputSchema,
   handler: searchContentHandler,
 };

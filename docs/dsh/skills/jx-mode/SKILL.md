@@ -15,7 +15,7 @@ JX 模式 = 标准能力 + 两条规则。规则要点已写在 persona 里，�
 | --- | --- | --- |
 | 读文件 | 内置 read / `cat` / `Get-Content` | `fs_read`（带行号）；要原始全文用 `cat` |
 | 写/覆盖文件 | 内置 write / 重定向 | `fs_write`（默认 utf-8，支持 gbk 与追加） |
-| 定点修改 | 内置 edit | `text_replace`（正则 + `$1` 回引用） |
+| 定点修改 | 内置 edit | `text_replace`（pattern 默认字面量、`/正则/` 启用正则；字面量模式 `$1` 原样插入，正则模式才 `$1` 回引用） |
 | 找文件路径 | 内置 glob / `find` | `search_glob`；按名字递归找用 `find` |
 | 搜内容 | 内置 grep / `grep` | `search_content`（跨文件）；单文件带上下文用 `text_grep` |
 | 列目录 | `ls` / 内置列目录 | `fs_list`（glob 过滤、recursive、sort） |
