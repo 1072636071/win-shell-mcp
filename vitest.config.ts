@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
+    // git/pkg/process 等用例大量 spawn 子进程，并行负载下单次启动可能超过默认 5s
+    testTimeout: 15000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],

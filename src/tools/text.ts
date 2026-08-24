@@ -7,35 +7,26 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
-import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode, toErrorCode, toErrorMessage } from '../contract/errors.js';
+import { ok, truncate, type AnyToolResult } from '../contract/output.js';
+import { ErrorCode } from '../contract/errors.js';
+import { codedError, toFail } from '../utils/errors.js';
+import { escapeRegex } from '../utils/glob.js';
 import type { Tool } from '../registry.js';
 
 // ─── 辅助 ───────────────────────────────────────────────
 
-/** 文件读取错误（携带标准错误码）。 */
-class FileError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'FileError';
-  }
-}
-
 /**
  * 读取文本文件，将 Node errno 映射为标准错误码。
- * @throws {FileError} 文件不存在或为目录等
+ * @throws 携带业务错误码的错误（ENOENT/EISDIR 等），由 toFail 统一转 fail
  */
 async function readTextFile(path: string): Promise<string> {
   try {
     return await readFile(path, 'utf-8');
   } catch (err) {
     const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
-    if (code === 'ENOENT') throw new FileError(ErrorCode.ENOENT, `文件不存在: ${path}`);
-    if (code === 'EISDIR') throw new FileError(ErrorCode.EISDIR, `是目录而非文件: ${path}`);
-    throw new FileError(toErrorCode(err), toErrorMessage(err));
+    if (code === 'ENOENT') throw codedError(ErrorCode.ENOENT, `文件不存在: ${path}`);
+    if (code === 'EISDIR') throw codedError(ErrorCode.EISDIR, `是目录而非文件: ${path}`);
+    throw err;
   }
 }
 
@@ -51,14 +42,6 @@ function splitLines(content: string): string[] {
   return lines;
 }
 
-/** 将捕获的错误转为失败结果。 */
-function toFailResult(err: unknown): AnyToolResult {
-  if (err instanceof FileError) {
-    return fail(err.code, err.message) as unknown as AnyToolResult;
-  }
-  return fail(toErrorCode(err), toErrorMessage(err)) as unknown as AnyToolResult;
-}
-
 // ─── text_grep ──────────────────────────────────────────
 
 export const textGrepInputSchema = z.object({
@@ -70,11 +53,6 @@ export const textGrepInputSchema = z.object({
 });
 
 export type TextGrepInput = z.infer<typeof textGrepInputSchema>;
-
-/** 转义正则特殊字符，用于将字面量安全转为正则。 */
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /**
  * 解析 grep pattern：若以 / 包裹则为正则，否则为字符串字面量。
@@ -106,7 +84,7 @@ export async function textGrepHandler(args: Record<string, unknown>): Promise<An
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const lines = splitLines(content);
@@ -149,7 +127,7 @@ export async function textGrepHandler(args: Record<string, unknown>): Promise<An
     matches,
     count: limitedMatches.length,
     truncated,
-  }) as unknown as AnyToolResult;
+  });
 }
 
 export const textGrepTool: Tool = {
@@ -176,13 +154,13 @@ export async function textHeadHandler(args: Record<string, unknown>): Promise<An
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const allLines = splitLines(content);
   const head = n > allLines.length ? allLines : allLines.slice(0, n);
 
-  return ok({ lines: head, total: allLines.length }) as unknown as AnyToolResult;
+  return ok({ lines: head, total: allLines.length });
 }
 
 export const textHeadTool: Tool = {
@@ -209,13 +187,13 @@ export async function textTailHandler(args: Record<string, unknown>): Promise<An
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const allLines = splitLines(content);
   const tail = n >= allLines.length ? allLines : allLines.slice(allLines.length - n);
 
-  return ok({ lines: tail, total: allLines.length }) as unknown as AnyToolResult;
+  return ok({ lines: tail, total: allLines.length });
 }
 
 export const textTailTool: Tool = {
@@ -240,7 +218,7 @@ export async function textWcHandler(args: Record<string, unknown>): Promise<AnyT
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const allLines = splitLines(content);
@@ -253,7 +231,7 @@ export async function textWcHandler(args: Record<string, unknown>): Promise<AnyT
     words,
     chars,
     bytes,
-  }) as unknown as AnyToolResult;
+  });
 }
 
 export const textWcTool: Tool = {
@@ -390,7 +368,7 @@ export async function textDiffHandler(args: Record<string, unknown>): Promise<An
     aContent = await readTextFile(aPath);
     bContent = await readTextFile(bPath);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const aLines = splitLines(aContent);
@@ -398,7 +376,7 @@ export async function textDiffHandler(args: Record<string, unknown>): Promise<An
   const diff = formatUnifiedDiff(aPath, bPath, aLines, bLines, context);
   const same = diff === '';
 
-  return ok({ diff: truncate(diff), same }) as unknown as AnyToolResult;
+  return ok({ diff: truncate(diff), same });
 }
 
 export const textDiffTool: Tool = {
@@ -478,7 +456,7 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const { content: newContent, replaced } = applyReplace(content, pattern, replacement, maxReplace);
@@ -489,7 +467,7 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
       await writeFile(path, newContent, 'utf-8');
       written = true;
     } catch (err) {
-      return toFailResult(err);
+      return toFail(err);
     }
   }
 
@@ -497,7 +475,7 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
     replaced,
     content: truncate(newContent),
     written,
-  }) as unknown as AnyToolResult;
+  });
 }
 
 export const textReplaceTool: Tool = {

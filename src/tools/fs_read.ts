@@ -14,7 +14,7 @@ import { join, relative } from 'node:path';
 import { z } from 'zod';
 import { ok, fail, truncate, withVerbose, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode } from '../contract/errors.js';
-import { failFromError } from '../utils/errors.js';
+import { toFail } from '../utils/errors.js';
 import { decodeBuffer } from '../encoding/detect.js';
 import type { Tool } from '../registry.js';
 
@@ -133,10 +133,10 @@ export async function fsListHandler(args: Record<string, unknown>): Promise<AnyT
       // withVerbose 不适用：minimal 与 full 计算路径不同（避免不必要的 lstat IO）
       if (verbose) {
         const entries = await listVerboseRecursive(path, path);
-        return ok({ entries }) as unknown as AnyToolResult;
+        return ok({ entries });
       }
       const entries = await listSimpleRecursive(path, path);
-      return ok({ entries }) as unknown as AnyToolResult;
+      return ok({ entries });
     }
 
     // 非递归
@@ -153,13 +153,13 @@ export async function fsListHandler(args: Record<string, unknown>): Promise<AnyT
           size: entryStats.size,
         });
       }
-      return ok({ entries: verboseEntries }) as unknown as AnyToolResult;
+      return ok({ entries: verboseEntries });
     }
 
     const simpleEntries: string[] = entries.map((e) => e.name);
-    return ok({ entries: simpleEntries }) as unknown as AnyToolResult;
+    return ok({ entries: simpleEntries });
   } catch (err) {
-    return failFromError(err);
+    return toFail(err);
   }
 }
 
@@ -236,9 +236,9 @@ export async function fsReadHandler(args: Record<string, unknown>): Promise<AnyT
       content: truncatedContent,
       truncated,
       lines: totalLines,
-    }) as unknown as AnyToolResult;
+    });
   } catch (err) {
-    return failFromError(err);
+    return toFail(err);
   }
 }
 
@@ -289,9 +289,9 @@ export async function fsStatHandler(args: Record<string, unknown>): Promise<AnyT
       mtime: stats.mtimeMs,
       birthtime: stats.birthtimeMs,
     };
-    return ok(result) as unknown as AnyToolResult;
+    return ok(result);
   } catch (err) {
-    return failFromError(err);
+    return toFail(err);
   }
 }
 

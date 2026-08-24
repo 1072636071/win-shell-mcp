@@ -14,6 +14,7 @@ win-shell-mcp —— 「AI 原生的跨平台命令抽象层」。用 Node.js �
 | 输出契约（output contract） | 命令的标准化返回格式（JSON），含成功/失败、结果数据、错误信息 |
 | 极简输出 | 设计原则：返回内容尽可能简短、只含 AI 决策所需的最小信息，降低 token 消耗 |
 | 兜底执行（exec fallback） | 当抽象命令无法覆盖某个操作时，保留的原生命令执行通道（全权限，见 ADR-0002） |
+| 命令执行模块 | 深模块（`src/exec/run.ts`）：统一拥有子进程执行机器（spawn、输出收集、超时、进程树终止、GBK 解码），接口只有 `runCommand`；shell_exec、pkg_run、git 均调用它（见 ADR-0003） |
 
 ## 已确定的决策
 

@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { encode as iconvEncode } from 'iconv-lite';
 import { ok, fail, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode, toErrorCode } from '../contract/errors.js';
-import { failFromError } from '../utils/errors.js';
+import { toFail } from '../utils/errors.js';
 import type { Tool } from '../registry.js';
 
 /** fs_write 输入 schema。 */
@@ -99,20 +99,20 @@ export async function fsWriteHandler(args: Record<string, unknown>): Promise<Any
     try {
       const parentStat = await fs.stat(parent);
       if (!parentStat.isDirectory()) {
-        return fail(ErrorCode.ENOTDIR, `父路径不是目录: ${parent}`) as unknown as AnyToolResult;
+        return fail(ErrorCode.ENOTDIR, `父路径不是目录: ${parent}`);
       }
     } catch (e) {
       if (toErrorCode(e) === ErrorCode.ENOENT) {
-        return fail(ErrorCode.ENOENT, `父目录不存在: ${parent}`) as unknown as AnyToolResult;
+        return fail(ErrorCode.ENOENT, `父目录不存在: ${parent}`);
       }
-      return failFromError(e);
+      return toFail(e);
     }
 
     const flag = append ? 'a' : 'w';
     await fs.writeFile(filePath, buf, { flag });
-    return ok({ written: buf.length }) as unknown as AnyToolResult;
+    return ok({ written: buf.length });
   } catch (e) {
-    return failFromError(e);
+    return toFail(e);
   }
 }
 
@@ -136,19 +136,19 @@ export async function fsMkdirHandler(args: Record<string, unknown>): Promise<Any
       const stat = await fs.stat(dirPath);
       existed = true;
       if (!stat.isDirectory()) {
-        return fail(ErrorCode.ENOTDIR, `已存在且非目录: ${dirPath}`) as unknown as AnyToolResult;
+        return fail(ErrorCode.ENOTDIR, `已存在且非目录: ${dirPath}`);
       }
     } catch (e) {
       if (toErrorCode(e) !== ErrorCode.ENOENT) {
-        return failFromError(e);
+        return toFail(e);
       }
       // 不存在，继续创建
     }
 
     await fs.mkdir(dirPath, { recursive });
-    return ok({ created: !existed }) as unknown as AnyToolResult;
+    return ok({ created: !existed });
   } catch (e) {
-    return failFromError(e);
+    return toFail(e);
   }
 }
 
@@ -176,15 +176,15 @@ export async function fsRmHandler(args: Record<string, unknown>): Promise<AnyToo
       if (toErrorCode(e) === ErrorCode.ENOENT) {
         existed = false;
       } else {
-        return failFromError(e);
+        return toFail(e);
       }
     }
 
     if (!existed) {
       if (force) {
-        return ok({ removed: false }) as unknown as AnyToolResult;
+        return ok({ removed: false });
       }
-      return fail(ErrorCode.ENOENT, `路径不存在: ${targetPath}`) as unknown as AnyToolResult;
+      return fail(ErrorCode.ENOENT, `路径不存在: ${targetPath}`);
     }
 
     // 此时 existed 为 true，stat 已赋值
@@ -197,20 +197,20 @@ export async function fsRmHandler(args: Record<string, unknown>): Promise<AnyToo
           return fail(
             ErrorCode.EACCES,
             `目录非空，需 recursive: ${targetPath}`,
-          ) as unknown as AnyToolResult;
+          );
         }
         await fs.rmdir(targetPath);
-        return ok({ removed: true }) as unknown as AnyToolResult;
+        return ok({ removed: true });
       }
       await fs.rm(targetPath, { recursive: true, force: false });
-      return ok({ removed: true }) as unknown as AnyToolResult;
+      return ok({ removed: true });
     }
 
     // 文件：直接删
     await fs.rm(targetPath);
-    return ok({ removed: true }) as unknown as AnyToolResult;
+    return ok({ removed: true });
   } catch (e) {
-    return failFromError(e);
+    return toFail(e);
   }
 }
 
@@ -233,13 +233,13 @@ export async function fsCpHandler(args: Record<string, unknown>): Promise<AnyToo
       srcStat = await fs.stat(src);
     } catch (e) {
       if (toErrorCode(e) === ErrorCode.ENOENT) {
-        return fail(ErrorCode.ENOENT, `源路径不存在: ${src}`) as unknown as AnyToolResult;
+        return fail(ErrorCode.ENOENT, `源路径不存在: ${src}`);
       }
-      return failFromError(e);
+      return toFail(e);
     }
 
     if (srcStat.isDirectory() && !recursive) {
-      return fail(ErrorCode.EINVAL, `复制目录需 recursive: ${src}`) as unknown as AnyToolResult;
+      return fail(ErrorCode.EINVAL, `复制目录需 recursive: ${src}`);
     }
 
     if (srcStat.isDirectory()) {
@@ -247,9 +247,9 @@ export async function fsCpHandler(args: Record<string, unknown>): Promise<AnyToo
     } else {
       await fs.copyFile(src, dest);
     }
-    return ok({ copied: true }) as unknown as AnyToolResult;
+    return ok({ copied: true });
   } catch (e) {
-    return failFromError(e);
+    return toFail(e);
   }
 }
 
@@ -271,26 +271,26 @@ export async function fsMvHandler(args: Record<string, unknown>): Promise<AnyToo
       await fs.stat(src);
     } catch (e) {
       if (toErrorCode(e) === ErrorCode.ENOENT) {
-        return fail(ErrorCode.ENOENT, `源路径不存在: ${src}`) as unknown as AnyToolResult;
+        return fail(ErrorCode.ENOENT, `源路径不存在: ${src}`);
       }
-      return failFromError(e);
+      return toFail(e);
     }
 
     // 预检查 dest 是否已存在
     try {
       await fs.stat(dest);
-      return fail(ErrorCode.EINVAL, `目标已存在: ${dest}`) as unknown as AnyToolResult;
+      return fail(ErrorCode.EINVAL, `目标已存在: ${dest}`);
     } catch (e) {
       if (toErrorCode(e) !== ErrorCode.ENOENT) {
-        return failFromError(e);
+        return toFail(e);
       }
       // dest 不存在，继续
     }
 
     await fs.rename(src, dest);
-    return ok({ moved: true }) as unknown as AnyToolResult;
+    return ok({ moved: true });
   } catch (e) {
-    return failFromError(e);
+    return toFail(e);
   }
 }
 
@@ -315,22 +315,22 @@ export async function fsTouchHandler(args: Record<string, unknown>): Promise<Any
       if (toErrorCode(e) === ErrorCode.ENOENT) {
         existed = false;
       } else {
-        return failFromError(e);
+        return toFail(e);
       }
     }
 
     if (!existed) {
       await fs.writeFile(filePath, '', { flag: 'w' });
-      return ok({ created: true }) as unknown as AnyToolResult;
+      return ok({ created: true });
     }
 
     if (update) {
       const now = new Date();
       await fs.utimes(filePath, now, now);
     }
-    return ok({ created: false }) as unknown as AnyToolResult;
+    return ok({ created: false });
   } catch (e) {
-    return failFromError(e);
+    return toFail(e);
   }
 }
 

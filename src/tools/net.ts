@@ -22,7 +22,8 @@ import {
   withVerbose,
   type AnyToolResult,
 } from '../contract/output.js';
-import { ErrorCode, toErrorMessage, type ErrorCodeValue } from '../contract/errors.js';
+import { ErrorCode, toErrorMessage } from '../contract/errors.js';
+import { codedError, toFail } from '../utils/errors.js';
 import type { Tool } from '../registry.js';
 
 // ===================== net_get / net_post 共享 =====================
@@ -94,29 +95,13 @@ function validateUrl(url: unknown): AnyToolResult | null {
 }
 
 /**
- * 网络请求错误，携带业务错误码。
- *
- * fetchWithTimeout 在超时或连接失败时抛此错误，
- * handler 捕获后通过 httpErrorToFail 转为 fail 结果。
- */
-class HttpError extends Error {
-  readonly code: ErrorCodeValue;
-
-  constructor(code: ErrorCodeValue, message: string) {
-    super(message);
-    this.name = 'HttpError';
-    this.code = code;
-  }
-}
-
-/**
  * 发送 HTTP 请求并支持超时中断。
  *
  * @param url 目标 URL
  * @param init fetch init（method, headers, body 等）
  * @param timeoutMs 超时毫秒
  * @returns fetch Response
- * @throws 超时抛 HttpError（code=NET_TIMEOUT），连接失败抛 HttpError（code=NET_FAIL）
+ * @throws 超时抛携带 NET_TIMEOUT 码的错误，连接失败抛携带 NET_FAIL 码的错误
  */
 async function fetchWithTimeout(
   url: string,
@@ -129,9 +114,9 @@ async function fetchWithTimeout(
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (isAbortError(err)) {
-      throw new HttpError(ErrorCode.NET_TIMEOUT, `网络超时: ${url}`);
+      throw codedError(ErrorCode.NET_TIMEOUT, `网络超时: ${url}`);
     }
-    throw new HttpError(ErrorCode.NET_FAIL, `网络连接失败: ${toErrorMessage(err)}`);
+    throw codedError(ErrorCode.NET_FAIL, `网络连接失败: ${toErrorMessage(err)}`);
   } finally {
     clearTimeout(timer);
   }
@@ -164,20 +149,7 @@ async function buildHttpResult(
     duration,
     truncated,
   };
-  return ok(withVerbose(minimal, full, verbose)) as unknown as AnyToolResult;
-}
-
-/**
- * 将 fetchWithTimeout 抛的 HttpError 转为 fail 结果。
- *
- * @param err 捕获的错误
- * @returns fail 结果
- */
-function httpErrorToFail(err: unknown): AnyToolResult {
-  if (err instanceof HttpError) {
-    return fail(err.code, err.message);
-  }
-  return fail(ErrorCode.NET_FAIL, toErrorMessage(err));
+  return ok(withVerbose(minimal, full, verbose));
 }
 
 // ===================== net_get =====================
@@ -232,7 +204,7 @@ export async function netGetHandler(args: Record<string, unknown>): Promise<AnyT
     const duration = Date.now() - start;
     return await buildHttpResult(response, duration, verbose);
   } catch (err) {
-    return httpErrorToFail(err);
+    return toFail(err, ErrorCode.NET_FAIL);
   }
 }
 
@@ -319,7 +291,7 @@ export async function netPostHandler(args: Record<string, unknown>): Promise<Any
     const duration = Date.now() - start;
     return await buildHttpResult(response, duration, verbose);
   } catch (err) {
-    return httpErrorToFail(err);
+    return toFail(err, ErrorCode.NET_FAIL);
   }
 }
 
@@ -415,7 +387,7 @@ export async function netDnsHandler(args: Record<string, unknown>): Promise<AnyT
         return fail(ErrorCode.EINVAL, `不支持的记录类型: ${recordType}`);
     }
     const result: NetDnsResult = { addresses, recordType };
-    return ok(result) as unknown as AnyToolResult;
+    return ok(result);
   } catch (err) {
     return fail(ErrorCode.NET_FAIL, `DNS 解析失败: ${toErrorMessage(err)}`);
   }
@@ -499,7 +471,7 @@ export async function netTcpHandler(args: Record<string, unknown>): Promise<AnyT
       cleanup();
       const duration = Date.now() - start;
       const result: NetTcpResult = { reachable, host, port, duration };
-      resolve(ok(result) as unknown as AnyToolResult);
+      resolve(ok(result));
     };
 
     timer = setTimeout(() => {

@@ -5,7 +5,8 @@
  * - ListToolsRequestSchema handler 返回工具列表
  * - CallToolRequestSchema handler 分发到对应工具
  *
- * 工具结果（ToolResult）序列化为 MCP text content（JSON）。
+ * 工具列表作为依赖传入（默认 `builtinTools`）——无全局注册状态，
+ * 测试可直接传入子集。工具结果（ToolResult）序列化为 MCP text content（JSON）。
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server';
@@ -17,7 +18,7 @@ import {
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { fail, isFail, type AnyToolResult } from './contract/output.js';
 import { ErrorCode, toErrorCode, toErrorMessage } from './contract/errors.js';
-import { findTool, getAllTools } from './registry.js';
+import { builtinTools, type Tool } from './registry.js';
 
 /** Server 信息。 */
 const SERVER_INFO = {
@@ -29,13 +30,17 @@ const SERVER_INFO = {
  * 列出所有工具的 MCP 描述（name、description、inputSchema JSON schema）。
  *
  * 供 ListTools handler 与测试使用。
+ *
+ * @param tools 工具列表，默认内置全部工具
  */
-export function listTools(): Array<{
+export function listTools(
+  tools: readonly Tool[] = builtinTools,
+): Array<{
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
 }> {
-  return getAllTools().map((tool) => ({
+  return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
     inputSchema: toJsonSchemaCompat(tool.inputSchema as never) as Record<string, unknown>,
@@ -50,13 +55,15 @@ export function listTools(): Array<{
  *
  * @param name 工具名
  * @param args 原始参数（未验证）
+ * @param tools 工具列表，默认内置全部工具
  * @returns 统一输出契约
  */
 export async function callTool(
   name: string,
   args: Record<string, unknown>,
+  tools: readonly Tool[] = builtinTools,
 ): Promise<AnyToolResult> {
-  const tool = findTool(name);
+  const tool = tools.find((t) => t.name === name);
   if (!tool) {
     return fail(ErrorCode.EINVAL, `Unknown tool: ${name}`);
   }
@@ -93,21 +100,23 @@ function toMcpContent(result: AnyToolResult): {
  * 创建 MCP Server 实例（注册 ListTools 与 CallTool handler）。
  *
  * 不连接 transport，供测试与入口使用。
+ *
+ * @param tools 工具列表，默认内置全部工具
  */
-export function createServer(): Server {
+export function createServer(tools: readonly Tool[] = builtinTools): Server {
   const server = new Server(SERVER_INFO, {
     capabilities: { tools: {} },
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = listTools();
-    return { tools } as never;
+    const listed = listTools(tools);
+    return { tools: listed } as never;
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
     const args = request.params.arguments ?? {};
-    const result = await callTool(name, args);
+    const result = await callTool(name, args, tools);
     return toMcpContent(result) as never;
   });
 
@@ -120,7 +129,7 @@ export function createServer(): Server {
  * 创建 server、连接 StdioServerTransport。
  */
 export async function startStdioServer(): Promise<Server> {
-  const server = createServer();
+  const server = createServer(builtinTools);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   return server;

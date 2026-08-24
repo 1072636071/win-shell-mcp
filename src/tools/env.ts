@@ -54,7 +54,7 @@ export async function envGetHandler(args: Record<string, unknown>): Promise<AnyT
   if (typeof name === 'string' && name.length > 0) {
     const value = process.env[name] ?? null;
     const result: EnvGetOneResult = { name, value };
-    return ok(result) as unknown as AnyToolResult;
+    return ok(result);
   }
 
   // 返回全部环境变量
@@ -65,7 +65,7 @@ export async function envGetHandler(args: Record<string, unknown>): Promise<AnyT
     }
   }
   const result: EnvGetAllResult = { vars, count: Object.keys(vars).length };
-  return ok(result) as unknown as AnyToolResult;
+  return ok(result);
 }
 
 /** env_get 工具定义。 */
@@ -117,7 +117,7 @@ export async function envSetHandler(args: Record<string, unknown>): Promise<AnyT
 
   process.env[name] = value;
   const result: EnvSetResult = { set: true, name };
-  return ok(result) as unknown as AnyToolResult;
+  return ok(result);
 }
 
 /** env_set 工具定义。 */
@@ -163,7 +163,7 @@ export async function envUnsetHandler(args: Record<string, unknown>): Promise<An
 
   delete process.env[name];
   const result: EnvUnsetResult = { unset: true, name };
-  return ok(result) as unknown as AnyToolResult;
+  return ok(result);
 }
 
 /** env_unset 工具定义。 */

@@ -1,28 +1,27 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { Server } from '@modelcontextprotocol/sdk/server';
 import { Client } from '@modelcontextprotocol/sdk/client';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { listTools, callTool, createServer } from '../src/server.js';
-import { registerTool, resetRegistry, findTool, getAllTools, type Tool } from '../src/registry.js';
+import { builtinTools, type Tool } from '../src/registry.js';
 import { systemInfoTool } from '../src/tools/system.js';
 import { isOk, isFail } from '../src/contract/output.js';
 
-// 每个测试前重置注册表为仅含 system_info 的基线状态
-beforeEach(() => {
-  resetRegistry();
-  registerTool(systemInfoTool);
-});
+// 测试直接传入工具列表子集——无全局注册状态，无需 beforeEach 重置
+
+/** 仅含 system_info 的基线工具列表。 */
+const baseline = [systemInfoTool];
 
 describe('listTools', () => {
   it('返回 system_info 工具', () => {
-    const tools = listTools();
+    const tools = listTools(baseline);
     const names = tools.map((t) => t.name);
     expect(names).toContain('system_info');
   });
 
   it('工具项含 name、description、inputSchema', () => {
-    const tools = listTools();
+    const tools = listTools(baseline);
     const sys = tools.find((t) => t.name === 'system_info');
     expect(sys).toBeDefined();
     expect(sys?.description.length).toBeGreaterThan(0);
@@ -30,28 +29,33 @@ describe('listTools', () => {
   });
 
   it('inputSchema 是 JSON schema 对象（type=object）', () => {
-    const tools = listTools();
+    const tools = listTools(baseline);
     const sys = tools.find((t) => t.name === 'system_info');
     expect(sys?.inputSchema['type']).toBe('object');
     expect(sys?.inputSchema['properties']).toBeDefined();
   });
 
   it('inputSchema 含 verbose 属性', () => {
-    const tools = listTools();
+    const tools = listTools(baseline);
     const sys = tools.find((t) => t.name === 'system_info');
     const props = sys?.inputSchema['properties'] as Record<string, unknown>;
     expect(props['verbose']).toBeDefined();
+  });
+
+  it('默认参数列出全部内置工具', () => {
+    const tools = listTools();
+    expect(tools.length).toBe(builtinTools.length);
   });
 });
 
 describe('callTool 正常路径', () => {
   it('调用 system_info 返回 ok', async () => {
-    const result = await callTool('system_info', {});
+    const result = await callTool('system_info', {}, baseline);
     expect(isOk(result)).toBe(true);
   });
 
   it('system_info verbose=true 返回完整字段', async () => {
-    const result = await callTool('system_info', { verbose: true });
+    const result = await callTool('system_info', { verbose: true }, baseline);
     if (isOk(result)) {
       expect(result['uptime']).toBeDefined();
       expect(result['os']).toBeDefined();
@@ -59,7 +63,7 @@ describe('callTool 正常路径', () => {
   });
 
   it('system_info verbose=false 返回极简', async () => {
-    const result = await callTool('system_info', { verbose: false });
+    const result = await callTool('system_info', { verbose: false }, baseline);
     if (isOk(result)) {
       expect(result['uptime']).toBeUndefined();
     }
@@ -68,7 +72,7 @@ describe('callTool 正常路径', () => {
 
 describe('callTool 错误路径', () => {
   it('未知工具返回 fail EINVAL', async () => {
-    const result = await callTool('nonexistent', {});
+    const result = await callTool('nonexistent', {}, baseline);
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('EINVAL');
@@ -77,7 +81,7 @@ describe('callTool 错误路径', () => {
   });
 
   it('参数类型非法返回 fail EINVAL', async () => {
-    const result = await callTool('system_info', { verbose: 'not-a-boolean' });
+    const result = await callTool('system_info', { verbose: 'not-a-boolean' }, baseline);
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('EINVAL');
@@ -94,8 +98,7 @@ describe('callTool 错误路径', () => {
         throw new Error('boom');
       },
     };
-    registerTool(throwingTool);
-    const result = await callTool('throwing', {});
+    const result = await callTool('throwing', {}, [throwingTool]);
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('EUNKNOWN');
@@ -114,8 +117,7 @@ describe('callTool 错误路径', () => {
         throw err;
       },
     };
-    registerTool(codedTool);
-    const result = await callTool('coded', {});
+    const result = await callTool('coded', {}, [codedTool]);
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('ENOENT');
@@ -132,8 +134,7 @@ describe('callTool 错误路径', () => {
         throw 'string error';
       },
     };
-    registerTool(stringThrowTool);
-    const result = await callTool('string_throw', {});
+    const result = await callTool('string_throw', {}, [stringThrowTool]);
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('EUNKNOWN');
@@ -144,27 +145,26 @@ describe('callTool 错误路径', () => {
 
 describe('createServer', () => {
   it('返回 Server 实例', () => {
-    const server = createServer();
+    const server = createServer(baseline);
     expect(server).toBeInstanceOf(Server);
   });
 
   it('多次调用返回不同实例', () => {
-    const a = createServer();
-    const b = createServer();
+    const a = createServer(baseline);
+    const b = createServer(baseline);
     expect(a).not.toBe(b);
   });
 });
 
-describe('registry 基线', () => {
-  it('findTool 找到 system_info', () => {
-    expect(findTool('system_info')).toBeDefined();
+describe('builtinTools', () => {
+  it('是包含全部内置工具的常量列表', () => {
+    expect(builtinTools.length).toBeGreaterThan(0);
+    expect(builtinTools.some((t) => t.name === 'system_info')).toBe(true);
   });
 
-  it('getAllTools 返回数组副本', () => {
-    const a = getAllTools();
-    const b = getAllTools();
-    expect(a).not.toBe(b);
-    expect(a.length).toBe(b.length);
+  it('工具名唯一', () => {
+    const names = builtinTools.map((t) => t.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 });
 
@@ -178,7 +178,7 @@ describe('createServer 端到端', () => {
 
   it('Client listTools 含 system_info', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
-    const server = createServer();
+    const server = createServer(baseline);
     const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
     await server.connect(serverT);
     await client.connect(clientT);
@@ -193,7 +193,7 @@ describe('createServer 端到端', () => {
 
   it('Client callTool system_info 返回 ok', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
-    const server = createServer();
+    const server = createServer(baseline);
     const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
     await server.connect(serverT);
     await client.connect(clientT);
@@ -215,7 +215,7 @@ describe('createServer 端到端', () => {
 
   it('Client callTool 未知工具返回 isError', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
-    const server = createServer();
+    const server = createServer(baseline);
     const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
     await server.connect(serverT);
     await client.connect(clientT);
@@ -230,7 +230,7 @@ describe('createServer 端到端', () => {
 
   it('Client callTool system_info verbose 返回完整字段', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
-    const server = createServer();
+    const server = createServer(baseline);
     const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
     await server.connect(serverT);
     await client.connect(clientT);

@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer, listTools, callTool } from '../../src/server.js';
-import { getAllTools } from '../../src/registry.js';
+import { builtinTools } from '../../src/registry.js';
 import { isOk, isFail } from '../../src/contract/output.js';
 
 /** 期望的工具总数。 */
@@ -96,20 +96,18 @@ async function setupClient(): Promise<{
 }
 
 describe('集成测试 - 工具注册', () => {
-  it('getAllTools 返回 40 个工具', () => {
-    const tools = getAllTools();
-    expect(tools.length).toBe(EXPECTED_TOOL_COUNT);
+  it('builtinTools 含 40 个工具', () => {
+    expect(builtinTools.length).toBe(EXPECTED_TOOL_COUNT);
   });
 
   it('工具名唯一（无重复）', () => {
-    const tools = getAllTools();
-    const names = tools.map((t) => t.name);
+    const names = builtinTools.map((t) => t.name);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
   });
 
   it('包含全部期望的工具名', () => {
-    const names = new Set(getAllTools().map((t) => t.name));
+    const names = new Set(builtinTools.map((t) => t.name));
     for (const expected of EXPECTED_TOOL_NAMES) {
       expect(names.has(expected)).toBe(true);
     }
@@ -268,9 +266,9 @@ describe('集成测试 - Client 端到端 callTool', () => {
   });
 });
 
-describe('集成测试 - listTools 与 getAllTools 一致性', () => {
-  it('listTools 与 getAllTools 返回相同工具名集合', () => {
-    const allNames = new Set(getAllTools().map((t) => t.name));
+describe('集成测试 - listTools 与 builtinTools 一致性', () => {
+  it('listTools 与 builtinTools 返回相同工具名集合', () => {
+    const allNames = new Set(builtinTools.map((t) => t.name));
     const listNames = new Set(listTools().map((t) => t.name));
     expect(allNames.size).toBe(listNames.size);
     for (const name of allNames) {
