@@ -5,7 +5,9 @@
  * 用 iconv-lite 做 GBK 解码，用 TextDecoder fatal 模式做 UTF-8 合法性检查。
  */
 
-import { decode as iconvDecode } from 'iconv-lite';
+import iconvLite from 'iconv-lite';
+
+const iconvDecode = iconvLite.decode;
 
 /**
  * 检测 buffer 是否可能是 GBK 编码。

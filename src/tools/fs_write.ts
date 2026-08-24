@@ -13,7 +13,9 @@
 import { promises as fs, type Stats } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { encode as iconvEncode } from 'iconv-lite';
+import iconvLite from 'iconv-lite';
+
+const iconvEncode = iconvLite.encode;
 import { ok, fail, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode, toErrorCode } from '../contract/errors.js';
 import { failFromError } from '../utils/errors.js';
