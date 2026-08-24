@@ -1,0 +1,183 @@
+{
+  "name": "pattern-dual-mode",
+  "id": "pattern-dual-mode",
+  "description": "实现 .scratch/04-pattern-dual-mode-observability 的 5 个工单：text_grep/search_content/text_replace 三工具统一「字面量默认、/…/ 正则」双模语义 + patternMode 输出 + 双向 hint 可观测层 + text_replace 安全三分支 + 文案文档收口（ADR-0013）。完成标准：全部工单 resolved、全量测试通过、代码审查通过并 commit。",
+  "captainSessionId": "session-61640066-0dbc-44fe-be7a-65158904257d",
+  "createdAt": 1787548814778,
+  "members": [
+    {
+      "id": "a52590a4-a752-45ba-8b2f-c4034e068b34",
+      "name": "core-eng",
+      "role": "engineer",
+      "provider": "opencodeai",
+      "model": "x-preview-f-free",
+      "joinedAt": 1787548821566,
+      "status": "removed"
+    },
+    {
+      "id": "41e9fae4-af7b-40fb-8f36-68a70b814ca0",
+      "name": "replace-eng",
+      "role": "engineer",
+      "provider": "opencodeai",
+      "model": "x-preview-f-free",
+      "joinedAt": 1787548830880,
+      "status": "removed"
+    },
+    {
+      "id": "85f5df89-bc06-4b4b-801a-4844922bdbbf",
+      "name": "search-eng",
+      "role": "engineer",
+      "provider": "opencodeai",
+      "model": "x-preview-f-free",
+      "joinedAt": 1787548836388,
+      "status": "removed"
+    },
+    {
+      "id": "6f951d1f-95d6-458e-9ad2-741ddc753ab4",
+      "name": "docs-eng",
+      "role": "engineer",
+      "provider": "opencodeai",
+      "model": "x-preview-f-free",
+      "joinedAt": 1787548839921,
+      "status": "removed"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "工单01 · 严格判定规则落地 text_grep（含 patternMode 输出）",
+      "description": "实现 .scratch/04-pattern-dual-mode-observability/issues/01-strict-pattern-parsing-text-grep.md。核心：新建共享解析器 src/utils/pattern.ts（严格判定：整串为正则当且仅当首尾未转义斜杠包裹、内部斜杠必须 \\/、末段仅合法 flags i/m/s、正则体非空；任一不满足→整串字面量；结构似正则但 flags 非法→EINVAL 报错并列明本工具合法标志）；text_grep 切换到该解析器并在成功结果附 patternMode 字段；表驱动测试覆盖全部判定形态（多斜杠路径、恰好首尾斜杠短字面量、空体、合法/非法标志、转义斜杠体、纯元字符字面量），全部经工具 handler 外部行为断言。ignoreCase 对两模式均生效、GBK 不回归。完成后将工单文件 Status 改为 resolved 并在 ## 评论 顶部追加完成纪要。",
+      "status": "completed",
+      "assignee": "core-eng",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1787548875246,
+      "updatedAt": 1787550282397,
+      "attemptId": "93980b0c-6484-4cdc-9c0f-c058941b13e4",
+      "reassigning": false,
+      "output": "工单01 完成。新建共享解析器 src/utils/pattern.ts（严格判定：首尾未转义斜杠包裹+体内斜杠必须\\/+体非空+末段仅合法flags i/m/s，任一结构不满足归字面量；白名单外字母 flags→EINVAL 并列明 ims；flags 去重、ignoreCase 合并、非法正则体报错）；text_grep 切换至该解析器并在成功结果附 patternMode 字段（含0命中），schema/description 同步改写；未动 search_content（工单03承接）。表驱动 28 行经 handler 外部行为断言覆盖全部判定形态 + GBK 三态用例；全量 845 passed 零回归，typecheck 通过，覆盖率达标（pattern.ts 100% lines）。关键裁定已记录于 pattern.ts 头注释与工单评论：/usr/bin 与 /foo/q 结构同形无法区分，按验收口径判 EINVAL（ADR-0013 效果表该示例内部不自洽），如需改判请在工单05前提出。工单文件 Status→resolved + 完成纪要置顶。"
+    },
+    {
+      "id": "t2",
+      "subject": "工单02 · text_grep 双向提示表",
+      "description": "实现 .scratch/04-pattern-dual-mode-observability/issues/02-grep-bidirectional-hints.md。核心：四类可疑误用提示（①字面量 0 命中且含正则元字符→「像是正则但按字面量搜了」+给出 /…/ 包裹写法；②字面量 0 命中→拼写/大小写通用提示；③命中数异常偏多且形似正则→「疑似被当作正则」（兜住 /tmp/ 类误判）；④正则模式 0 命中且呈反斜杠路径样→反斜杠被当转义、建议改字面量）。hint 为成功响应可选字段（不触发不占位）；元字符清单、「形似正则」「异常偏多」判据常量集中在共享单一位置（建议与解析器同处 src/utils/ 下）；每类场景有触发/不触发正反用例，文案自解释且指向可行动作。完成后将工单文件 Status 改为 resolved 并在 ## 评论 顶部追加完成纪要。",
+      "status": "completed",
+      "assignee": "core-eng",
+      "dependencies": [
+        "t1"
+      ],
+      "attempt": 1,
+      "createdAt": 1787548897555,
+      "updatedAt": 1787551177855,
+      "attemptId": "a873b5e6-36a3-43e0-999a-6441a2ea06e7",
+      "reassigning": false,
+      "output": "工单02 完成。新建可复用 hint 引擎 src/utils/hints.ts（buildSearchHint 纯函数，四行双向提示表按序求值；REGEX_METACHARACTERS/异常偏多阈值 ABSOLUTE=200·RATIO_MIN_LINES=20·RATIO=0.5 集中单一位置并注释依据；hasRegexMetacharacters/looksLikeRegex/looksLikeBackslashPath 导出供工单03/04 复用）；text_grep 成功响应条件性附加可选 hint 字段（不触发不占位，失败响应不受影响）。15 个 hint 用例经 handler 外部行为断言（四类各触发+多路不触发：有命中、无元字符分流、比例下限保护、字面量方向不误报、转义写对不骚扰）。TDD 红→绿执行。附带按队长简报完成裁定更新：flags 段三级判定（单字母白名单外→EINVAL；搜索场景含 g→EINVAL；多字母词形→字面量），/usr/bin 改判字面量，为全部具名示例的唯一同时满足解。全量 862 passed 零回归，typecheck 通过，覆盖率达标（hints.ts 97.5% lines）。工单02 Status→resolved + 完成纪要置顶；工单01 评论顶部已补裁定更新。"
+    },
+    {
+      "id": "t3",
+      "subject": "工单04 · text_replace 双模化 + 安全三分支",
+      "description": "实现 .scratch/04-pattern-dual-mode-observability/issues/04-text-replace-dual-mode-safe-branches.md。核心：text_replace 从纯正则改为与搜索工具一致的双模（复用 t1/t2 产出的共享解析器与 hint 引擎）；字面量 pattern→replacement 纯字面插入（$1 等回引用记号原样保留）；正则 pattern→沿用现有 JS 风格 $1/$&/$$ 回引用。新增可选布尔参数 all（显式全量开关）与既有 maxReplace 并存；三分支：0 命中→报错(EINVAL)+hint；恰 1 命中→自动替换并返回命中处上下文片段；>1 命中且 all 与 maxReplace 均未提供→拒绝执行并列出命中总数与各命中位置清单。成功结果附 patternMode。写回沿用源文件编码保障不回归（GBK 不被静默改写）。新建 CHANGELOG.md 记录破坏性变更与新语义示例。既有正则用例迁移通过、三分支各有正反断言。完成后将工单文件 Status 改为 resolved 并在 ## 评论 顶部追加完成纪要。注意：本任务在 t2 完成后才开始，避免与 core-eng 在 src/tools/text.ts 上并发编辑。",
+      "status": "completed",
+      "assignee": "replace-eng",
+      "dependencies": [
+        "t2"
+      ],
+      "attempt": 1,
+      "createdAt": 1787548909203,
+      "updatedAt": 1787552742237,
+      "attemptId": "ec8d5c0b-b071-42e8-a4f0-5d3456f7dd92",
+      "reassigning": false,
+      "output": "工单04 完成。text_replace 双模化+安全三分支落地：接入共享解析器（replace 白名单 imsg）；字面量 pattern→replacement 纯字面插入（回引用记号原样保留），正则 pattern→沿用 $1/$&/$$；三分支与 write 无关——0 命中 EINVAL+hint（复用工单02 谓词，①②④方向+③兜底）、恰 1 命中自动替换并附 position(行:列)+context 片段、>1 命中无表态 EINVAL+总数+位置清单（≤20 处防膨胀）。表态优先级 all:true > 尾部 g > maxReplace（g=显式全量已写入 description）。成功响应新增 patternMode/totalMatches(+单命中 position/context)。编码写回链路原样保留。测试：既有用例全部迁移，新增判定表 10 行/三分支正反/表态优先级/零长匹配/schema 校验等，TDD 红(33 失败)→绿；typecheck 通过；npm test 全量 23 文件 907 passed+2 skipped 零失败。新建 CHANGELOG.md 记录破坏性变更+迁移指引。期间跟随 pattern.ts 终版三级分类裁定对齐 /usr/bin 归字面量口径。工单文件已置 resolved 并附完成纪要。"
+    },
+    {
+      "id": "t4",
+      "subject": "工单03 · search_content 全量对齐",
+      "description": "实现 .scratch/04-pattern-dual-mode-observability/issues/03-search-content-alignment.md。核心：search_content（src/tools/search.ts）删除本地 parseSearchPattern，改用共享严格判定解析器与 hint 引擎（t1/t2 产出，src/utils/ 下），输出同样的 patternMode 字段、可选 hint 字段与四行双向提示；glob 过滤、exclude、目录递归、跳过二进制等既有能力不受影响。新增一致性对照用例表：同一组 pattern 在 text_grep 与 search_content 上解释一致（模式标识与提示行为逐行一致），入套件防回归。既有跨文件搜索用例全部通过。完成后将工单文件 Status 改为 resolved 并在 ## 评论 顶部追加完成纪要。注意：本任务与工单04并行执行，但你只动 src/tools/search.ts 与 tests/tools/search.test.ts，不要碰 src/tools/text.ts。",
+      "status": "completed",
+      "assignee": "search-eng",
+      "dependencies": [
+        "t2"
+      ],
+      "attempt": 1,
+      "createdAt": 1787548915221,
+      "updatedAt": 1787551879258,
+      "attemptId": "eea43d5d-b3cb-44e9-ac0b-8a7c3288ffe4",
+      "reassigning": false,
+      "output": "工单03 search_content 全量对齐完成。src/tools/search.ts：删除本地 parseSearchPattern（保留被 globToRegExp 共用的 escapeRegex），改用共享 parsePattern + SEARCH_PATTERN_FLAGS；输出恒附 patternMode、hint 经共享 buildSearchHint 生成（无触发不占位）；行统计改用共享 splitLines 与 text_grep 口径一致；glob/exclude/递归/二进制跳过/maxResults 不变；schema 描述与工具 description 同步双模文案。tests/tools/search.test.ts：+18 用例，含 8 组双工具一致性对照用例表（多斜杠路径、/tmp/ 残余洞、元字符字面量、合法/非法 flags、g 标志、反斜杠路径字面量与正则样），断言解释/错误码/错误消息/hint 逐字一致。TDD 红(17 失败)→绿；typecheck 通过；定向 94/94；全量 npm test 880 通过/2 跳过；coverage 达标（search.ts 行 93.23%/分支 85.91%）。工单03 md 已置 resolved 并追加完成纪要。未 commit。"
+    },
+    {
+      "id": "t5",
+      "subject": "工单05 · 文案与文档收口",
+      "description": "实现 .scratch/04-pattern-dual-mode-observability/issues/05-copy-and-docs-closure.md。核心（行为已定稿后的文案防线）：三个 pattern 类工具的 description 以「含反斜杠路径字面量免转义」为首例重写，附字面量与正则正反例对照及残余洞说明（形如 /tmp/ 的短字面量会被判为正则、由异常命中提示兜底）；text_replace description 说明新三分支表态语义与 all/maxReplace 用法；README.md 工具表摘要修正——text_grep「文本搜索（默认字面量，/正则/ 形式启用正则）」式表述，不再单独标注「正则」，text_replace/search_content 同步；docs/dsh/skills/jx-mode/SKILL.md 中 text_replace（正则 + $1 回引用）等提及处复查并同步。描述文案相关的既有断言/快照测试全部更新通过。改完跑 npm run typecheck + npm test 全绿。完成后将工单文件 Status 改为 resolved 并在 ## 评论 顶部追加完成纪要。",
+      "status": "completed",
+      "assignee": "docs-eng",
+      "dependencies": [
+        "t3",
+        "t4"
+      ],
+      "attempt": 1,
+      "createdAt": 1787548927172,
+      "updatedAt": 1787553203264,
+      "attemptId": "c464519e-327e-4331-b952-e6110b22864e",
+      "reassigning": false,
+      "output": "工单05 完成。三工具 description 重写（text_grep/text_replace/search_content）：首例 C:\\Users\\alice 反斜杠免转义、\"a|b\" 字面量 vs \"/a|b/\" 正则正反例、/usr/bin 与 /api/v1/ 收敛示例、/tmp/ 残余洞 hint 兜底说明；text_replace 含三分支表态语义 + 字面量模式 replacement 纯字面插入/$1 不展开。README 工具表三行改「默认字面量，/正则/ 形式启用正则」式表述；SKILL.md 第18行同步双模表述。参数级 describe 已由 t3/t4 覆盖无需重复。文案与 pattern.ts/hints.ts/text.ts/search.ts 定稿实现逐字核对一致。npm run typecheck 通过，npm test 907 passed / 2 skipped 全绿（无 description 内容快照断言需更新）。工单 md Status→resolved 并附完成纪要。未 commit、零行为改动。"
+    },
+    {
+      "id": "t6",
+      "subject": "审查修复 · 代码层（hint 判据截断洞、③判定对齐、去重、常量归位、补测试）",
+      "description": "修复代码审查发现项（标准维度 H1/S1/S2/S3/S4 + spec 维度 A1/C3）。范围：src/utils/hints.ts、src/utils/pattern.ts、src/tools/text.ts、src/tools/search.ts、tests/tools/text.test.ts、tests/tools/search.test.ts。完成后全量 typecheck+npm test 绿并汇报。",
+      "status": "completed",
+      "assignee": "core-eng",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1787553875219,
+      "updatedAt": 1787554470526,
+      "attemptId": "afcc1cb0-ed2e-4b8c-90d4-0ed7b9656fcd",
+      "reassigning": false,
+      "output": "t6 审查修复完成，7 项全部落地。H1：text_grep 与 search_content 的 hint③ 判据改传截断前真实命中数（totalMatches/allMatches.length），各补 maxResults=5+300 命中防回归用例。C3：isAbnormalHitCount 从 hints.ts 导出（含绝对+比例双路径），buildMultiHitMessage 改用之（totalLines=splitLines(content).length），补小文件高占比用例。A1：grep 表补 /a/b/ 三斜杠与 /a\\/ 尾斜杠歧义两行、replace 表补 /a/b/ 一行，均断言字面量收敛。S3：REPLACE_PATTERN_FLAGS 迁至 pattern.ts 与 SEARCH_PATTERN_FLAGS 并列导出，text.ts 删本地定义改 import。S2 三处去重：suggestWrapped 导出复用（删内联包裹建议）、buildPositionList 复用 lineColOf 逐展示位换算、buildZeroMatchHint 注释写明文案语境适配取舍。S1：HintThresholds 注释改为如实引用 PRD 调参意图。S4：looksLikeBackslashPath JSDoc 补已知局限。TDD 红→绿（3 个新用例先红后绿）。验证：typecheck 通过；全量 npm test 913 passed / 2 skipped 零失败。未动清单外文件。"
+    },
+    {
+      "id": "t7",
+      "subject": "审查修复 · CONTEXT.md 未实施标记更新",
+      "description": "修复审查发现 H2/C1：CONTEXT.md 中「pattern 双模约定【未实施】」术语行与「（ADR-0013；未实施）」决策条目已因本批次落地而失真，更新状态标记反映已实施。只动 CONTEXT.md。",
+      "status": "completed",
+      "assignee": "docs-eng",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1787553881232,
+      "updatedAt": 1787554019762,
+      "attemptId": "70432380-88c2-458a-949c-6e99969e53d6",
+      "reassigning": false,
+      "output": "审查修复 H2/C1 完成，仅动 CONTEXT.md：① 术语表第34行「pattern 双模约定【未实施】」→ 移除【未实施】标记（该表约定无标记即已实现）；② 决策列表第44行 pattern 语义条「（ADR-0013；未实施）」→「（ADR-0013）」（该列表约定仅未落地部分才带后缀，与 ADR-0003/0007 等已生效决策一致）。其余【未实施】标记（ADR-0008/0009/0010/0011/0012 相关行）经核实确属真实未落地特性，按范围纪律未触碰。纯文档改动，不涉及代码与测试。"
+    },
+    {
+      "id": "t8",
+      "subject": "审查修复 · replace 表态放行成功路径补 hint③",
+      "description": "修复 spec 二审新发现：text_replace 显式表态放行的成功路径缺双向表③提示。当正则模式 + 显式表态（all/尾部g/maxReplace）执行成功且 isAbnormalHitCount(总命中, splitLines(content).length) && looksLikeRegex(pattern) 时，成功响应附可选 hint 字段（③文案，动词适配替换语境），不触发不占位。补一条用例：/tmp/ 类 pattern 命中数百行 + all:true → ok:true 且带疑似被当作正则的 hint。",
+      "status": "completed",
+      "assignee": "core-eng",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1787555042630,
+      "updatedAt": 1787555293124,
+      "attemptId": "40659527-7706-44ac-aab9-dfa4347065b3",
+      "reassigning": false,
+      "output": "t8 完成。text_replace 显式表态放行成功路径补齐双向表③提示：抽取共享谓词 isReplaceHint3（正则模式+looksLikeRegex+isAbnormalHitCount(total, splitLines(content).length)）与文案 buildAbnormalRegexHint，buildMultiHitMessage 拒绝路径与成功 payload 共用同一 ③ 判定与文案（去重不复制）；成功响应条件性附加可选 hint 字段（不触发不占位；恰 1 命中不可能满足异常判据，实际仅在多命中放行场景出现）。TDD 红→绿：新增 3 用例——300 行 /tmp/ + all:true 放行带疑似 hint、尾部 g 等价全量表态同样带 hint、小文件表态放行无 hint 键（前两者先红后绿）。验证：typecheck 通过；全量 npm test 916 passed / 2 skipped 零失败。"
+    },
+    {
+      "id": "t9",
+      "subject": "审查收尾 · 标准维度 3 项酌情建议",
+      "description": "标准维度终审 3 项酌情建议的收尾修复：①补正则模式 $&/$$ 回引用用例与 buildZeroMatchHint 正则侧兜底文案断言；②looksLikeRegex 恒真条件加澄清注释（保留作防御）；③isReplaceHint3/buildMultiHitMessage 的 splitLines(content).length 改为调用方一次计算传参。",
+      "status": "completed",
+      "assignee": "core-eng",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1787555762676,
+      "updatedAt": 1787556018912,
+      "attemptId": "05e7c6f6-3e78-447d-b105-30145027f2c6",
+      "reassigning": false,
+      "output": "t9 完成，三项酌情建议全部落地。①补测试：正则模式 $& 整匹配回引用与 $$ 字面美元符用例（/o+/ → '<$&>$$'，断言 'f<oo>$ b<oo>$'）；正则 0 命中非路径样 → buildZeroMatchHint 兜底文案断言（EINVAL 消息含「请核对该正则是否确能与目标文本匹配」与 text_grep 指引）。②恒真条件澄清注释：isReplaceHint3 与 hints.ts buildSearchHint ③ 分支两处 looksLikeRegex 调用点均注明「regex 模式下按现行解析器构造必然满足形似判定、保留作纵深防御」，行为不变仅注释。③签名重构：isReplaceHint3 第 3 参 content:string → totalLines:number，调用方一次 splitLines 计算传参——buildMultiHitMessage 内部计算一次传入，handler 成功路径同改；两函数均模块内私有无外部影响。验证：typecheck 通过；全量 npm test 920 passed / 2 skipped 零失败。仅动 src/utils/hints.ts、src/tools/text.ts、tests/tools/text.test.ts。"
+    }
+  ],
+  "taskSeq": 9
+}
