@@ -31,6 +31,8 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 | Cordis 插件 | dsh 的插件形态（name/inject/Config/apply 约定）；win-shell-mcp 经 `defineTool()` 把全部工具注册进 dsh 的 `ctx.tools` 服务 |
 | 双入口交付【未实施】 | 核心库 + MCP server 薄壳 + dsh 插件薄壳的架构：同包多入口 exports（`./core` / `./mcp` / `./plugin`）、插件名 `tool-win-shell`、全量注册不裁剪、不接 dsh 审批/沙箱/后台、输出保持统一契约（ADR-0010/0011/0012） |
 | JX 模式 | dsh 用户级 agent preset（会话工作模式）：标准能力 + 两条规则——工具优先 win-shell-mcp、过程事实沉淀进知识库 MCP（imagetutu/jxk）；权威模板在本仓库 `docs/dsh/`，部署于 `~/.dsh/.agent-presets/jx-mode/` |
+| pattern 双模约定 | pattern 类参数统一语义：默认按字面量子串匹配（`.` `\` `*` 等原样），`/…/` 包裹启用正则（flags：i/m/s，replace 另收 g）；判定规则严格、任何歧义一律向字面量收敛；结构似正则但 flags 非法则 EINVAL 报错（ADR-0013） |
+| 响错误 / 哑错误 | 误用后果分类：哑错误 = 调用方误用后仍得到看似正常的结果（如正则语义下 `foo.ts` 错配 `foopts`），坏数据带着流程继续跑；响错误 = 失败显式可见（0 命中 / 报错 + hint），调用方一轮内自纠。工具设计目标：把哑错误变响错误（ADR-0013 可观测层的立项原则） |
 
 ## 已确定的决策
 
@@ -39,6 +41,7 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 - **范围**：全命令域一版上齐、持续扩展、单入口覆盖（ADR-0002-scope-full-coverage）；新域闸门 = 语义独立即可成域、逐域论证（ADR-0006）。
 - **输出**：极简、token 最小化，长输出截断 + verbose 开关取全量（ADR-0003）。
 - **兼容性红线**：0.x 发布前允许破坏性修改并集中纠错；正式发布后只加不改——仅新增可选参数与输出字段，默认行为与既有字段永不变（ADR-0007）。
+- **pattern 语义**：全线双模——默认字面量子串匹配、`/…/` 启用正则；严格判定、永远向字面量收敛；结果携带 `patternMode` 与双向 hint；text_replace 永不静默决定替换数量（ADR-0013；2026-08-24 实施批次落地）。
 - **交付形态**：现状为 MCP stdio 单入口（streamable HTTP 为未来可选项）；已决策扩展为核心库 + MCP + dsh 插件双入口、同包多入口（ADR-0010 取代 ADR-0001-delivery，ADR-0011 全量注册，ADR-0012 同包多入口；未实施）。
 - **破坏性操作保护**：回收站型而非完整 undo 链；默认关闭、全部配置走环境变量（`WIN_SHELL_LOG_DIR` 默认 `D:\log`）；低价值名单与大小阈值两类例外直接真删仅记审计（ADR-0008/0009；未实施）。
 - **技术栈**：TypeScript + 官方 `@modelcontextprotocol/sdk` + iconv-lite（编码检测），Node ≥ 18，tsup 打包，vitest 测试。
