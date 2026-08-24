@@ -33,6 +33,7 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 | JX 模式 | dsh 用户级 agent preset（会话工作模式）：标准能力 + 两条规则——工具优先 win-shell-mcp、过程事实沉淀进知识库 MCP（imagetutu/jxk）；权威模板在本仓库 `docs/dsh/`，部署于 `~/.dsh/.agent-presets/jx-mode/` |
 | pattern 双模约定 | pattern 类参数统一语义：默认按字面量子串匹配（`.` `\` `*` 等原样），`/…/` 包裹启用正则（flags：i/m/s，replace 另收 g）；判定规则严格、任何歧义一律向字面量收敛；结构似正则但 flags 非法则 EINVAL 报错（ADR-0013） |
 | 响错误 / 哑错误 | 误用后果分类：哑错误 = 调用方误用后仍得到看似正常的结果（如正则语义下 `foo.ts` 错配 `foopts`），坏数据带着流程继续跑；响错误 = 失败显式可见（0 命中 / 报错 + hint），调用方一轮内自纠。工具设计目标：把哑错误变响错误（ADR-0013 可观测层的立项原则） |
+| 命令执行模块 | 深模块（`src/exec/run.ts`）：统一拥有子进程执行机器（spawn、输出收集、超时、进程树终止、GBK 解码），接口只有 `runCommand`；shell_exec、pkg_run、git 均调用它（见 ADR-0003） |
 
 ## 已确定的决策
 

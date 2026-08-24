@@ -38,11 +38,16 @@ export const DEFAULT_TRUNCATE_LIMIT = 2000;
 /**
  * 构造成功结果。data 字段展开到顶层。
  *
+ * 返回 `OkResult<T> & AnyToolResult`：既保留 T 的具体字段（调用者可索引访问），
+ * 又直接满足 `AnyToolResult`（handler 返回类型）。具体接口类型（无索引签名）
+ * 无法直接赋给 `AnyToolResult` 的 ok 分支（含索引签名），该类型收窄在此集中
+ * 处理一次，调用点无需再写 `as unknown as AnyToolResult`。
+ *
  * @example
  * ok({ os: 'linux' }) // { ok: true, os: 'linux' }
  */
-export function ok<T extends object>(data: T): OkResult<T> {
-  return { ok: true, ...data };
+export function ok<T extends object>(data: T): OkResult<T> & AnyToolResult {
+  return { ok: true, ...data } as OkResult<T> & AnyToolResult;
 }
 
 /**

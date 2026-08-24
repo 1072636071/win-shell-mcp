@@ -2,7 +2,7 @@
  * 工具注册表。
  *
  * 维护所有已注册工具，提供查询接口供 server 层使用。
- * 工单 12：注册全部 46 个工具（含 02/03 新增的 pwd/echo/run_command 与各域新增 find/cat/ping）。
+ * 工单 12：注册全部 58 个工具（含 02/03 新增的 pwd/echo/run_command 与各域新增 find/cat/ping）。
  *
  * 别名机制（工单 02）：Tool 可声明 aliases，findTool 在精确名匹配失败后回退到别名匹配，
  * 因此 `ls` / `list_directory` 等短名/别名调用与正名返回一致结果。
@@ -64,7 +64,13 @@ import { netListenTool } from './tools/net_listen.js';
 import { netDownloadTool } from './tools/net_download.js';
 import { archiveCreateTool, archiveExtractTool } from './tools/archive.js';
 
-/** 工具定义。 */
+/**
+ * 工具定义。
+ *
+ * handler 接收 `Record<string, unknown>`：callTool 已用 zod 校验，但各工具
+ * 测试会直接以非法类型调用 handler 验证 EINVAL 防御，故 handler 保留防御性
+ * 类型检查。成功结果经 `ok()` 统一收窄为输出契约，调用点无需强转。
+ */
 export interface Tool {
   /** 工具名（唯一标识，AI 调用时使用）。 */
   name: string;
@@ -192,3 +198,6 @@ registerTool(netListenTool);
 registerTool(netDownloadTool);
 registerTool(archiveCreateTool);
 registerTool(archiveExtractTool);
+
+/** server 层装载的不可变工具清单（快照自 registerTool 注册结果）。 */
+export const builtinTools: readonly Tool[] = [...tools];

@@ -9,8 +9,8 @@ import os from 'node:os';
 import { statfs, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { z } from 'zod';
-import { ok, fail, withVerbose, type AnyToolResult } from '../contract/output.js';
-import { toErrorCode, toErrorMessage } from '../contract/errors.js';
+import { ok, withVerbose, type AnyToolResult } from '../contract/output.js';
+import { toFail } from '../utils/errors.js';
 import { IS_WIN } from '../utils/platform.js';
 import type { Tool } from '../registry.js';
 
@@ -117,7 +117,7 @@ export async function systemInfoHandler(args: Record<string, unknown>): Promise<
   };
 
   // 接口类型无索引签名，需经 unknown 中转赋给 AnyToolResult
-  return ok(withVerbose(minimal, full, verbose)) as unknown as AnyToolResult;
+  return ok(withVerbose(minimal, full, verbose));
 }
 
 /** system_info 工具定义。 */
@@ -329,9 +329,9 @@ export async function systemDiskHandler(args: Record<string, unknown>): Promise<
     const stats = await statfs(path);
     const { total, free, used } = buildDiskEntry(stats, path, '');
     const result: SystemDiskResult = { total, free, used, path };
-    return ok(result) as unknown as AnyToolResult;
+    return ok(result);
   } catch (err) {
-    return fail(toErrorCode(err), toErrorMessage(err));
+    return toFail(err);
   }
 }
 
@@ -425,7 +425,7 @@ export async function systemMemoryHandler(args: Record<string, unknown>): Promis
   const used = total - free;
   const swap = await readSwapInfo();
   const full: SystemMemoryFull = { total, free, used, ...swap };
-  return ok(withVerbose(minimal, full, verbose)) as unknown as AnyToolResult;
+  return ok(withVerbose(minimal, full, verbose));
 }
 
 /** system_memory 工具定义。 */
@@ -501,7 +501,7 @@ export async function systemPathHandler(args: Record<string, unknown>): Promise<
     if (entry.length > 0 && existsSync(entry)) existing++;
   }
   const full: SystemPathFull = { entries, count: entries.length, existing };
-  return ok(withVerbose(minimal, full, verbose)) as unknown as AnyToolResult;
+  return ok(withVerbose(minimal, full, verbose));
 }
 
 /** system_path 工具定义。 */

@@ -14,9 +14,9 @@ import { join, relative } from 'node:path';
 import { z } from 'zod';
 import { ok, fail, truncate, withVerbose, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode } from '../contract/errors.js';
-import { failFromError } from '../utils/errors.js';
+import { toFail } from '../utils/errors.js';
 import { decodeBuffer } from '../encoding/detect.js';
-import { globToRegExp, isValidGlob } from './search.js';
+import { globToRegExp, isValidGlob } from '../utils/glob.js';
 import type { Tool } from '../registry.js';
 
 /** 条目类型。 */
@@ -179,9 +179,9 @@ export async function fsListHandler(args: Record<string, unknown>): Promise<AnyT
     }
 
     const simpleEntries: string[] = entries.map((e) => e.name);
-    return ok({ entries: simpleEntries }) as unknown as AnyToolResult;
+    return ok({ entries: simpleEntries });
   } catch (err) {
-    return failFromError(err);
+    return toFail(err);
   }
 }
 
@@ -259,9 +259,9 @@ export async function fsReadHandler(args: Record<string, unknown>): Promise<AnyT
       content: truncatedContent,
       truncated,
       lines: totalLines,
-    }) as unknown as AnyToolResult;
+    });
   } catch (err) {
-    return failFromError(err);
+    return toFail(err);
   }
 }
 
@@ -312,9 +312,9 @@ export async function fsStatHandler(args: Record<string, unknown>): Promise<AnyT
       mtime: stats.mtimeMs,
       birthtime: stats.birthtimeMs,
     };
-    return ok(result) as unknown as AnyToolResult;
+    return ok(result);
   } catch (err) {
-    return failFromError(err);
+    return toFail(err);
   }
 }
 

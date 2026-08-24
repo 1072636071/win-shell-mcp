@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { ok, fail, withVerbose, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode, toErrorMessage } from '../contract/errors.js';
 import { decodeBuffer } from '../encoding/detect.js';
-import { execFileAsync } from '../utils/exec.js';
+import { execFileAsync } from '../exec/run.js';
 import { IS_WIN } from '../utils/platform.js';
 import type { Tool } from '../registry.js';
 
@@ -327,7 +327,7 @@ export async function processListHandler(args: Record<string, unknown>): Promise
     truncated,
   };
   const result = withVerbose(minimal, full, verbose);
-  return ok(result) as unknown as AnyToolResult;
+  return ok(result);
 }
 
 /** process_list 工具定义。 */
@@ -599,7 +599,7 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
   }
 
   const result: ProcessKillResult = { killed: true, pid };
-  return ok(result) as unknown as AnyToolResult;
+  return ok(result);
 }
 
 /** process_kill 工具定义。 */

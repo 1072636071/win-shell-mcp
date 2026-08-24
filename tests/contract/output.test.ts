@@ -100,7 +100,7 @@ describe('withVerbose', () => {
 
 describe('isOk / isFail', () => {
   it('isOk 识别成功', () => {
-    const result: AnyToolResult = ok({ x: 1 }) as unknown as AnyToolResult;
+    const result: AnyToolResult = ok({ x: 1 });
     expect(isOk(result)).toBe(true);
     expect(isFail(result)).toBe(false);
   });
@@ -112,7 +112,7 @@ describe('isOk / isFail', () => {
   });
 
   it('isOk 收窄类型允许访问字段', () => {
-    const result: AnyToolResult = ok({ count: 42 }) as unknown as AnyToolResult;
+    const result: AnyToolResult = ok({ count: 42 });
     if (isOk(result)) {
       expect(result['count']).toBe(42);
     }

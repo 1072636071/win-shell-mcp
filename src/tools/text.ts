@@ -11,7 +11,8 @@ import iconvLite from 'iconv-lite';
 
 const iconvEncode = iconvLite.encode;
 import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode, toErrorCode, toErrorMessage } from '../contract/errors.js';
+import { ErrorCode } from '../contract/errors.js';
+import { codedError, toFail } from '../utils/errors.js';
 import { readTextAutoDetect, splitLines } from '../utils/readText.js';
 import { isLikelyGBK, decodeBuffer } from '../encoding/detect.js';
 import { parsePattern, REPLACE_PATTERN_FLAGS, SEARCH_PATTERN_FLAGS, type PatternParseResult } from '../utils/pattern.js';
@@ -28,43 +29,22 @@ import type { Tool } from '../registry.js';
 
 // ─── 辅助 ───────────────────────────────────────────────
 
-/** 文件读取错误（携带标准错误码）。 */
-class FileError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'FileError';
-  }
-}
-
 /**
- * 读取文本文件并自动解码（GBK/UTF-8），将 Node errno 映射为标准错误码。
- *
- * 复用具生 `readTextAutoDetect` 完成 stat→readFile→decodeBuffer 链路，
- * 保证 GBK 编码文件在文本处理链路中被正确还原为 UTF-8 字符串。
- *
- * @throws {FileError} 文件不存在或为目录等
+ * 读取文本文件，将 Node errno 映射为标准错误码。
+ * @throws 携带业务错误码的错误（ENOENT/EISDIR 等），由 toFail 统一转 fail
  */
 async function readTextFile(path: string): Promise<string> {
   try {
     return await readTextAutoDetect(path);
   } catch (err) {
     const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
-    if (code === 'ENOENT') throw new FileError(ErrorCode.ENOENT, `文件不存在: ${path}`);
-    if (code === 'EISDIR') throw new FileError(ErrorCode.EISDIR, `是目录而非文件: ${path}`);
-    throw new FileError(toErrorCode(err), toErrorMessage(err));
+    if (code === 'ENOENT') throw codedError(ErrorCode.ENOENT, `文件不存在: ${path}`);
+    if (code === 'EISDIR') throw codedError(ErrorCode.EISDIR, `是目录而非文件: ${path}`);
+    throw err;
   }
 }
 
-/** 将捕获的错误转为失败结果。 */
-function toFailResult(err: unknown): AnyToolResult {
-  if (err instanceof FileError) {
-    return fail(err.code, err.message) as unknown as AnyToolResult;
-  }
-  return fail(toErrorCode(err), toErrorMessage(err)) as unknown as AnyToolResult;
-}
+
 
 // ─── text_grep ──────────────────────────────────────────
 
@@ -101,7 +81,7 @@ export async function textGrepHandler(args: Record<string, unknown>): Promise<An
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const parsed = parsePattern(pattern, ignoreCase, SEARCH_PATTERN_FLAGS);
@@ -197,13 +177,13 @@ export async function textHeadHandler(args: Record<string, unknown>): Promise<An
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const allLines = splitLines(content);
   const head = n > allLines.length ? allLines : allLines.slice(0, n);
 
-  return ok({ lines: head, total: allLines.length }) as unknown as AnyToolResult;
+  return ok({ lines: head, total: allLines.length });
 }
 
 export const textHeadTool: Tool = {
@@ -230,13 +210,13 @@ export async function textTailHandler(args: Record<string, unknown>): Promise<An
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const allLines = splitLines(content);
   const tail = n >= allLines.length ? allLines : allLines.slice(allLines.length - n);
 
-  return ok({ lines: tail, total: allLines.length }) as unknown as AnyToolResult;
+  return ok({ lines: tail, total: allLines.length });
 }
 
 export const textTailTool: Tool = {
@@ -261,7 +241,7 @@ export async function textWcHandler(args: Record<string, unknown>): Promise<AnyT
   try {
     content = await readTextFile(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const allLines = splitLines(content);
@@ -274,7 +254,7 @@ export async function textWcHandler(args: Record<string, unknown>): Promise<AnyT
     words,
     chars,
     bytes,
-  }) as unknown as AnyToolResult;
+  });
 }
 
 export const textWcTool: Tool = {
@@ -471,7 +451,7 @@ export async function textDiffHandler(args: Record<string, unknown>): Promise<An
     aContent = await readTextFile(aPath);
     bContent = await readTextFile(bPath);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   const aLines = splitLines(aContent);
@@ -479,7 +459,7 @@ export async function textDiffHandler(args: Record<string, unknown>): Promise<An
   const diff = formatUnifiedDiff(aPath, bPath, aLines, bLines, context);
   const same = diff === '';
 
-  return ok({ diff: truncate(diff), same }) as unknown as AnyToolResult;
+  return ok({ diff: truncate(diff), same });
 }
 
 export const textDiffTool: Tool = {
@@ -786,7 +766,7 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
   try {
     source = await readTextWithEncoding(path);
   } catch (err) {
-    return toFailResult(err);
+    return toFail(err);
   }
 
   // 双模解析（严格判定共享解析器；replace 白名单含 g）
@@ -832,7 +812,7 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
       await writeFile(path, buf);
       written = true;
     } catch (err) {
-      return toFailResult(err);
+      return toFail(err);
     }
   }
 

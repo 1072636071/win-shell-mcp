@@ -11,8 +11,7 @@
 import { z } from 'zod';
 import { ok, fail, type AnyToolResult } from '../contract/output.js';
 import { ErrorCode, toErrorMessage } from '../contract/errors.js';
-import { decodeBuffer } from '../encoding/detect.js';
-import { execFileAsync } from '../utils/exec.js';
+import { runCommand } from '../exec/run.js';
 import { IS_WIN } from '../utils/platform.js';
 import type { Tool } from '../registry.js';
 
@@ -100,12 +99,9 @@ function parseTasklistNameLine(line: string): { pid: number; name: string } | nu
  */
 async function getWindowsProcessNames(): Promise<Map<number, string>> {
   try {
-    const { stdout } = await execFileAsync('tasklist', ['/FO', 'CSV', '/NH'], {
-      maxBuffer: 8 * 1024 * 1024,
-      windowsHide: true,
-      encoding: 'buffer',
-    });
-    const text = decodeBuffer(stdout as Buffer);
+    const outcome = await runCommand('tasklist', ['/FO', 'CSV', '/NH']);
+    if (outcome.spawnError !== undefined) return new Map();
+    const text = outcome.stdout;
     const map = new Map<number, string>();
     for (const line of text.split(/\r?\n/)) {
       const entry = parseTasklistNameLine(line);
@@ -145,15 +141,12 @@ export function parseLsofLine(line: string): ListenEntry | null {
  * 列出 Windows 监听端口（netstat -ano）。
  */
 async function listWindowsListen(): Promise<ListenEntry[]> {
-  const [{ stdout }, names] = await Promise.all([
-    execFileAsync('netstat', ['-ano'], {
-      maxBuffer: 8 * 1024 * 1024,
-      windowsHide: true,
-      encoding: 'buffer',
-    }),
+  const [outcome, names] = await Promise.all([
+    runCommand('netstat', ['-ano']),
     getWindowsProcessNames(),
   ]);
-  const text = decodeBuffer(stdout as Buffer);
+  if (outcome.spawnError !== undefined) return [];
+  const text = outcome.stdout;
   const result: ListenEntry[] = [];
   for (const line of text.split(/\r?\n/)) {
     const entry = parseNetstatLine(line);
@@ -197,23 +190,21 @@ export function parseSsLine(line: string): ListenEntry | null {
  */
 async function listUnixListen(): Promise<ListenEntry[]> {
   try {
-    const { stdout } = await execFileAsync('lsof', ['-i', '-P', '-n'], {
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    const result: ListenEntry[] = [];
-    for (const line of stdout.split('\n')) {
-      const entry = parseLsofLine(line);
-      if (entry) result.push(entry);
+    const outcome = await runCommand('lsof', ['-i', '-P', '-n']);
+    if (outcome.spawnError === undefined && outcome.exitCode === 0) {
+      const result: ListenEntry[] = [];
+      for (const line of outcome.stdout.split('\n')) {
+        const entry = parseLsofLine(line);
+        if (entry) result.push(entry);
+      }
+      return result;
     }
-    return result;
   } catch {
     // lsof 不可用或无权限，回退 ss
   }
-  const { stdout } = await execFileAsync('ss', ['-tlnp'], {
-    maxBuffer: 8 * 1024 * 1024,
-  });
+  const outcome = await runCommand('ss', ['-tlnp']);
   const result: ListenEntry[] = [];
-  for (const line of stdout.split('\n')) {
+  for (const line of outcome.stdout.split('\n')) {
     const entry = parseSsLine(line);
     if (entry) result.push(entry);
   }

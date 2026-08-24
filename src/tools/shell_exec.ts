@@ -2,15 +2,14 @@
  * shell_exec 工具：执行 shell 命令并返回 {exitCode, stdout, stderr}。
  *
  * 跨平台：Windows 用 cmd.exe /c，unix 用 sh -c。
- * 子进程输出自动识别 GBK/UTF-8（通过 decodeBuffer）。
- * 超时可中断：超时杀子进程并返回 EXEC_TIMEOUT。
+ * 子进程机器（收集、超时、进程树终止、GBK/UTF-8 解码）全部委托给
+ * 命令执行深模块（src/exec/run.ts）。
  * 非零退出码是正常结果（不是工具失败）。
  *
  * 极简输出：{ exitCode, stdout, stderr }
  * verbose 输出：额外 { pid, duration, truncated }
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
 import { z } from 'zod';
 import {
   ok,
@@ -21,7 +20,7 @@ import {
   type AnyToolResult,
 } from '../contract/output.js';
 import { ErrorCode } from '../contract/errors.js';
-import { decodeBuffer } from '../encoding/detect.js';
+import { runCommand } from '../exec/run.js';
 import { IS_WIN } from '../utils/platform.js';
 import type { Tool } from '../registry.js';
 
@@ -120,113 +119,46 @@ export async function shellExecHandler(args: Record<string, unknown>): Promise<A
   const cwdOpt = typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined;
   const timeoutMs = typeof timeout === 'number' && timeout > 0 ? timeout : undefined;
 
-  return new Promise<AnyToolResult>((resolve) => {
-    const start = Date.now();
-    let child: ChildProcess;
-    try {
-      child = spawn(shell, shellArgs, {
-        cwd: cwdOpt,
-        env: childEnv,
-        stdio: hasStdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
-      });
-    } catch (err) {
-      resolve(
-        fail(
-          ErrorCode.EXEC_FAIL,
-          `spawn 启动失败: ${err instanceof Error ? err.message : String(err)}`,
-        ),
-      );
-      return;
-    }
-
-    // 写入 stdin 后关闭
-    if (hasStdin && child.stdin) {
-      try {
-        child.stdin.write(stdinInput as string);
-        child.stdin.end();
-      } catch {
-        // 子进程已关闭 stdin，忽略 EPIPE
-      }
-    }
-
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let timedOut = false;
-    let settled = false;
-
-    const timer: NodeJS.Timeout | null =
-      timeoutMs !== undefined
-        ? setTimeout(() => {
-            timedOut = true;
-            try {
-              child.kill('SIGKILL');
-            } catch {
-              // 忽略 kill 错误
-            }
-          }, timeoutMs)
-        : null;
-
-    const cleanup = (): void => {
-      if (timer !== null) clearTimeout(timer);
-    };
-
-    const settle = (result: AnyToolResult): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(result);
-    };
-
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdoutChunks.push(chunk);
-    });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderrChunks.push(chunk);
-    });
-
-    // spawn 本身失败（如 shell 不存在 ENOENT）
-    child.on('error', (err) => {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') {
-        settle(fail(ErrorCode.EXEC_FAIL, `shell 不存在: ${err.message}`));
-      } else {
-        settle(fail(ErrorCode.EXEC_FAIL, `命令执行失败: ${err.message}`));
-      }
-    });
-
-    child.on('close', (exitCode) => {
-      if (timedOut) {
-        settle(fail(ErrorCode.EXEC_TIMEOUT, `命令执行超时（${timeoutMs}ms）: ${command}`));
-        return;
-      }
-
-      const duration = Date.now() - start;
-      const stdoutBuf = Buffer.concat(stdoutChunks);
-      const stderrBuf = Buffer.concat(stderrChunks);
-      const stdoutRaw = decodeBuffer(stdoutBuf, encHint);
-      const stderrRaw = decodeBuffer(stderrBuf, encHint);
-
-      const stdout = truncate(stdoutRaw);
-      const stderr = truncate(stderrRaw);
-      const truncated =
-        stdoutRaw.length > DEFAULT_TRUNCATE_LIMIT || stderrRaw.length > DEFAULT_TRUNCATE_LIMIT;
-
-      const minimal: ShellExecMinimal = {
-        exitCode: exitCode ?? -1,
-        stdout,
-        stderr,
-      };
-
-      const full: ShellExecFull = {
-        ...minimal,
-        pid: child.pid ?? -1,
-        duration,
-        truncated,
-      };
-      const result = withVerbose(minimal, full, verbose);
-      settle(ok(result) as unknown as AnyToolResult);
-    });
+  const outcome = await runCommand(shell, shellArgs, {
+    cwd: cwdOpt,
+    env: childEnv,
+    timeoutMs,
+    encoding: encHint,
+    stdin: hasStdin ? (stdinInput as string) : undefined,
   });
+
+  if (outcome.spawnError !== undefined) {
+    const code = outcome.spawnError.code;
+    if (code === 'ENOENT') {
+      return fail(ErrorCode.EXEC_FAIL, `shell 不存在: ${outcome.spawnError.message}`);
+    }
+    return fail(ErrorCode.EXEC_FAIL, `命令执行失败: ${outcome.spawnError.message}`);
+  }
+
+  if (outcome.timedOut) {
+    return fail(ErrorCode.EXEC_TIMEOUT, `命令执行超时（${timeoutMs}ms）: ${command}`);
+  }
+
+  const stdout = truncate(outcome.stdout);
+  const stderr = truncate(outcome.stderr);
+  const truncated =
+    outcome.stdout.length > DEFAULT_TRUNCATE_LIMIT ||
+    outcome.stderr.length > DEFAULT_TRUNCATE_LIMIT;
+
+  const minimal: ShellExecMinimal = {
+    exitCode: outcome.exitCode,
+    stdout,
+    stderr,
+  };
+
+  const full: ShellExecFull = {
+    ...minimal,
+    pid: outcome.pid,
+    duration: outcome.duration,
+    truncated,
+  };
+  const result = withVerbose(minimal, full, verbose);
+  return ok(result);
 }
 
 /** shell_exec 工具定义。 */

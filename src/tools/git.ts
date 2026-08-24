@@ -19,11 +19,8 @@ import {
   type AnyToolResult,
 } from '../contract/output.js';
 import { ErrorCode } from '../contract/errors.js';
-import { execFileAsync } from '../utils/exec.js';
+import { runCommand } from '../exec/run.js';
 import type { Tool } from '../registry.js';
-
-/** git 命令最大缓冲区（字节）。 */
-const GIT_MAX_BUFFER = 16 * 1024 * 1024;
 
 /** git 执行结果。 */
 interface GitExecResult {
@@ -35,38 +32,25 @@ interface GitExecResult {
 /**
  * 执行 git 命令并返回结构化结果（不抛异常）。
  *
+ * 子进程机器委托给命令执行深模块（src/exec/run.ts）。
+ *
  * @param args git 参数数组
  * @param cwd 工作目录
  * @returns { exitCode, stdout, stderr }
  */
 async function runGit(args: string[], cwd: string): Promise<GitExecResult> {
-  try {
-    const { stdout, stderr } = await execFileAsync('git', args, {
-      cwd,
-      maxBuffer: GIT_MAX_BUFFER,
-      windowsHide: true,
-    });
-    return { exitCode: 0, stdout, stderr };
-  } catch (err) {
-    const e = err as NodeJS.ErrnoException & {
-      code?: number | string;
-      stdout?: string;
-      stderr?: string;
-    };
-    // git 命令本身不存在（ENOENT）
-    if (e.code === 'ENOENT') {
+  const outcome = await runCommand('git', args, { cwd });
+  if (outcome.spawnError !== undefined) {
+    if (outcome.spawnError.code === 'ENOENT') {
       return {
         exitCode: -1,
         stdout: '',
         stderr: 'git 命令未找到（请确认 git 已安装并在 PATH 中）',
       };
     }
-    // git 执行但退出码非 0
-    const exitCode = typeof e.code === 'number' ? e.code : 1;
-    const stdout = typeof e.stdout === 'string' ? e.stdout : '';
-    const stderr = typeof e.stderr === 'string' ? e.stderr : (e.message ?? '');
-    return { exitCode, stdout, stderr };
+    return { exitCode: -1, stdout: '', stderr: outcome.spawnError.message };
   }
+  return { exitCode: outcome.exitCode, stdout: outcome.stdout, stderr: outcome.stderr };
 }
 
 /**
@@ -241,7 +225,7 @@ export async function gitStatusHandler(args: Record<string, unknown>): Promise<A
   const minimal: GitStatusMinimal = { branch, changed, staged, untracked };
   const full: GitStatusFull = { ...minimal, files };
   const verboseResult = withVerbose(minimal, full, verbose);
-  return ok(verboseResult) as unknown as AnyToolResult;
+  return ok(verboseResult);
 }
 
 /** git_status 工具定义。 */
@@ -314,7 +298,7 @@ export async function gitLogHandler(args: Record<string, unknown>): Promise<AnyT
       stderr.includes('unknown revision')
     ) {
       const empty: GitLogResult = { commits: [], count: 0 };
-      return ok(empty) as unknown as AnyToolResult;
+      return ok(empty);
     }
     return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'log'));
   }
@@ -333,7 +317,7 @@ export async function gitLogHandler(args: Record<string, unknown>): Promise<AnyT
   }
 
   const out: GitLogResult = { commits, count: commits.length };
-  return ok(out) as unknown as AnyToolResult;
+  return ok(out);
 }
 
 /** git_log 工具定义。 */
@@ -422,7 +406,7 @@ export async function gitBranchHandler(args: Record<string, unknown>): Promise<A
   const minimal: GitBranchMinimal = { branches, current };
   const full: GitBranchFull = { ...minimal, all };
   const result = withVerbose(minimal, full, verbose);
-  return ok(result) as unknown as AnyToolResult;
+  return ok(result);
 }
 
 /** git_branch 工具定义。 */
@@ -496,7 +480,7 @@ export async function gitDiffHandler(args: Record<string, unknown>): Promise<Any
   const minimal: GitDiffResult = { diff, truncated, files };
   const full: GitDiffResult = { diff: rawDiff, truncated: false, files };
   const out = withVerbose(minimal, full, verbose);
-  return ok(out) as unknown as AnyToolResult;
+  return ok(out);
 }
 
 /** git_diff 工具定义。 */
@@ -548,7 +532,7 @@ export async function gitAddHandler(args: Record<string, unknown>): Promise<AnyT
   }
 
   const out: GitAddResult = { added: paths };
-  return ok(out) as unknown as AnyToolResult;
+  return ok(out);
 }
 
 /** git_add 工具定义。 */
@@ -609,7 +593,7 @@ export async function gitCommitHandler(args: Record<string, unknown>): Promise<A
   const hash = hashResult.exitCode === 0 ? hashResult.stdout.trim() : '';
 
   const out: GitCommitResult = { committed: true, hash, message };
-  return ok(out) as unknown as AnyToolResult;
+  return ok(out);
 }
 
 /** git_commit 工具定义。 */
