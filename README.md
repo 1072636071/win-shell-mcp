@@ -1,8 +1,8 @@
 # win-shell-mcp
 
-> AI 原生跨平台命令抽象层 —— 以 MCP Server 形式提供 46 个确定性工具，替代裸 shell 调用，统一极简 JSON 输出，处理 Windows 路径/编码/引号差异。
+> AI 原生跨平台命令抽象层 —— 以 MCP Server 形式提供 58 个确定性工具，替代裸 shell 调用，统一极简 JSON 输出，处理 Windows 路径/编码/引号差异。同时以原生 Cordis 插件（`.` / `./core` / `./plugin` 多入口）进入 DSH，按 MCP 标准注解做并发分类。
 
-[![CI](https://github.com/user/win-shell-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/user/win-shell-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/1072636071/win-shell-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/1072636071/win-shell-mcp/actions/workflows/ci.yml)
 
 ## 为什么
 
@@ -12,7 +12,7 @@
 - **输出难解析**：shell 命令输出格式随意，AI 难以可靠提取信息
 - **安全风险**：裸 shell 允许管道、重定向、命令注入
 
-`win-shell-mcp` 用 46 个**确定性工具**替代常见 shell 命令，每个工具：
+`win-shell-mcp` 用 58 个**确定性工具**替代常见 shell 命令，每个工具：
 
 - 接受结构化 JSON 参数，返回统一 `{ ok: true, ...data }` 或 `{ ok: false, error: { code, message } }`
 - 跨平台行为一致（Windows/macOS/Linux 同一份配置）
@@ -75,9 +75,19 @@ npx win-shell-mcp
 }
 ```
 
-启动后客户端将通过 stdio 与 server 通信，自动发现全部 46 个工具。
+启动后客户端将通过 stdio 与 server 通信，自动发现全部 58 个工具。
 
-## 工具清单（46 个）
+### DSH / Cordis 插件入口
+
+除 MCP Server 外，本包还以原生 Cordis 插件形式进入 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness)。多入口：
+
+- `.` → `dist/index.js`：MCP stdio server（shebang）
+- `./core` → `dist/core.js`：通用核心（服务/注册表，无 dsh 依赖）
+- `./plugin` → `dist/plugin.js`：Cordis 插件（`name` + `apply(ctx, config)`），把 58 工具全量投影到 `ctx.tools.defineTool`，支持 `config.exclude` 按名裁剪
+
+并发分类以 MCP 标准 `ToolAnnotations.readOnlyHint` 为单一事实源（ADR-0014）：只读工具投影为 `isConcurrencySafe`；参数级例外（当前仅 `git_stash action:'list'`）走插件层小覆盖表放行并发，其余变更工具默认独占（fail-closed）。`@deepseek-ai/dsh-tools` / `@deepseek-ai/cordis` 为 optional peer dep，约定最小宿主契约类型，不硬依赖。
+
+## 工具清单（58 个）
 
 按域分组。每个工具返回统一输出契约：成功 `{ ok: true, ...data }`，失败 `{ ok: false, error: { code, message } }`。
 
@@ -90,15 +100,16 @@ npx win-shell-mcp
 | `system_memory` | 内存信息（total/free）；`verbose` 含 used、swap |
 | `system_path` | PATH 环境变量条目列表；`verbose` 含 count、existing |
 
-### fs_read（3）
+### fs 只读（4）
 
 | 工具 | 说明 |
 |------|------|
 | `fs_list` | 列目录；`verbose` 含类型与大小，`recursive` 递归 |
 | `fs_read` | 读文件；支持行范围、编码自动检测（GBK/UTF-8）、截断 |
 | `fs_stat` | 文件/目录信息（type、size、mtime、birthtime） |
+| `fs_du` | 目录磁盘用量（类似 `du`） |
 
-### fs_write（6）
+### fs 变更（6）
 
 | 工具 | 说明 |
 |------|------|
@@ -109,6 +120,12 @@ npx win-shell-mcp
 | `fs_mv` | 移动/重命名（dest 已存在则失败，不覆盖） |
 | `fs_touch` | 创建空文件或更新 mtime |
 
+### find（1）
+
+| 工具 | 说明 |
+|------|------|
+| `find` | 按文件名模式递归搜索（Unix find 短名；别名 `fs_find`，支持 * 通配） |
+
 ### text（7）
 
 | 工具 | 说明 |
@@ -118,17 +135,16 @@ npx win-shell-mcp
 | `text_tail` | 取后 N 行 |
 | `text_wc` | 统计行/词/字符数 |
 | `text_diff` | 两段文本差异 |
-| `text_replace` | 文本替换（默认字面量，/正则/ 形式启用正则；多命中需显式表态） |
+| `text_replace` | 文本替换（默认字面量，/正则/ 形式启用正则；多命中需 `all`/`maxReplace` 显式表态） |
 | `cat` | 连接/读取文件内容（类似 `cat`；别名 `text_cat`） |
 
-### search（4）
+### search（3）
 
 | 工具 | 说明 |
 |------|------|
 | `search_glob` | glob 模式匹配文件路径 |
 | `search_content` | 跨文件内容搜索（默认字面量，/正则/ 形式启用正则） |
 | `search_which` | 查找可执行文件路径（类似 `which`/`where`） |
-| `find` | 按文件名模式递归搜索（Unix find 短名；别名 `fs_find`，支持 * 通配） |
 
 ### process（2）
 
@@ -143,6 +159,12 @@ npx win-shell-mcp
 |------|------|
 | `shell_exec` | 执行 shell 命令（带超时与编码处理） |
 
+### run_command（1）
+
+| 工具 | 说明 |
+|------|------|
+| `run_command` | 直接运行 shell 命令（精简门面） |
+
 ### env（3）
 
 | 工具 | 说明 |
@@ -151,7 +173,7 @@ npx win-shell-mcp
 | `env_set` | 设置环境变量 |
 | `env_unset` | 删除环境变量 |
 
-### net（5）
+### net（7）
 
 | 工具 | 说明 |
 |------|------|
@@ -159,6 +181,8 @@ npx win-shell-mcp
 | `net_post` | HTTP POST 请求 |
 | `net_dns` | DNS 解析 |
 | `net_tcp` | TCP 连接探测 |
+| `net_listen` | TCP 监听 |
+| `net_download` | HTTP 下载文件 |
 | `ping` | TCP 连通性探测（类似 `ping`；别名 `net_ping`） |
 
 ### pkg（2）
@@ -168,7 +192,7 @@ npx win-shell-mcp
 | `pkg_detect` | 检测包管理器（npm/pnpm/yarn） |
 | `pkg_run` | 运行包脚本 |
 
-### git（6）
+### git（11）
 
 | 工具 | 说明 |
 |------|------|
@@ -178,6 +202,11 @@ npx win-shell-mcp
 | `git_diff` | 差异 |
 | `git_add` | 暂存 |
 | `git_commit` | 提交 |
+| `git_checkout` | 切换分支/恢复文件 |
+| `git_push` | 推送 |
+| `git_pull` | 拉取 |
+| `git_clone` | 克隆仓库 |
+| `git_stash` | 暂存/恢复变更（`action:'list'` 只读可并发） |
 
 ### core（2）
 
@@ -186,11 +215,24 @@ npx win-shell-mcp
 | `pwd` | 打印当前工作目录 |
 | `echo` | 输出文本 |
 
-### run_command（1）
+### hash（1）
 
 | 工具 | 说明 |
 |------|------|
-| `run_command` | 直接运行 shell 命令（精简版） |
+| `hash_file` | 计算文件哈希（md5/sha1/sha256） |
+
+### json（1）
+
+| 工具 | 说明 |
+|------|------|
+| `json_get` | 从 JSON 内容取值（路径访问） |
+
+### archive（2）
+
+| 工具 | 说明 |
+|------|------|
+| `archive_create` | 创建压缩包（zip） |
+| `archive_extract` | 解压压缩包（zip 等） |
 
 ## ⚠️ 安全说明
 
@@ -232,22 +274,25 @@ npm run build
 npm run dev
 ```
 
-构建产物为 `dist/index.js`（tsup 打包，ESM）。
+构建产物为多入口 ESM（tsup）：`dist/index.js`（MCP stdio，带 shebang）、`dist/core.js`、`dist/plugin.js`。
 
 ## 项目结构
 
 ```
 src/
-  index.ts          # 入口：启动 stdio server
+  index.ts          # 入口①：启动 MCP stdio server
   server.ts         # MCP Server 创建与工具分发
-  registry.ts       # 工具注册表（注册全部 46 个工具）
+  core.ts           # 入口②：通用核心（服务/注册表，无 dsh 依赖）
+  plugin.ts         # 入口③：Cordis 插件（apply → ctx.tools），并发分类 + config.exclude
+  registry.ts       # 工具注册表（注册全部 58 个工具 + annotations）
   contract/         # 输出契约与错误码
   encoding/         # 编码检测（GBK/UTF-8）
-  tools/            # 46 个工具实现，按域分文件
+  tools/            # 58 个工具实现，按域分文件
 tests/
   server.test.ts    # server 单元测试
-  integration/      # 集成测试（Client + InMemoryTransport）
-  tools/            # 各工具单元测试
+  plugin.test.ts    # 插件投影测试
+  plugin-integration.test.ts  # 插件 + DSH 环境冒烟
+  tools/            # 各工具单元测试 + 并发分类/guard 防漂移护栏
   contract/         # 契约测试
   encoding/         # 编码测试
 ```

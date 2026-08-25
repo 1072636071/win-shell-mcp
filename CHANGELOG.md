@@ -3,6 +3,27 @@
 本文件记录 win-shell-mcp 的显著变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循 0.x 语义化（0.x 发布前窗口允许破坏性修改，正式发布后只加不改，见 ADR-0007）。
 
+## [0.2.0] - 2026-08-25
+
+### Added
+
+- **DSH / Cordis 插件入口**：新增 `./core` 与 `./plugin` 两个子入口（配 `.` 默认 MCP 入口），
+  `apply(ctx, config)` 全量注册 58 工具到 `ctx.tools.defineTool`，支持 `config.exclude` 按名裁剪
+  （系列决策见 ADR-0010/0011/0012）。
+- **并发分类**：以 MCP 标准 `ToolAnnotations.readOnlyHint` 为单一事实源（ADR-0014）派生
+  dsh 的 `isConcurrencySafe`（只读→并发；其余 fail-closed 独占）；参数级例外走插件层小覆盖表，
+  当前含 `git_stash action:'list'`（只读可并发）。`@deepseek-ai/dsh-tools`/`@deepseek-ai/cordis`
+  为 optional peer dep。
+- **工具扩充至 58 个**：新增 `fs_du`、`fs_find`(find)、`text_cat`(cat)、`net_ping`(ping)、
+  `net_listen`、`net_download`、`run_command`、`pwd`、`echo`、`hash_file`、`json_get`、
+  `archive_create`、`archive_extract` 及 git `checkout`/`push`/`pull`/`clone`/`stash`。
+- **防漂移护栏**：guard/并发/投影测试组强制每个工具声明非空 `outputSchema` 与显式 `readOnlyHint`
+  （只读 34 + 变更 24 + 总数 58）。
+
+### Changed
+
+- 版本号不再覆盖旧版；首次发布 58 工具 + 双入口形态（registry `latest` 0.1.0 → 0.2.0）。
+
 ## [Unreleased]
 
 ### ⚠️ Changed（破坏性变更）：`text_replace` 从纯正则改为双模 + 安全三分支
