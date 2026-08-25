@@ -16,7 +16,9 @@ LLM 的输入 token 便宜、输出 token 贵。多次为确认结果而回跑�
 - **断言**：每步可附 `assert: [{ path, op, value? }]`，`op ∈ eq|neq|gt|gte|lt|lte|in|re|truthy|falsy`。省略 assert = 只要求该步成功。断言为纯数据、无 eval，可逐条失败归因。
 - **步骤间引用**：args 与 assert 值里用模板串 `{{stepId.output.path}}` 插值；**整个值恰好等于一个引用时保持原类型**（bool/number），否则转字符串。stepId 由 LLM 在步内 `id` 指定，缺省默认 `step<N>`（1-indexed）。
 - **短路**：任一步失败或 assert 不满足立即中止，不执行后续；返回仅含已执行步骤。
-- **结果**：`{ ok, steps: [{ id, tool, ok, data?, error?, assert? }], summary }`，`ok` 仅当所有执行步骤均成功且断言通过；`summary` 极简。
+- **结果**：`{ allOk, steps: [{ id, tool, ok, data?, error?, assert? }], summary }`，`allOk` 仅当所有执行步骤均成功且断言通过；`summary` 极简。
+
+  > 修订（2026-08-25 审查闭环）：聚合判定字段由草案 `ok` 调整为 `allOk`——契约层 ADR-0003 已用 `ok` 表示"工具调用本身成功"（batch_run 恒 `ok:true`），同名会覆盖契约 ok 致 `isOk/isFail` 误判。
 
 ## 被否决的替代方案
 

@@ -1,5 +1,5 @@
 /**
- * Guard test（工单 04 最终防线）：覆盖全部 58 个工具。
+ * Guard test（工单 04 最终防线）：覆盖全部 59 个工具。
  *
  * 断言每个工具：
  * - outputSchema 非空（defined）
@@ -7,9 +7,9 @@
  *
  * 分两批断言：
  * - 只读工具（readOnlyHint === true）：34 个
- * - 变更工具（readOnlyHint === false）：24 个
+ * - 变更工具（readOnlyHint === false）：25 个
  *
- * 另断言 builtinTools 总数为 58，且两批工具名的并集与 builtinTools 完全一致，
+ * 另断言 builtinTools 总数为 59，且两批工具名的并集与 builtinTools 完全一致，
  * 防止新增工具时静默漏盖。
  *
  * 本文件与 guard-readonly-a/b.test.ts 互补：那两个文件分批覆盖只读工具的细节，
@@ -81,6 +81,7 @@ const READONLY_TOOLS: readonly string[] = [
  * - pkg 域（1）
  * - git 变更子命令（7）
  * - 执行域（2）
+ * - batch_run（1，工单 01-02-03-04）
  */
 const MUTATING_TOOLS: readonly string[] = [
   // fs 变更域
@@ -116,19 +117,21 @@ const MUTATING_TOOLS: readonly string[] = [
   // 执行域
   "shell_exec",
   "run_command",
+  // batch_run（工单 01-02-03-04）
+  "batch_run",
 ];
 
 describe("工单 04 最终 guard：全部 58 工具 outputSchema 与 readOnlyHint", () => {
-  it("builtinTools 总数为 58", () => {
-    expect(builtinTools.length).toBe(58);
+  it("builtinTools 总数为 59", () => {
+    expect(builtinTools.length).toBe(59);
   });
 
   it("只读工具清单数为 34", () => {
     expect(READONLY_TOOLS.length).toBe(34);
   });
 
-  it("变更工具清单数为 24", () => {
-    expect(MUTATING_TOOLS.length).toBe(24);
+  it("变更工具清单数为 25", () => {
+    expect(MUTATING_TOOLS.length).toBe(25);
   });
 
   it("两批工具名无重复", () => {
@@ -148,7 +151,7 @@ describe("工单 04 最终 guard：全部 58 工具 outputSchema 与 readOnlyHin
     for (const name of registered) {
       expect(listed.has(name), `已注册的 ${name} 应在列表里`).toBe(true);
     }
-    expect(listed.size).toBe(58);
+    expect(listed.size).toBe(59);
   });
 
   // 只读工具：outputSchema 非空 + readOnlyHint === true

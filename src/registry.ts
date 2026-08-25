@@ -72,6 +72,7 @@ import { jsonGetTool } from "./tools/json.js";
 import { netListenTool } from "./tools/net_listen.js";
 import { netDownloadTool } from "./tools/net_download.js";
 import { archiveCreateTool, archiveExtractTool } from "./tools/archive.js";
+import { batchRunTool } from "./tools/batch.js";
 
 /**
  * 工具注解（对齐 MCP 标准 ToolAnnotations）。
@@ -234,6 +235,8 @@ registerTool(netListenTool);
 registerTool(netDownloadTool);
 registerTool(archiveCreateTool);
 registerTool(archiveExtractTool);
+// batch_run（工单 01-02-03-04）
+registerTool(batchRunTool);
 
 /** server 层装载的不可变工具清单（快照自 registerTool 注册结果）。 */
 export const builtinTools: readonly Tool[] = [...tools];

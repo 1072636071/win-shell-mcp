@@ -1,6 +1,8 @@
 # batch_run 断言引擎
 
-**Status:** ready-for-agent
+**Status:** resolved
+
+> 2026-08-25：已实现（十种操作符）、逐条失败归因、断言短路），review 期间补 falsy/gt/gte/lt/lte 正向单测后闭环。
 
 **Blocked by:** 01
 

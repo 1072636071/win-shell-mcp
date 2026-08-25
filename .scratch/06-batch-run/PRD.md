@@ -16,7 +16,9 @@ LLM 输入 token 便宜、输出 token 贵。多次为确认结果回跑工具�
 - 断言：`assert: [{ path, op, value? }]`，`op ∈ eq|neq|gt|gte|lt|lte|in|re|truthy|falsy`；省略 = 只要求该步成功。
 - 引用：`{{stepId.output.path}}` 模板串；整串单引用保原类型，否则转字符串；仅允许引用已完成步骤。
 - 短路：任一步失败或断言不满足立即中止，返回仅含已执行步骤。
-- 结果：`{ ok, steps: [{ id, tool, ok, data?, error?, assert? }], summary }`，`ok` 仅当所有执行步骤均成功且断言通过。
+- 结果：`{ allOk, steps: [{ id, tool, ok, data?, error?, assert? }], summary }`，`allOk` 仅当所有执行步骤均成功且断言通过。
+
+> **修订（2026-08-25，代码审查闭环）**：spec 草案结果字段名为 `ok`。实现时发现契约层（ADR-0003）已用 `ok` 表示"工具调用本身成功"（batch_run 恒为 `ok:true`），若 batch 聚合语义也占用 `ok` 会同名覆盖契约 ok，导致 `isOk/isFail` 误判。故聚合判定字段调整为 **`allOk`**，语义不变（全步成功才 true），避免与契约层冲突。
 
 ## 验收标准
 

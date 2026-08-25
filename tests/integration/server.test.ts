@@ -13,9 +13,9 @@ import { builtinTools, getAllTools, findTool } from '../../src/registry.js';
 import { isOk, isFail } from '../../src/contract/output.js';
 
 /** 期望的工具总数。 */
-const EXPECTED_TOOL_COUNT = 58;
+const EXPECTED_TOOL_COUNT = 59;
 
-/** 期望的工具名（按域分组，共 58 个）。 */
+/** 期望的工具名（按域分组，共 59 个）。 */
 const EXPECTED_TOOL_NAMES = [
   // system
   'system_info',
@@ -88,6 +88,8 @@ const EXPECTED_TOOL_NAMES = [
   'net_download',
   'archive_create',
   'archive_extract',
+  // batch_run（工单 01-04）
+  'batch_run',
 ] as const;
 
 /** Client callTool 返回类型（content 退化为 unknown，统一断言）。 */

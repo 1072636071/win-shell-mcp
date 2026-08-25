@@ -1,6 +1,8 @@
 # batch_run 注册护栏与注解
 
-**Status:** ready-for-agent
+**Status:** resolved
+
+> 2026-08-25：已实现（outputSchema/annotations/guard 全部通过），经双向审查闭环。
 
 **Blocked by:** 01, 02, 03
 

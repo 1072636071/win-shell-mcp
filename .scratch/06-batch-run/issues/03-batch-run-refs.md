@@ -1,6 +1,8 @@
 # batch_run 步骤间引用
 
-**Status:** ready-for-agent
+**Status:** resolved
+
+> 2026-08-25：已实现（插值/保类型/混合拼接/仅已完成步骤），review 修复混合拼接 `replace` 只替换第一处缺陷并补回归单测后闭环。
 
 **Blocked by:** 01
 

@@ -185,13 +185,55 @@ export async function fsMkdirHandler(
 }
 
 /**
+ * 尝试 stat 指定路径。
+ *
+ * 统一"路径存在性预检查"的 try/catch：ENOENT 视为不存在返回 ok:false，
+ * 其他错误直接抛出，由调用方外层 catch 兜底 toFail。
+ *
+ * @param p 路径
+ * @param statFn stat 实现（默认跟随链接；传 fs.lstat 可检查链接本身）
+ * @returns { stat?, ok } —— ok 为 false 表示路径不存在
+ */
+async function tryStat(
+  p: string,
+  statFn: (p: string) => Promise<Stats> = fs.stat,
+): Promise<{ stat?: Stats; ok: boolean }> {
+  try {
+    return { stat: await statFn(p), ok: true };
+  } catch (e) {
+    if (toErrorCode(e) !== ErrorCode.ENOENT) throw e;
+    return { ok: false };
+  }
+}
+
+/**
+ * 递归统计目录内条目数（文件 + 子目录）。
+ *
+ * 用于 fs_rm 递归删除时的条目计数。
+ *
+ * @param dir 目录路径
+ * @returns 条目总数
+ */
+async function countEntries(dir: string): Promise<number> {
+  let total = 0;
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    total++;
+    if (entry.isDirectory()) {
+      total += await countEntries(path.join(dir, entry.name));
+    }
+  }
+  return total;
+}
+
+/**
  * fs_rm handler：删除文件/目录。
  *
  * 行为：
  * - 不存在且非 force → ENOENT
  * - 不存在且 force → removed: false
  * - 非空目录且非 recursive → EACCES（语义：拒绝删除）
- * - 删除成功 → removed: true
+ * - 删除成功 → removed: true, targetType, recursiveCount?
  */
 export async function fsRmHandler(
   args: Record<string, unknown>,
@@ -201,30 +243,39 @@ export async function fsRmHandler(
   const force = args["force"] === true;
 
   try {
-    // 预检查存在性
-    let existed = true;
-    let stat: Stats | undefined;
-    try {
-      stat = await fs.stat(targetPath);
-    } catch (e) {
-      if (toErrorCode(e) === ErrorCode.ENOENT) {
-        existed = false;
-      } else {
-        return toFail(e);
-      }
-    }
-
-    if (!existed) {
+    // 预检查存在性：lstat 判定路径本身是否存在。
+    // symlink 即使悬空（目标不存在）也视为"存在"，删除时只删链接本身。
+    const lstatRes = await tryStat(targetPath, fs.lstat);
+    if (!lstatRes.ok) {
       if (force) {
         return ok({ removed: false });
       }
       return fail(ErrorCode.ENOENT, `路径不存在: ${targetPath}`);
     }
 
-    // 此时 existed 为 true，stat 已赋值
-    const targetStat: Stats = stat as Stats;
+    const lstat = lstatRes.stat as Stats;
 
-    if (targetStat.isDirectory()) {
+    // stat 跟随链接判断实际类型；对悬空链接会抛 ENOENT，不影响删除。
+    const statRes = await tryStat(targetPath);
+    const statOk = statRes.ok;
+
+    // 判定目标类型：symlink 优先（lstat 不跟随链接）
+    let targetType: "file" | "dir" | "symlink";
+    if (lstat.isSymbolicLink()) {
+      targetType = "symlink";
+    } else if (statOk && (statRes.stat as Stats).isDirectory()) {
+      targetType = "dir";
+    } else {
+      targetType = "file";
+    }
+
+    // 递归删除时预统计条目数（仅真实目录；symlink 只删链接，不跟入目标）
+    let recursiveCount: number | undefined;
+    if (recursive && targetType === "dir" && statOk) {
+      recursiveCount = (await countEntries(targetPath)) + 1; // 包含目录自身
+    }
+
+    if (targetType === "dir") {
       if (!recursive) {
         const entries = await fs.readdir(targetPath);
         if (entries.length > 0) {
@@ -234,15 +285,22 @@ export async function fsRmHandler(
           );
         }
         await fs.rmdir(targetPath);
-        return ok({ removed: true });
+        return ok({ removed: true, targetType });
       }
       await fs.rm(targetPath, { recursive: true, force: false });
-      return ok({ removed: true });
+      const result: Record<string, unknown> = {
+        removed: true,
+        targetType,
+      };
+      if (recursiveCount !== undefined) {
+        result.recursiveCount = recursiveCount;
+      }
+      return ok(result);
     }
 
-    // 文件：直接删
+    // 文件 / symlink（含悬空链接）：直接删，Node fs.rm 对 symlink 不跟随目标
     await fs.rm(targetPath);
-    return ok({ removed: true });
+    return ok({ removed: true, targetType });
   } catch (e) {
     return toFail(e);
   }
@@ -254,7 +312,8 @@ export async function fsRmHandler(
  * 行为：
  * - src 不存在 → ENOENT
  * - src 是目录且非 recursive → EINVAL
- * - 复制成功 → copied: true
+ * - dest 已存在 → 覆盖（fs.cp / copyFile 默认覆盖），返回 overwritten: true
+ * - 复制成功 → copied: true, overwritten?
  */
 export async function fsCpHandler(
   args: Record<string, unknown>,
@@ -278,12 +337,20 @@ export async function fsCpHandler(
       return fail(ErrorCode.EINVAL, `复制目录需 recursive: ${src}`);
     }
 
+    // 检查 dest 是否已存在
+    const overwritten = (await tryStat(dest)).ok;
+
     if (srcStat.isDirectory()) {
       await fs.cp(src, dest, { recursive: true });
     } else {
       await fs.copyFile(src, dest);
     }
-    return ok({ copied: true });
+
+    const result: Record<string, unknown> = { copied: true };
+    if (overwritten) {
+      result.overwritten = true;
+    }
+    return ok(result);
   } catch (e) {
     return toFail(e);
   }
@@ -296,7 +363,7 @@ export async function fsCpHandler(
  * - src 不存在 → ENOENT
  * - dest 是目录 → 移入该目录（dest/basename(src)）
  * - dest 已存在且非目录 → overwrite 为 true 时覆盖，否则 EINVAL
- * - 移动成功 → moved: true, dest（最终目标路径）
+ * - 移动成功 → moved: true, dest（最终目标路径）, overwritten?
  */
 export async function fsMvHandler(
   args: Record<string, unknown>,
@@ -318,6 +385,7 @@ export async function fsMvHandler(
 
     // 判断 dest 是否已存在及类型，决定最终目标
     let finalDest = dest;
+    let overwritten = false;
     try {
       const destStat = await fs.stat(dest);
       if (destStat.isDirectory()) {
@@ -332,6 +400,7 @@ export async function fsMvHandler(
               `目标已存在: ${finalDest}`,
             ) as unknown as AnyToolResult;
           }
+          overwritten = true;
           await fs.rm(finalDest, { recursive: true, force: true });
         } catch (e) {
           if (toErrorCode(e) !== ErrorCode.ENOENT) {
@@ -347,6 +416,7 @@ export async function fsMvHandler(
             `目标已存在: ${dest}`,
           ) as unknown as AnyToolResult;
         }
+        overwritten = true;
         await fs.rm(dest, { force: true });
       }
     } catch (e) {
@@ -357,7 +427,14 @@ export async function fsMvHandler(
     }
 
     await fs.rename(src, finalDest);
-    return ok({ moved: true, dest: finalDest }) as unknown as AnyToolResult;
+    const result: Record<string, unknown> = {
+      moved: true,
+      dest: finalDest,
+    };
+    if (overwritten) {
+      result.overwritten = true;
+    }
+    return ok(result) as unknown as AnyToolResult;
   } catch (e) {
     return toFail(e);
   }
@@ -449,17 +526,30 @@ export const fsMkdirTool: Tool = {
 /**
  * fs_rm 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 成功返回 `{ removed }`：是否删除（force=true 且路径不存在时为 false）。
+ * 成功返回 `{ removed, targetType?, recursiveCount? }`：
+ * - removed：是否删除（force=true 且路径不存在时为 false）
+ * - targetType：被删目标的类型（file/dir/symlink；force=true 且路径不存在时无此字段）
+ * - recursiveCount：递归删除时删除的条目数（含目标目录自身；仅 recursive=true 且目标为目录时）
  */
 export const fsRmOutputSchema = z.object({
   removed: z.boolean().describe("是否删除"),
+  targetType: z
+    .enum(["file", "dir", "symlink"])
+    .optional()
+    .describe("被删目标的类型（force=true 且路径不存在时无此字段）"),
+  recursiveCount: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("递归删除时删除的条目数（含目标目录自身；仅 recursive=true 且目标为目录时）"),
 });
 
 /** fs_rm 工具定义。 */
 export const fsRmTool: Tool = {
   name: "fs_rm",
   description:
-    "删除文件/目录（recursive 删目录树，force 忽略不存在）。返回是否删除。",
+    "删除文件/目录（recursive 删目录树，force 忽略不存在）。返回是否删除、目标类型（file/dir/symlink，仅删除时）与递归删除条目数（含目录自身）。",
   inputSchema: fsRmInputSchema,
   outputSchema: fsRmOutputSchema,
   // 删除不可逆，destructiveHint: true
@@ -470,16 +560,23 @@ export const fsRmTool: Tool = {
 /**
  * fs_cp 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 成功返回 `{ copied }`：是否复制成功。
+ * 成功返回 `{ copied, overwritten? }`：
+ * - copied：是否复制成功
+ * - overwritten：是否覆盖了已存在的目标（optional）
  */
 export const fsCpOutputSchema = z.object({
   copied: z.boolean().describe("是否复制成功"),
+  overwritten: z
+    .boolean()
+    .optional()
+    .describe("是否覆盖了已存在的目标"),
 });
 
 /** fs_cp 工具定义。 */
 export const fsCpTool: Tool = {
   name: "fs_cp",
-  description: "复制文件/目录（目录需 recursive）。返回是否复制成功。",
+  description:
+    "复制文件/目录（目录需 recursive）。返回是否复制成功与是否覆盖已存在目标。",
   inputSchema: fsCpInputSchema,
   outputSchema: fsCpOutputSchema,
   // 复制到已存在目标会覆盖，destructiveHint: true
@@ -490,18 +587,25 @@ export const fsCpTool: Tool = {
 /**
  * fs_mv 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 成功返回 `{ moved, dest }`：是否移动成功与最终目标路径。
+ * 成功返回 `{ moved, dest, overwritten? }`：
+ * - moved：是否移动成功
+ * - dest：最终目标路径
+ * - overwritten：是否覆盖了已存在的目标（optional）
  */
 export const fsMvOutputSchema = z.object({
   moved: z.boolean().describe("是否移动成功"),
   dest: z.string().describe("最终目标路径"),
+  overwritten: z
+    .boolean()
+    .optional()
+    .describe("是否覆盖了已存在的目标"),
 });
 
 /** fs_mv 工具定义。 */
 export const fsMvTool: Tool = {
   name: "fs_mv",
   description:
-    "移动/重命名（≈ Unix mv）。dest 为目录时移入该目录；overwrite 为 true 时覆盖已存在目标。返回 { moved, dest }。",
+    "移动/重命名（≈ Unix mv）。dest 为目录时移入该目录；overwrite 为 true 时覆盖已存在目标。返回 { moved, dest, overwritten? }。",
   inputSchema: fsMvInputSchema,
   outputSchema: fsMvOutputSchema,
   // overwrite=true 时覆盖既有目标，destructiveHint: true

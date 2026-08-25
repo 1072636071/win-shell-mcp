@@ -52,11 +52,11 @@ function makeFakeCtx(): {
 // ---------------------------------------------------------------------------
 
 describe("plugin 全量注册（mock ctx）", () => {
-  it("apply 注册全部 58 个工具", () => {
+  it("apply 注册全部 59 个工具", () => {
     const { ctx, defined } = makeFakeCtx();
     apply(ctx);
     expect(defined.size).toBe(EXPECTED_TOOL_COUNT);
-    expect(defined.size).toBe(58);
+    expect(defined.size).toBe(59);
   });
 
   it("注册工具名集合等于 builtinTools 工具名集合", () => {
@@ -102,7 +102,7 @@ describe("plugin config.exclude 验证（mock ctx）", () => {
     const { ctx, defined } = makeFakeCtx();
     apply(ctx, { exclude: excludeList });
     expect(defined.size).toBe(EXPECTED_TOOL_COUNT - excludeList.length);
-    expect(defined.size).toBe(55);
+    expect(defined.size).toBe(56);
     for (const name of excludeList) {
       expect(defined.has(name)).toBe(false);
     }
@@ -146,7 +146,7 @@ dshDescribe("DSH 本地冒烟", () => {
     // 用真实 plugin 模块（已 import）+ mock ctx 验证全量注册无异常
     const { ctx, defined } = makeFakeCtx();
     expect(() => apply(ctx)).not.toThrow();
-    expect(defined.size).toBe(58);
+    expect(defined.size).toBe(59);
   });
 
   it("Native 模式：并行调用两个 read-only 工具均成功返回", async () => {

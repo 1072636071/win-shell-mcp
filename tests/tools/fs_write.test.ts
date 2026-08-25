@@ -325,6 +325,102 @@ describe('fs_rm', () => {
     }
     await assertNotExists(file);
   });
+
+  it('删除文件返回 targetType="file"', async () => {
+    const file = p('target-file.txt');
+    await fs.writeFile(file, 'x', 'utf8');
+
+    const result = await fsRmHandler({ path: file });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['removed']).toBe(true);
+      expect(result['targetType']).toBe('file');
+    }
+    await assertNotExists(file);
+  });
+
+  it('删除空目录返回 targetType="dir"', async () => {
+    const dir = p('target-dir');
+    await fs.mkdir(dir);
+
+    const result = await fsRmHandler({ path: dir });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['removed']).toBe(true);
+      expect(result['targetType']).toBe('dir');
+    }
+    await assertNotExists(dir);
+  });
+
+  it('递归删除目录返回 targetType="dir" 与 recursiveCount', async () => {
+    const dir = p('recursive-tree');
+    await fs.mkdir(path.join(dir, 'sub'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'a.txt'), 'a', 'utf8');
+    await fs.writeFile(path.join(dir, 'sub', 'b.txt'), 'b', 'utf8');
+
+    const result = await fsRmHandler({ path: dir, recursive: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['removed']).toBe(true);
+      expect(result['targetType']).toBe('dir');
+      expect(typeof result['recursiveCount']).toBe('number');
+      // 目录自身 + a.txt + sub + b.txt = 4 条目
+      expect(result['recursiveCount']).toBeGreaterThanOrEqual(4);
+    }
+    await assertNotExists(dir);
+  });
+
+  it('非递归删除不返回 recursiveCount', async () => {
+    const file = p('no-recursive.txt');
+    await fs.writeFile(file, 'x', 'utf8');
+
+    const result = await fsRmHandler({ path: file });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['removed']).toBe(true);
+      expect(result['recursiveCount']).toBeUndefined();
+    }
+    await assertNotExists(file);
+  });
+
+  it('删除悬空符号链接：只删链接本身，targetType="symlink"，不统计 recursiveCount', async () => {
+    const link = p('dangling-link');
+    const target = p('non-existent-target');
+    try {
+      await fs.symlink(target, link);
+    } catch {
+      // 平台不支持创建符号链接（如缺开发者模式），跳过本用例
+      return;
+    }
+
+    const result = await fsRmHandler({ path: link });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['removed']).toBe(true);
+      expect(result['targetType']).toBe('symlink');
+      expect(result['recursiveCount']).toBeUndefined();
+    }
+    await assertNotExists(link);
+  });
+
+  it('force=true 删除悬空符号链接仍返回 removed=true（非 return false）', async () => {
+    const link = p('dangling-link-force');
+    const target = p('non-existent-target-force');
+    try {
+      await fs.symlink(target, link);
+    } catch {
+      return;
+    }
+
+    const result = await fsRmHandler({ path: link, force: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      // 悬空链接未被当作"路径不存在"误判，应真正删除并返回 true
+      expect(result['removed']).toBe(true);
+      expect(result['targetType']).toBe('symlink');
+    }
+    await assertNotExists(link);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -378,6 +474,35 @@ describe('fs_cp', () => {
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe(ErrorCode.ENOENT);
+    }
+  });
+
+  it('覆盖已存在目标返回 overwritten=true', async () => {
+    const src = p('ow-src.txt');
+    const dest = p('ow-dest.txt');
+    await fs.writeFile(src, 'new', 'utf8');
+    await fs.writeFile(dest, 'old', 'utf8');
+
+    const result = await fsCpHandler({ src, dest });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['copied']).toBe(true);
+      expect(result['overwritten']).toBe(true);
+    }
+    const text = await fs.readFile(dest, 'utf8');
+    expect(text).toBe('new');
+  });
+
+  it('目标不存在时不返回 overwritten', async () => {
+    const src = p('new-src.txt');
+    const dest = p('new-dest.txt');
+    await fs.writeFile(src, 'content', 'utf8');
+
+    const result = await fsCpHandler({ src, dest });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['copied']).toBe(true);
+      expect(result['overwritten']).toBeUndefined();
     }
   });
 });
@@ -495,6 +620,40 @@ describe('fs_mv', () => {
     await assertNotExists(src);
     const text = await fs.readFile(path.join(destDir, 'movein-ow-src.txt'), 'utf8');
     expect(text).toBe('new');
+  });
+
+  it('overwrite: true 覆盖已存在目标返回 overwritten=true', async () => {
+    const src = p('ow2-src.txt');
+    const dest = p('ow2-dest.txt');
+    await fs.writeFile(src, 'new', 'utf8');
+    await fs.writeFile(dest, 'old', 'utf8');
+
+    const result = await fsMvHandler({ src, dest, overwrite: true });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['moved']).toBe(true);
+      expect(result['dest']).toBe(dest);
+      expect(result['overwritten']).toBe(true);
+    }
+    await assertNotExists(src);
+    const text = await fs.readFile(dest, 'utf8');
+    expect(text).toBe('new');
+  });
+
+  it('目标不存在时不返回 overwritten', async () => {
+    const src = p('plain-src.txt');
+    const dest = p('plain-dest.txt');
+    await fs.writeFile(src, 'x', 'utf8');
+
+    const result = await fsMvHandler({ src, dest });
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result['moved']).toBe(true);
+      expect(result['dest']).toBe(dest);
+      expect(result['overwritten']).toBeUndefined();
+    }
+    await assertNotExists(src);
+    await assertExists(dest);
   });
 });
 
