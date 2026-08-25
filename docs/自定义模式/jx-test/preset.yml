@@ -1,0 +1,2 @@
+name: JX模式Test
+description: 基于 JX 模式（win-shell-mcp 工具优先 + 事实沉淀 JXK），额外承担测试职责：使用中发现 win-shell-mcp 或 jxk 的问题/bug 时，当场登记到 JXK 的 bug 收集（type:bug/bug），再用回退方案继续任务。

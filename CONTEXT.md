@@ -9,7 +9,7 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 ## 现状基线（2026-08-25）
 
 - **已实现**：MCP stdio 单入口；15 个命令域、58 个工具；统一输出契约；JX 模式（dsh preset，权威模板见 `docs/dsh/`）。
-- **已决策未实施**：dsh 插件双入口交付（ADR-0010/0011/0012）；破坏性操作保护（ADR-0008/0009，PRD ready-for-agent）；**PTC/Code Mode 适配（ADR-0014，memorial 006）——适配壳定位、MCP 标准注解作并发分类单一事实源、outputSchema 纳入首版**。
+- **已决策未实施**：dsh 插件双入口交付（ADR-0010/0011/0012）；破坏性操作保护（ADR-0008/0009，PRD ready-for-agent）；**PTC/Code Mode 适配（ADR-0014，memorial 006）——适配壳定位、MCP 标准注解作并发分类单一事实源、outputSchema 纳入首版**；**batch_run 批量编排（ADR-0015，memorial 007）——单 meta 工具内串行执行 + 断言 + 步骤间引用，一轮解决问题**。
 
 ## 术语表
 
@@ -39,13 +39,14 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 | pattern 双模约定 | pattern 类参数统一语义：默认按字面量子串匹配（`.` `\` `*` 等原样），`/…/` 包裹启用正则（flags：i/m/s，replace 另收 g）；判定规则严格、任何歧义一律向字面量收敛；结构似正则但 flags 非法则 EINVAL 报错（ADR-0013） |
 | 响错误 / 哑错误 | 误用后果分类：哑错误 = 调用方误用后仍得到看似正常的结果（如正则语义下 `foo.ts` 错配 `foopts`），坏数据带着流程继续跑；响错误 = 失败显式可见（0 命中 / 报错 + hint），调用方一轮内自纠。工具设计目标：把哑错误变响错误（ADR-0013 可观测层的立项原则） |
 | 命令执行模块 | 深模块（`src/exec/run.ts`）：统一拥有子进程执行机器（spawn、输出收集、超时、进程树终止、GBK 解码），接口只有 `runCommand`；shell_exec、pkg_run、git 均调用它（见 ADR-0003） |
+| batch_run【未实施】 | 批量编排 meta 工具：一次 CallToolRequest 内串行执行一串步骤，每步可附 `assert`（路径+操作符，eq/neq/gt/gte/lt/lte/in/re/truthy/falsy），步骤间以 `{{stepId.output.path}}` 模板引用前序输出（整串单引用保原类型）；任一步失败或断言不满足即短路（ADR-0015 / memorial 007） |
 
 ## 已确定的决策
 
 - **安全模型**：无沙箱全权限，与裸 shell 等价（ADR-0002-no-sandbox、ADR-0004-trust-model）。
 - **实现原则**：纯 Node 运行时，内部不依赖 cmd/PowerShell 作为执行后端；Windows 特有域后置（ADR-0005）。
 - **范围**：全命令域一版上齐、持续扩展、单入口覆盖（ADR-0002-scope-full-coverage）；新域闸门 = 语义独立即可成域、逐域论证（ADR-0006）。
-- **输出**：极简、token 最小化，长输出截断 + verbose 开关取全量（ADR-0003）。
+- **输出**：极简、token 最小化，长输出截断 + verbose 开关取全量（ADR-0003）；工具输出倾向主动充分返回判别信息，避免为确认结果再走一轮（memorial 007 原则）。
 - **兼容性红线**：0.x 发布前允许破坏性修改并集中纠错；正式发布后只加不改——仅新增可选参数与输出字段，默认行为与既有字段永不变（ADR-0007）。
 - **pattern 语义**：全线双模——默认字面量子串匹配、`/…/` 启用正则；严格判定、永远向字面量收敛；结果携带 `patternMode` 与双向 hint；text_replace 永不静默决定替换数量（ADR-0013；2026-08-24 实施批次落地）。
 - **交付形态**：现状为 MCP stdio 单入口（streamable HTTP 为未来可选项）；已决策扩展为核心库 + MCP + dsh 插件双入口、同包多入口（ADR-0010 取代 ADR-0001-delivery，ADR-0011 全量注册，ADR-0012 同包多入口；未实施）。

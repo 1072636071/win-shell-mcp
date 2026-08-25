@@ -29,7 +29,7 @@ docs/dsh/
 | --- | --- | --- |
 | `preset.yml` | 模式选择列表中的显示名「JX模式」、描述、排序 `order: 5` | `jx-mode/preset.yml` |
 | `agent.cordis.yml` | 挂载的工具与提示段组合（见下文构建原理） | `jx-mode/agent.cordis.yml` |
-| `skills/jx-mode/SKILL.md` | 规则细则：19 行映射表、回退规则、记录范围、项目路由、护栏 | `jx-mode/skills/jx-mode/SKILL.md` |
+| `skills/jx-mode/SKILL.md` | 规则细则：22 行映射表（覆盖 58 工具）、回退规则、记录范围、项目路由、护栏 | `jx-mode/skills/jx-mode/SKILL.md` |
 
 ## 构建原理
 
@@ -67,6 +67,8 @@ win-shell-mcp 与知识库 MCP（imagetutu/jxk）等服务器挂在 **profile �
 
 **部署**（首次或从本目录同步）：
 
+> 本模式连同 jx-test（JX模式Test）已打包在 [`docs/自定义模式/`](../自定义模式/README.md)，那里有覆盖两个模式的通用安装脚本；下面是 jx-mode 单独部署的等价命令。
+
 ```powershell
 $src = "E:\work\sp\win-shell-mcp\docs\dsh"
 $dst = "$HOME\.dsh\.agent-presets\jx-mode"
@@ -96,4 +98,4 @@ Copy-Item "$src\skills\jx-mode\SKILL.md" "$dst\skills\jx-mode"
 
 - **权威源 = 本目录**。修改流程：改这里 → 复制到用户根 → 新会话验证。
 - 已部署副本若被单独现场调优，记得**回流**到本目录，避免两份漂移。
-- 细则版本记录在 `skills/jx-mode/SKILL.md` frontmatter 的 `metadata.version`（当前 1.1.0）。
+- 细则版本记录在 `skills/jx-mode/SKILL.md` frontmatter 的 `metadata.version`（当前 1.2.0，对应 win-shell-mcp 0.2.0：58 工具全量映射、pattern 三工具双模语义与表态要求、失败统一转 fail 契约）。
