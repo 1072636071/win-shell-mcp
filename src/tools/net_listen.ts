@@ -8,19 +8,19 @@
  * 返回 { ports: [{ port, protocol, address, pid }] }。
  */
 
-import { z } from 'zod';
-import { ok, fail, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode, toErrorMessage } from '../contract/errors.js';
-import { runCommand } from '../exec/run.js';
-import { IS_WIN } from '../utils/platform.js';
-import type { Tool } from '../registry.js';
+import { z } from "zod";
+import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode, toErrorMessage } from "../contract/errors.js";
+import { runCommand } from "../exec/run.js";
+import { IS_WIN } from "../utils/platform.js";
+import type { Tool } from "../registry.js";
 
 /** net_listen 输入 schema。 */
 export const netListenInputSchema = z.object({
   filter: z
     .string()
     .optional()
-    .describe('按端口或进程名过滤（含子串匹配，大小写不敏感）'),
+    .describe("按端口或进程名过滤（含子串匹配，大小写不敏感）"),
 });
 
 /** 监听端口条目。 */
@@ -44,7 +44,7 @@ interface NetListenResult {
  */
 export function parseNetstatLine(line: string): ListenEntry | null {
   const trimmed = line.trim();
-  if (!trimmed.toUpperCase().includes('LISTENING')) return null;
+  if (!trimmed.toUpperCase().includes("LISTENING")) return null;
   const parts = trimmed.split(/\s+/);
   if (parts.length < 5) return null;
   const protocol = parts[0]!;
@@ -52,11 +52,11 @@ export function parseNetstatLine(line: string): ListenEntry | null {
   const pid = Number(parts[parts.length - 1]);
   if (!Number.isInteger(pid) || pid < 0) return null;
   // local 形如 0.0.0.0:135 或 [::]:135 或 [::1]:135
-  const colonIdx = local.lastIndexOf(':');
+  const colonIdx = local.lastIndexOf(":");
   if (colonIdx === -1) return null;
   const port = Number(local.slice(colonIdx + 1));
   if (!Number.isInteger(port) || port < 0) return null;
-  const address = local.slice(0, colonIdx).replace(/^\[|\]$/g, '');
+  const address = local.slice(0, colonIdx).replace(/^\[|\]$/g, "");
   return { port, protocol, address, pid };
 }
 
@@ -65,7 +65,9 @@ export function parseNetstatLine(line: string): ListenEntry | null {
  *
  * 列顺序：映像名,PID,...
  */
-function parseTasklistNameLine(line: string): { pid: number; name: string } | null {
+function parseTasklistNameLine(
+  line: string,
+): { pid: number; name: string } | null {
   if (line.length === 0) return null;
   const fields: string[] = [];
   let i = 0;
@@ -75,9 +77,9 @@ function parseTasklistNameLine(line: string): { pid: number; name: string } | nu
       if (end === -1) return null;
       fields.push(line.slice(i + 1, end));
       i = end + 1;
-      if (line[i] === ',') i++;
+      if (line[i] === ",") i++;
     } else {
-      const end = line.indexOf(',', i);
+      const end = line.indexOf(",", i);
       if (end === -1) {
         fields.push(line.slice(i));
         i = line.length;
@@ -99,7 +101,7 @@ function parseTasklistNameLine(line: string): { pid: number; name: string } | nu
  */
 async function getWindowsProcessNames(): Promise<Map<number, string>> {
   try {
-    const outcome = await runCommand('tasklist', ['/FO', 'CSV', '/NH']);
+    const outcome = await runCommand("tasklist", ["/FO", "CSV", "/NH"]);
     if (outcome.spawnError !== undefined) return new Map();
     const text = outcome.stdout;
     const map = new Map<number, string>();
@@ -119,21 +121,23 @@ async function getWindowsProcessNames(): Promise<Map<number, string>> {
  * 行格式：`node     1234  user   6u  IPv4   0x1234      0t0  TCP *:3000 (LISTEN)`
  */
 export function parseLsofLine(line: string): ListenEntry | null {
-  if (!line.includes('LISTEN')) return null;
+  if (!line.includes("LISTEN")) return null;
   const parts = line.split(/\s+/);
   if (parts.length < 9) return null;
   const pid = Number(parts[1]);
   if (!Number.isInteger(pid) || pid < 0) return null;
-  const name = parts[0] ?? '';
+  const name = parts[0] ?? "";
   // NAME 列形如 *:3000 (LISTEN) 或 127.0.0.1:3000 (LISTEN)
-  const namePart = parts.find((p) => p.includes(':') && (p.startsWith('*') || p.includes('.')));
+  const namePart = parts.find(
+    (p) => p.includes(":") && (p.startsWith("*") || p.includes(".")),
+  );
   if (!namePart) return null;
-  const colonIdx = namePart.lastIndexOf(':');
+  const colonIdx = namePart.lastIndexOf(":");
   if (colonIdx === -1) return null;
   const port = Number(namePart.slice(colonIdx + 1));
   if (!Number.isInteger(port) || port < 0) return null;
-  const address = namePart.slice(0, colonIdx).replace(/^\*$/, '0.0.0.0');
-  const protocol = parts[parts.length - 3] ?? 'tcp';
+  const address = namePart.slice(0, colonIdx).replace(/^\*$/, "0.0.0.0");
+  const protocol = parts[parts.length - 3] ?? "tcp";
   return { port, protocol: protocol.toLowerCase(), address, pid, name };
 }
 
@@ -142,7 +146,7 @@ export function parseLsofLine(line: string): ListenEntry | null {
  */
 async function listWindowsListen(): Promise<ListenEntry[]> {
   const [outcome, names] = await Promise.all([
-    runCommand('netstat', ['-ano']),
+    runCommand("netstat", ["-ano"]),
     getWindowsProcessNames(),
   ]);
   if (outcome.spawnError !== undefined) return [];
@@ -165,22 +169,22 @@ async function listWindowsListen(): Promise<ListenEntry[]> {
  * 行格式：`LISTEN 0 4096 0.0.0.0:3000 0.0.0.0:* users:(("node",pid=1234,fd=21))`
  */
 export function parseSsLine(line: string): ListenEntry | null {
-  if (!line.startsWith('LISTEN')) return null;
+  if (!line.startsWith("LISTEN")) return null;
   const parts = line.split(/\s+/);
   if (parts.length < 5) return null;
   // ss -tlnp 列：State Recv-Q Send-Q Local Address:Port Peer Address:Port Process
   const local = parts[3]!;
-  const colonIdx = local.lastIndexOf(':');
+  const colonIdx = local.lastIndexOf(":");
   if (colonIdx === -1) return null;
   const port = Number(local.slice(colonIdx + 1));
   if (!Number.isInteger(port) || port < 0) return null;
-  const address = local.slice(0, colonIdx).replace(/^\*$/, '0.0.0.0');
+  const address = local.slice(0, colonIdx).replace(/^\*$/, "0.0.0.0");
   // 提取 pid 与 name：users:(("node",pid=1234,fd=21))
   const pidMatch = /pid=(\d+)/.exec(line);
   const pid = pidMatch ? Number(pidMatch[1]) : 0;
   const nameMatch = /users:\(\("([^"]+)"/.exec(line);
-  const name = nameMatch ? nameMatch[1] : '';
-  return { port, protocol: 'tcp', address, pid, name };
+  const name = nameMatch ? nameMatch[1] : "";
+  return { port, protocol: "tcp", address, pid, name };
 }
 
 /* c8 ignore start */
@@ -190,10 +194,10 @@ export function parseSsLine(line: string): ListenEntry | null {
  */
 async function listUnixListen(): Promise<ListenEntry[]> {
   try {
-    const outcome = await runCommand('lsof', ['-i', '-P', '-n']);
+    const outcome = await runCommand("lsof", ["-i", "-P", "-n"]);
     if (outcome.spawnError === undefined && outcome.exitCode === 0) {
       const result: ListenEntry[] = [];
-      for (const line of outcome.stdout.split('\n')) {
+      for (const line of outcome.stdout.split("\n")) {
         const entry = parseLsofLine(line);
         if (entry) result.push(entry);
       }
@@ -202,9 +206,9 @@ async function listUnixListen(): Promise<ListenEntry[]> {
   } catch {
     // lsof 不可用或无权限，回退 ss
   }
-  const outcome = await runCommand('ss', ['-tlnp']);
+  const outcome = await runCommand("ss", ["-tlnp"]);
   const result: ListenEntry[] = [];
-  for (const line of outcome.stdout.split('\n')) {
+  for (const line of outcome.stdout.split("\n")) {
     const entry = parseSsLine(line);
     if (entry) result.push(entry);
   }
@@ -217,8 +221,10 @@ async function listUnixListen(): Promise<ListenEntry[]> {
  *
  * 错误：命令执行失败 → EXEC_FAIL
  */
-export async function netListenHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const filter = args['filter'] as string | undefined;
+export async function netListenHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const filter = args["filter"] as string | undefined;
 
   try {
     const entries = IS_WIN ? await listWindowsListen() : await listUnixListen();
@@ -233,14 +239,14 @@ export async function netListenHandler(args: Record<string, unknown>): Promise<A
     });
 
     // filter 按端口或进程名（含子串，大小写不敏感）
-    if (typeof filter === 'string' && filter.length > 0) {
+    if (typeof filter === "string" && filter.length > 0) {
       const lower = filter.toLowerCase();
       unique = unique.filter(
         (e) =>
           String(e.port).includes(lower) ||
           e.protocol.toLowerCase().includes(lower) ||
           e.address.toLowerCase().includes(lower) ||
-          (e.name ?? '').toLowerCase().includes(lower),
+          (e.name ?? "").toLowerCase().includes(lower),
       );
     }
 
@@ -249,16 +255,34 @@ export async function netListenHandler(args: Record<string, unknown>): Promise<A
     const result: NetListenResult = { ports: unique };
     return ok(result) as unknown as AnyToolResult;
   } catch (err) {
-    return fail(ErrorCode.EXEC_FAIL, `列出监听端口失败: ${toErrorMessage(err)}`);
+    return fail(
+      ErrorCode.EXEC_FAIL,
+      `列出监听端口失败: ${toErrorMessage(err)}`,
+    );
   }
 }
 
+/** net_listen 输出 schema：本机监听端口列表。 */
+export const netListenOutputSchema = z.object({
+  ports: z.array(
+    z.object({
+      port: z.number().int().nonnegative(),
+      protocol: z.string(),
+      address: z.string(),
+      pid: z.number().int().nonnegative(),
+      name: z.string().optional(),
+    }),
+  ),
+});
+
 /** net_listen 工具定义。 */
 export const netListenTool: Tool = {
-  name: 'net_listen',
+  name: "net_listen",
   description:
-    '列出本机监听端口及占用进程（≈ lsof -i / netstat）。返回 { ports: [{ port, protocol, address, pid, name? }] }。filter 按端口/协议/地址/进程名过滤。',
+    "列出本机监听端口及占用进程（≈ lsof -i / netstat）。返回 { ports: [{ port, protocol, address, pid, name? }] }。filter 按端口/协议/地址/进程名过滤。",
   inputSchema: netListenInputSchema,
+  outputSchema: netListenOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: netListenHandler,
-  aliases: ['listen_ports'],
+  aliases: ["listen_ports"],
 };

@@ -10,60 +10,72 @@
  * - 其他不可预期异常经 toErrorCode 兜底为 EUNKNOWN。
  */
 
-import { promises as fs, type Stats } from 'node:fs';
-import path from 'node:path';
-import { z } from 'zod';
-import iconvLite from 'iconv-lite';
+import { promises as fs, type Stats } from "node:fs";
+import path from "node:path";
+import { z } from "zod";
+import iconvLite from "iconv-lite";
 
 const iconvEncode = iconvLite.encode;
-import { ok, fail, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode, toErrorCode } from '../contract/errors.js';
-import { toFail, failFromError } from '../utils/errors.js';
-import type { Tool } from '../registry.js';
+import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode, toErrorCode } from "../contract/errors.js";
+import { toFail, failFromError } from "../utils/errors.js";
+import type { Tool } from "../registry.js";
 
 /** fs_write 输入 schema。 */
 export const fsWriteInputSchema = z.object({
-  path: z.string().describe('目标文件路径'),
-  content: z.string().describe('要写入的内容'),
-  encoding: z.string().optional().describe('编码，默认 utf-8，支持 gbk 等其它 iconv-lite 编码'),
-  append: z.boolean().optional().describe('true 时追加写入，否则覆盖'),
+  path: z.string().describe("目标文件路径"),
+  content: z.string().describe("要写入的内容"),
+  encoding: z
+    .string()
+    .optional()
+    .describe("编码，默认 utf-8，支持 gbk 等其它 iconv-lite 编码"),
+  append: z.boolean().optional().describe("true 时追加写入，否则覆盖"),
   mkdirParents: z
     .boolean()
     .optional()
-    .describe('true 时自动创建不存在的父目录，默认 true'),
+    .describe("true 时自动创建不存在的父目录，默认 true"),
 });
 
 /** fs_mkdir 输入 schema。 */
 export const fsMkdirInputSchema = z.object({
-  path: z.string().describe('目标目录路径'),
-  recursive: z.boolean().optional().describe('true 时递归创建（默认 true，类似 mkdir -p）'),
+  path: z.string().describe("目标目录路径"),
+  recursive: z
+    .boolean()
+    .optional()
+    .describe("true 时递归创建（默认 true，类似 mkdir -p）"),
 });
 
 /** fs_rm 输入 schema。 */
 export const fsRmInputSchema = z.object({
-  path: z.string().describe('目标路径'),
-  recursive: z.boolean().optional().describe('true 时递归删除目录树'),
-  force: z.boolean().optional().describe('true 时忽略不存在的路径'),
+  path: z.string().describe("目标路径"),
+  recursive: z.boolean().optional().describe("true 时递归删除目录树"),
+  force: z.boolean().optional().describe("true 时忽略不存在的路径"),
 });
 
 /** fs_cp 输入 schema。 */
 export const fsCpInputSchema = z.object({
-  src: z.string().describe('源路径'),
-  dest: z.string().describe('目标路径'),
-  recursive: z.boolean().optional().describe('true 时递归复制目录'),
+  src: z.string().describe("源路径"),
+  dest: z.string().describe("目标路径"),
+  recursive: z.boolean().optional().describe("true 时递归复制目录"),
 });
 
 /** fs_mv 输入 schema。 */
 export const fsMvInputSchema = z.object({
-  src: z.string().describe('源路径'),
-  dest: z.string().describe('目标路径（已存在则按 overwrite 处理）'),
-  overwrite: z.boolean().optional().describe('true 时覆盖已存在的目标，默认 false'),
+  src: z.string().describe("源路径"),
+  dest: z.string().describe("目标路径（已存在则按 overwrite 处理）"),
+  overwrite: z
+    .boolean()
+    .optional()
+    .describe("true 时覆盖已存在的目标，默认 false"),
 });
 
 /** fs_touch 输入 schema。 */
 export const fsTouchInputSchema = z.object({
-  path: z.string().describe('目标文件路径'),
-  update: z.boolean().optional().describe('true 时若文件已存在则更新 mtime 为当前时间'),
+  path: z.string().describe("目标文件路径"),
+  update: z
+    .boolean()
+    .optional()
+    .describe("true 时若文件已存在则更新 mtime 为当前时间"),
 });
 
 /**
@@ -76,9 +88,9 @@ export const fsTouchInputSchema = z.object({
  * @param encoding 编码名，默认 utf-8
  */
 function encodeContent(content: string, encoding?: string): Buffer {
-  const enc = (encoding ?? 'utf-8').toLowerCase();
-  if (enc === 'utf-8' || enc === 'utf8') {
-    return Buffer.from(content, 'utf8');
+  const enc = (encoding ?? "utf-8").toLowerCase();
+  if (enc === "utf-8" || enc === "utf8") {
+    return Buffer.from(content, "utf8");
   }
   return iconvEncode(content, encoding as string);
 }
@@ -92,12 +104,14 @@ function encodeContent(content: string, encoding?: string): Buffer {
  * - 无权限 → EACCES（由 toErrorCode 兜底）
  * - 返回写入字节数 written
  */
-export async function fsWriteHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const filePath = args['path'] as string;
-  const content = args['content'] as string;
-  const encoding = args['encoding'] as string | undefined;
-  const append = args['append'] === true;
-  const mkdirParents = args['mkdirParents'] !== false; // 默认 true
+export async function fsWriteHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const filePath = args["path"] as string;
+  const content = args["content"] as string;
+  const encoding = args["encoding"] as string | undefined;
+  const append = args["append"] === true;
+  const mkdirParents = args["mkdirParents"] !== false; // 默认 true
 
   try {
     const buf = encodeContent(content, encoding);
@@ -114,14 +128,17 @@ export async function fsWriteHandler(args: Record<string, unknown>): Promise<Any
         if (mkdirParents) {
           await fs.mkdir(parent, { recursive: true });
         } else {
-          return fail(ErrorCode.ENOENT, `父目录不存在: ${parent}`) as unknown as AnyToolResult;
+          return fail(
+            ErrorCode.ENOENT,
+            `父目录不存在: ${parent}`,
+          ) as unknown as AnyToolResult;
         }
       } else {
         return failFromError(e);
       }
     }
 
-    const flag = append ? 'a' : 'w';
+    const flag = append ? "a" : "w";
     await fs.writeFile(filePath, buf, { flag });
     return ok({ written: buf.length });
   } catch (e) {
@@ -138,9 +155,11 @@ export async function fsWriteHandler(args: Record<string, unknown>): Promise<Any
  * - 已存在且是目录 → created: false
  * - 新建 → created: true
  */
-export async function fsMkdirHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const dirPath = args['path'] as string;
-  const recursive = args['recursive'] !== false; // 默认 true
+export async function fsMkdirHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const dirPath = args["path"] as string;
+  const recursive = args["recursive"] !== false; // 默认 true
 
   try {
     // 预检查是否已存在
@@ -174,10 +193,12 @@ export async function fsMkdirHandler(args: Record<string, unknown>): Promise<Any
  * - 非空目录且非 recursive → EACCES（语义：拒绝删除）
  * - 删除成功 → removed: true
  */
-export async function fsRmHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const targetPath = args['path'] as string;
-  const recursive = args['recursive'] === true;
-  const force = args['force'] === true;
+export async function fsRmHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const targetPath = args["path"] as string;
+  const recursive = args["recursive"] === true;
+  const force = args["force"] === true;
 
   try {
     // 预检查存在性
@@ -235,10 +256,12 @@ export async function fsRmHandler(args: Record<string, unknown>): Promise<AnyToo
  * - src 是目录且非 recursive → EINVAL
  * - 复制成功 → copied: true
  */
-export async function fsCpHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const src = args['src'] as string;
-  const dest = args['dest'] as string;
-  const recursive = args['recursive'] === true;
+export async function fsCpHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const src = args["src"] as string;
+  const dest = args["dest"] as string;
+  const recursive = args["recursive"] === true;
 
   try {
     let srcStat: Stats;
@@ -275,10 +298,12 @@ export async function fsCpHandler(args: Record<string, unknown>): Promise<AnyToo
  * - dest 已存在且非目录 → overwrite 为 true 时覆盖，否则 EINVAL
  * - 移动成功 → moved: true, dest（最终目标路径）
  */
-export async function fsMvHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const src = args['src'] as string;
-  const dest = args['dest'] as string;
-  const overwrite = args['overwrite'] === true;
+export async function fsMvHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const src = args["src"] as string;
+  const dest = args["dest"] as string;
+  const overwrite = args["overwrite"] === true;
 
   try {
     // 预检查 src
@@ -317,11 +342,13 @@ export async function fsMvHandler(args: Record<string, unknown>): Promise<AnyToo
       } else {
         // dest 是文件
         if (!overwrite) {
-          return fail(ErrorCode.EINVAL, `目标已存在: ${dest}`) as unknown as AnyToolResult;
+          return fail(
+            ErrorCode.EINVAL,
+            `目标已存在: ${dest}`,
+          ) as unknown as AnyToolResult;
         }
         await fs.rm(dest, { force: true });
       }
-
     } catch (e) {
       if (toErrorCode(e) !== ErrorCode.ENOENT) {
         return toFail(e);
@@ -345,9 +372,11 @@ export async function fsMvHandler(args: Record<string, unknown>): Promise<AnyToo
  * - 文件存在且 update=false → 不修改时间，created: false
  * - 无权限 → EACCES
  */
-export async function fsTouchHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const filePath = args['path'] as string;
-  const update = args['update'] === true;
+export async function fsTouchHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const filePath = args["path"] as string;
+  const update = args["update"] === true;
 
   try {
     let existed = true;
@@ -362,7 +391,7 @@ export async function fsTouchHandler(args: Record<string, unknown>): Promise<Any
     }
 
     if (!existed) {
-      await fs.writeFile(filePath, '', { flag: 'w' });
+      await fs.writeFile(filePath, "", { flag: "w" });
       return ok({ created: true });
     }
 
@@ -376,52 +405,126 @@ export async function fsTouchHandler(args: Record<string, unknown>): Promise<Any
   }
 }
 
+/**
+ * fs_write 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ written }`：写入字节数。
+ */
+export const fsWriteOutputSchema = z.object({
+  written: z.number().int().nonnegative().describe("写入字节数"),
+});
+
 /** fs_write 工具定义。 */
 export const fsWriteTool: Tool = {
-  name: 'fs_write',
+  name: "fs_write",
   description:
-    '写文件（支持 utf-8/gbk 编码，可追加写入）。mkdirParents 默认 true 自动建父目录。返回写入字节数。',
+    "写文件（支持 utf-8/gbk 编码，可追加写入）。mkdirParents 默认 true 自动建父目录。返回写入字节数。",
   inputSchema: fsWriteInputSchema,
+  outputSchema: fsWriteOutputSchema,
+  // 覆盖写入会破坏既有内容，destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: fsWriteHandler,
 };
 
+/**
+ * fs_mkdir 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ created }`：是否新建（已存在且是目录时为 false）。
+ */
+export const fsMkdirOutputSchema = z.object({
+  created: z.boolean().describe("是否新建（已存在且是目录时为 false）"),
+});
+
 /** fs_mkdir 工具定义。 */
 export const fsMkdirTool: Tool = {
-  name: 'fs_mkdir',
-  description: '建目录（recursive 默认 true，类似 mkdir -p）。返回是否新建。',
+  name: "fs_mkdir",
+  description: "建目录（recursive 默认 true，类似 mkdir -p）。返回是否新建。",
   inputSchema: fsMkdirInputSchema,
+  outputSchema: fsMkdirOutputSchema,
+  // 创建目录非破坏性操作（不覆盖既有内容），destructiveHint 省略
+  annotations: { readOnlyHint: false },
   handler: fsMkdirHandler,
 };
 
+/**
+ * fs_rm 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ removed }`：是否删除（force=true 且路径不存在时为 false）。
+ */
+export const fsRmOutputSchema = z.object({
+  removed: z.boolean().describe("是否删除"),
+});
+
 /** fs_rm 工具定义。 */
 export const fsRmTool: Tool = {
-  name: 'fs_rm',
-  description: '删除文件/目录（recursive 删目录树，force 忽略不存在）。返回是否删除。',
+  name: "fs_rm",
+  description:
+    "删除文件/目录（recursive 删目录树，force 忽略不存在）。返回是否删除。",
   inputSchema: fsRmInputSchema,
+  outputSchema: fsRmOutputSchema,
+  // 删除不可逆，destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: fsRmHandler,
 };
 
+/**
+ * fs_cp 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ copied }`：是否复制成功。
+ */
+export const fsCpOutputSchema = z.object({
+  copied: z.boolean().describe("是否复制成功"),
+});
+
 /** fs_cp 工具定义。 */
 export const fsCpTool: Tool = {
-  name: 'fs_cp',
-  description: '复制文件/目录（目录需 recursive）。返回是否复制成功。',
+  name: "fs_cp",
+  description: "复制文件/目录（目录需 recursive）。返回是否复制成功。",
   inputSchema: fsCpInputSchema,
+  outputSchema: fsCpOutputSchema,
+  // 复制到已存在目标会覆盖，destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: fsCpHandler,
 };
 
+/**
+ * fs_mv 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ moved, dest }`：是否移动成功与最终目标路径。
+ */
+export const fsMvOutputSchema = z.object({
+  moved: z.boolean().describe("是否移动成功"),
+  dest: z.string().describe("最终目标路径"),
+});
+
 /** fs_mv 工具定义。 */
 export const fsMvTool: Tool = {
-  name: 'fs_mv',
+  name: "fs_mv",
   description:
-    '移动/重命名（≈ Unix mv）。dest 为目录时移入该目录；overwrite 为 true 时覆盖已存在目标。返回 { moved, dest }。',
+    "移动/重命名（≈ Unix mv）。dest 为目录时移入该目录；overwrite 为 true 时覆盖已存在目标。返回 { moved, dest }。",
   inputSchema: fsMvInputSchema,
+  outputSchema: fsMvOutputSchema,
+  // overwrite=true 时覆盖既有目标，destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: fsMvHandler,
 };
 
+/**
+ * fs_touch 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ created }`：是否新建（已存在时为 false）。
+ */
+export const fsTouchOutputSchema = z.object({
+  created: z.boolean().describe("是否新建（已存在时为 false）"),
+});
+
 /** fs_touch 工具定义。 */
 export const fsTouchTool: Tool = {
-  name: 'fs_touch',
-  description: '创建空文件或更新 mtime。返回是否新建（false 表示已存在）。',
+  name: "fs_touch",
+  description: "创建空文件或更新 mtime。返回是否新建（false 表示已存在）。",
   inputSchema: fsTouchInputSchema,
+  outputSchema: fsTouchOutputSchema,
+  // 创建空文件或仅更新 mtime，非破坏性（不删除既有内容），destructiveHint 省略
+  annotations: { readOnlyHint: false },
   handler: fsTouchHandler,
 };

@@ -9,7 +9,7 @@
  * - 非 git 仓库与 git 命令失败时返回 GIT_FAIL 并附 stderr 摘要
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import {
   ok,
   fail,
@@ -17,10 +17,10 @@ import {
   withVerbose,
   DEFAULT_TRUNCATE_LIMIT,
   type AnyToolResult,
-} from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { runCommand } from '../exec/run.js';
-import type { Tool } from '../registry.js';
+} from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { runCommand } from "../exec/run.js";
+import type { Tool } from "../registry.js";
 
 /** git 执行结果。 */
 interface GitExecResult {
@@ -39,18 +39,22 @@ interface GitExecResult {
  * @returns { exitCode, stdout, stderr }
  */
 async function runGit(args: string[], cwd: string): Promise<GitExecResult> {
-  const outcome = await runCommand('git', args, { cwd });
+  const outcome = await runCommand("git", args, { cwd });
   if (outcome.spawnError !== undefined) {
-    if (outcome.spawnError.code === 'ENOENT') {
+    if (outcome.spawnError.code === "ENOENT") {
       return {
         exitCode: -1,
-        stdout: '',
-        stderr: 'git 命令未找到（请确认 git 已安装并在 PATH 中）',
+        stdout: "",
+        stderr: "git 命令未找到（请确认 git 已安装并在 PATH 中）",
       };
     }
-    return { exitCode: -1, stdout: '', stderr: outcome.spawnError.message };
+    return { exitCode: -1, stdout: "", stderr: outcome.spawnError.message };
   }
-  return { exitCode: outcome.exitCode, stdout: outcome.stdout, stderr: outcome.stderr };
+  return {
+    exitCode: outcome.exitCode,
+    stdout: outcome.stdout,
+    stderr: outcome.stderr,
+  };
 }
 
 /**
@@ -66,7 +70,9 @@ function gitError(stderr: string, subcommand: string): string {
   // 截断 stderr 摘要，避免过长
   const maxLen = 500;
   const summary =
-    trimmed.length > maxLen ? `${trimmed.slice(0, maxLen)}...[truncated]` : trimmed;
+    trimmed.length > maxLen
+      ? `${trimmed.slice(0, maxLen)}...[truncated]`
+      : trimmed;
   return `git ${subcommand} 失败: ${summary}`;
 }
 
@@ -77,8 +83,8 @@ function gitError(stderr: string, subcommand: string): string {
  * @returns 工作目录
  */
 function getCwd(args: Record<string, unknown>): string {
-  const raw = args['cwd'];
-  return typeof raw === 'string' && raw.length > 0 ? raw : process.cwd();
+  const raw = args["cwd"];
+  return typeof raw === "string" && raw.length > 0 ? raw : process.cwd();
 }
 
 /**
@@ -98,7 +104,7 @@ function parseBranchLine(line: string): string {
   const spaceIdx = rest.search(/\s/);
   const token = spaceIdx === -1 ? rest : rest.slice(0, spaceIdx);
   // token 形如 "main" / "main...origin/main" / "HEAD"
-  const dotIdx = token.indexOf('...');
+  const dotIdx = token.indexOf("...");
   return dotIdx === -1 ? token : token.slice(0, dotIdx);
 }
 
@@ -110,7 +116,9 @@ function parseBranchLine(line: string): string {
  * @param line 文件行
  * @returns { path, x, y } 或 null
  */
-function parseStatusLine(line: string): { path: string; x: string; y: string } | null {
+function parseStatusLine(
+  line: string,
+): { path: string; x: string; y: string } | null {
   if (line.length < 3) return null;
   const x = line[0]!;
   const y = line[1]!;
@@ -149,8 +157,8 @@ function parseDiffFiles(diff: string): string[] {
 
 /** git_status 输入 schema。 */
 export const gitStatusInputSchema = z.object({
-  cwd: z.string().optional().describe('git 仓库路径，默认当前工作目录'),
-  verbose: z.boolean().optional().describe('若为 true，额外返回 files 列表'),
+  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  verbose: z.boolean().optional().describe("若为 true，额外返回 files 列表"),
 });
 
 /** git_status 文件条目（verbose）。 */
@@ -183,19 +191,21 @@ interface GitStatusFull extends GitStatusMinimal {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function gitStatusHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitStatusHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const verbose = args['verbose'] === true;
+  const verbose = args["verbose"] === true;
 
-  const result = await runGit(['status', '--porcelain=v1', '-b'], cwd);
+  const result = await runGit(["status", "--porcelain=v1", "-b"], cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'status'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "status"));
   }
 
   const lines = result.stdout.split(/\r?\n/);
-  const branchLine = lines[0] ?? '';
-  let branch = '';
-  if (branchLine.startsWith('## ')) {
+  const branchLine = lines[0] ?? "";
+  let branch = "";
+  if (branchLine.startsWith("## ")) {
     branch = parseBranchLine(branchLine);
   }
 
@@ -210,9 +220,9 @@ export async function gitStatusHandler(args: Record<string, unknown>): Promise<A
     const parsed = parseStatusLine(line);
     if (!parsed) continue;
     const { path, x, y } = parsed;
-    const isUntracked = x === '?' && y === '?';
-    const isStaged = x !== ' ' && x !== '?';
-    const isChanged = y !== ' ' && y !== '?';
+    const isUntracked = x === "?" && y === "?";
+    const isStaged = x !== " " && x !== "?";
+    const isChanged = y !== " " && y !== "?";
     if (isUntracked) {
       untracked++;
     } else {
@@ -228,12 +238,41 @@ export async function gitStatusHandler(args: Record<string, unknown>): Promise<A
   return ok(verboseResult);
 }
 
-/** git_status 工具定义。 */
+/**
+ * git_status 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ branch, changed, staged, untracked }`；
+ * verbose 额外返回 `{ files: [{ path, status, staged }] }`。
+ */
+export const gitStatusOutputSchema = z.object({
+  branch: z.string(),
+  changed: z.number().int().nonnegative(),
+  staged: z.number().int().nonnegative(),
+  untracked: z.number().int().nonnegative(),
+  files: z
+    .array(
+      z.object({
+        path: z.string(),
+        status: z.string(),
+        staged: z.boolean(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * git_status 工具定义。
+ *
+ * readOnlyHint: true —— 虽 spawn git 子进程，但仅读取仓库状态（--porcelain），
+ * 为短命读进程，不改变工作区/索引/远程任何状态，并发执行竞态无害（ADR-0014）。
+ */
 export const gitStatusTool: Tool = {
-  name: 'git_status',
+  name: "git_status",
   description:
-    '获取 git 仓库状态。返回 { branch, changed, staged, untracked }。verbose 时额外返回 files 列表。',
+    "获取 git 仓库状态。返回 { branch, changed, staged, untracked }。verbose 时额外返回 files 列表。",
   inputSchema: gitStatusInputSchema,
+  outputSchema: gitStatusOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: gitStatusHandler,
 };
 
@@ -241,9 +280,17 @@ export const gitStatusTool: Tool = {
 
 /** git_log 输入 schema。 */
 export const gitLogInputSchema = z.object({
-  cwd: z.string().optional().describe('git 仓库路径，默认当前工作目录'),
-  limit: z.number().int().positive().optional().describe('返回提交数上限，默认 10'),
-  verbose: z.boolean().optional().describe('若为 true，返回完整 40 字符 hash（默认短 hash）'),
+  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("返回提交数上限，默认 10"),
+  verbose: z
+    .boolean()
+    .optional()
+    .describe("若为 true，返回完整 40 字符 hash（默认短 hash）"),
 });
 
 /** git_log 提交条目。 */
@@ -261,7 +308,7 @@ interface GitLogResult {
 }
 
 /** 日志字段分隔符（\x1f = 单元分隔符，避免与提交信息中的 | 冲突）。 */
-const LOG_SEP = '\x1f';
+const LOG_SEP = "\x1f";
 
 /**
  * git_log handler：返回提交历史。
@@ -274,33 +321,37 @@ const LOG_SEP = '\x1f';
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function gitLogHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitLogHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const verbose = args['verbose'] === true;
-  const rawLimit = args['limit'];
+  const verbose = args["verbose"] === true;
+  const rawLimit = args["limit"];
   const limit =
-    typeof rawLimit === 'number' && Number.isInteger(rawLimit) && rawLimit > 0 ? rawLimit : 10;
+    typeof rawLimit === "number" && Number.isInteger(rawLimit) && rawLimit > 0
+      ? rawLimit
+      : 10;
 
   // verbose 控制 hash 格式（%H 完整 vs %h 短 hash），这是 git 命令参数层面的差异，
   // 而非输出结构差异，因此不适合用 withVerbose（withVerbose 适用于极简/完整两种输出结构）。
-  const hashFormat = verbose ? '%H' : '%h';
+  const hashFormat = verbose ? "%H" : "%h";
   const format = `${hashFormat}${LOG_SEP}%an${LOG_SEP}%ad${LOG_SEP}%s`;
   const result = await runGit(
-    ['log', '-n', String(limit), `--format=${format}`, '--date=iso'],
+    ["log", "-n", String(limit), `--format=${format}`, "--date=iso"],
     cwd,
   );
   if (result.exitCode !== 0) {
     // 空仓库：无提交
     const stderr = result.stderr.toLowerCase();
     if (
-      stderr.includes('does not have any commits') ||
+      stderr.includes("does not have any commits") ||
       stderr.includes("bad default revision 'head'") ||
-      stderr.includes('unknown revision')
+      stderr.includes("unknown revision")
     ) {
       const empty: GitLogResult = { commits: [], count: 0 };
       return ok(empty);
     }
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'log'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "log"));
   }
 
   const commits: LogCommit[] = [];
@@ -320,12 +371,31 @@ export async function gitLogHandler(args: Record<string, unknown>): Promise<AnyT
   return ok(out);
 }
 
-/** git_log 工具定义。 */
+/** git_log 输出 schema：提交历史。 */
+export const gitLogOutputSchema = z.object({
+  commits: z.array(
+    z.object({
+      hash: z.string(),
+      author: z.string(),
+      date: z.string(),
+      subject: z.string(),
+    }),
+  ),
+  count: z.number().int().nonnegative(),
+});
+
+/**
+ * git_log 工具定义。
+ *
+ * readOnlyHint: true —— 仅读取提交历史，短命读进程，竞态无害（ADR-0014）。
+ */
 export const gitLogTool: Tool = {
-  name: 'git_log',
+  name: "git_log",
   description:
-    '获取 git 提交历史。返回 { commits: [{ hash, author, date, subject }], count }。limit 默认 10。',
+    "获取 git 提交历史。返回 { commits: [{ hash, author, date, subject }], count }。limit 默认 10。",
   inputSchema: gitLogInputSchema,
+  outputSchema: gitLogOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: gitLogHandler,
 };
 
@@ -333,8 +403,11 @@ export const gitLogTool: Tool = {
 
 /** git_branch 输入 schema。 */
 export const gitBranchInputSchema = z.object({
-  cwd: z.string().optional().describe('git 仓库路径，默认当前工作目录'),
-  verbose: z.boolean().optional().describe('若为 true，额外返回 all 列表（含 remote 上游）'),
+  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  verbose: z
+    .boolean()
+    .optional()
+    .describe("若为 true，额外返回 all 列表（含 remote 上游）"),
 });
 
 /** git_branch 分支条目（verbose）。 */
@@ -364,20 +437,22 @@ interface GitBranchFull extends GitBranchMinimal {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function gitBranchHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitBranchHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const verbose = args['verbose'] === true;
+  const verbose = args["verbose"] === true;
 
   // 获取当前分支
-  const currentResult = await runGit(['branch', '--show-current'], cwd);
+  const currentResult = await runGit(["branch", "--show-current"], cwd);
   if (currentResult.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(currentResult.stderr, 'branch'));
+    return fail(ErrorCode.GIT_FAIL, gitError(currentResult.stderr, "branch"));
   }
   let current = currentResult.stdout.trim();
 
   // detached HEAD 时 current 为空，用短 hash 作为标识
   if (current.length === 0) {
-    const hashResult = await runGit(['rev-parse', '--short', 'HEAD'], cwd);
+    const hashResult = await runGit(["rev-parse", "--short", "HEAD"], cwd);
     if (hashResult.exitCode === 0) {
       current = hashResult.stdout.trim();
     }
@@ -385,20 +460,20 @@ export async function gitBranchHandler(args: Record<string, unknown>): Promise<A
 
   // 获取所有本地分支（带 upstream，tab 分隔；直接用 tab 字符避免 %x09 兼容问题）
   const listResult = await runGit(
-    ['branch', '--list', `--format=%(refname:short)\t%(upstream:short)`],
+    ["branch", "--list", `--format=%(refname:short)\t%(upstream:short)`],
     cwd,
   );
   if (listResult.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(listResult.stderr, 'branch'));
+    return fail(ErrorCode.GIT_FAIL, gitError(listResult.stderr, "branch"));
   }
 
   const branches: string[] = [];
   const all: BranchEntry[] = [];
   for (const line of listResult.stdout.split(/\r?\n/)) {
     if (line.length === 0) continue;
-    const tabIdx = line.indexOf('\t');
+    const tabIdx = line.indexOf("\t");
     const name = tabIdx === -1 ? line : line.slice(0, tabIdx);
-    const remote = tabIdx === -1 ? '' : line.slice(tabIdx + 1);
+    const remote = tabIdx === -1 ? "" : line.slice(tabIdx + 1);
     branches.push(name);
     all.push({ name, current: name === current, remote });
   }
@@ -409,12 +484,38 @@ export async function gitBranchHandler(args: Record<string, unknown>): Promise<A
   return ok(result);
 }
 
-/** git_branch 工具定义。 */
+/**
+ * git_branch 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ branches: string[], current }`；
+ * verbose 额外返回 `{ all: [{ name, current, remote }] }`。
+ */
+export const gitBranchOutputSchema = z.object({
+  branches: z.array(z.string()),
+  current: z.string(),
+  all: z
+    .array(
+      z.object({
+        name: z.string(),
+        current: z.boolean(),
+        remote: z.string(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * git_branch 工具定义。
+ *
+ * readOnlyHint: true —— 仅读取分支列表，短命读进程，竞态无害（ADR-0014）。
+ */
 export const gitBranchTool: Tool = {
-  name: 'git_branch',
+  name: "git_branch",
   description:
-    '获取 git 分支列表。返回 { branches, current }。verbose 时额外返回 all 列表（含 remote 上游）。',
+    "获取 git 分支列表。返回 { branches, current }。verbose 时额外返回 all 列表（含 remote 上游）。",
   inputSchema: gitBranchInputSchema,
+  outputSchema: gitBranchOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: gitBranchHandler,
 };
 
@@ -422,14 +523,17 @@ export const gitBranchTool: Tool = {
 
 /** git_diff 输入 schema。 */
 export const gitDiffInputSchema = z.object({
-  cwd: z.string().optional().describe('git 仓库路径，默认当前工作目录'),
-  staged: z.boolean().optional().describe('若为 true，显示暂存区差异（git diff --cached）'),
+  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  staged: z
+    .boolean()
+    .optional()
+    .describe("若为 true，显示暂存区差异（git diff --cached）"),
   against: z
     .string()
     .optional()
-    .describe('目标 ref（commit/分支/HEAD~1），比较工作区或暂存区与之的差异'),
-  path: z.string().optional().describe('限制差异范围的文件路径'),
-  verbose: z.boolean().optional().describe('若为 true，不截断 diff 输出'),
+    .describe("目标 ref（commit/分支/HEAD~1），比较工作区或暂存区与之的差异"),
+  path: z.string().optional().describe("限制差异范围的文件路径"),
+  verbose: z.boolean().optional().describe("若为 true，不截断 diff 输出"),
 });
 
 /** git_diff 输出。 */
@@ -450,25 +554,27 @@ interface GitDiffResult {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function gitDiffHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitDiffHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const staged = args['staged'] === true;
-  const verbose = args['verbose'] === true;
-  const rawPath = args['path'];
-  const rawAgainst = args['against'];
+  const staged = args["staged"] === true;
+  const verbose = args["verbose"] === true;
+  const rawPath = args["path"];
+  const rawAgainst = args["against"];
 
-  const diffArgs = ['diff'];
-  if (staged) diffArgs.push('--cached');
-  if (typeof rawAgainst === 'string' && rawAgainst.length > 0) {
+  const diffArgs = ["diff"];
+  if (staged) diffArgs.push("--cached");
+  if (typeof rawAgainst === "string" && rawAgainst.length > 0) {
     diffArgs.push(rawAgainst);
   }
-  if (typeof rawPath === 'string' && rawPath.length > 0) {
-    diffArgs.push('--', rawPath);
+  if (typeof rawPath === "string" && rawPath.length > 0) {
+    diffArgs.push("--", rawPath);
   }
 
   const result = await runGit(diffArgs, cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'diff'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "diff"));
   }
 
   const rawDiff = result.stdout;
@@ -483,12 +589,25 @@ export async function gitDiffHandler(args: Record<string, unknown>): Promise<Any
   return ok(out);
 }
 
-/** git_diff 工具定义。 */
+/** git_diff 输出 schema：差异内容与涉及文件。 */
+export const gitDiffOutputSchema = z.object({
+  diff: z.string(),
+  truncated: z.boolean(),
+  files: z.array(z.string()),
+});
+
+/**
+ * git_diff 工具定义。
+ *
+ * readOnlyHint: true —— 仅读取差异内容，短命读进程，竞态无害（ADR-0014）。
+ */
 export const gitDiffTool: Tool = {
-  name: 'git_diff',
+  name: "git_diff",
   description:
-    '获取 git 差异内容。返回 { diff, truncated, files }。staged 显示暂存区差异，against 指定目标 ref（如 HEAD~1、main），path 限制范围，输出默认截断。',
+    "获取 git 差异内容。返回 { diff, truncated, files }。staged 显示暂存区差异，against 指定目标 ref（如 HEAD~1、main），path 限制范围，输出默认截断。",
   inputSchema: gitDiffInputSchema,
+  outputSchema: gitDiffOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: gitDiffHandler,
 };
 
@@ -496,8 +615,11 @@ export const gitDiffTool: Tool = {
 
 /** git_add 输入 schema。 */
 export const gitAddInputSchema = z.object({
-  cwd: z.string().optional().describe('git 仓库路径，默认当前工作目录'),
-  paths: z.array(z.string()).min(1).describe('要暂存的文件路径数组（至少一个）'),
+  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  paths: z
+    .array(z.string())
+    .min(1)
+    .describe("要暂存的文件路径数组（至少一个）"),
 });
 
 /** git_add 输出。 */
@@ -514,32 +636,49 @@ interface GitAddResult {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function gitAddHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitAddHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const rawPaths = args['paths'];
+  const rawPaths = args["paths"];
 
   if (!Array.isArray(rawPaths) || rawPaths.length === 0) {
-    return fail(ErrorCode.EINVAL, 'paths 不能为空');
+    return fail(ErrorCode.EINVAL, "paths 不能为空");
   }
-  const paths = rawPaths.filter((p): p is string => typeof p === 'string' && p.length > 0);
+  const paths = rawPaths.filter(
+    (p): p is string => typeof p === "string" && p.length > 0,
+  );
   if (paths.length === 0) {
-    return fail(ErrorCode.EINVAL, 'paths 不能为空');
+    return fail(ErrorCode.EINVAL, "paths 不能为空");
   }
 
-  const result = await runGit(['add', '--', ...paths], cwd);
+  const result = await runGit(["add", "--", ...paths], cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'add'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "add"));
   }
 
   const out: GitAddResult = { added: paths };
   return ok(out);
 }
 
+/**
+ * git_add 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ added: string[] }`：已暂存的文件路径数组。
+ */
+export const gitAddOutputSchema = z.object({
+  added: z.array(z.string()).describe("已暂存的文件路径"),
+});
+
 /** git_add 工具定义。 */
 export const gitAddTool: Tool = {
-  name: 'git_add',
-  description: '暂存文件到 git 索引。返回 { added: string[] }。paths 指定文件路径数组。',
+  name: "git_add",
+  description:
+    "暂存文件到 git 索引。返回 { added: string[] }。paths 指定文件路径数组。",
   inputSchema: gitAddInputSchema,
+  outputSchema: gitAddOutputSchema,
+  // 修改 git 索引（暂存区），readOnlyHint: false
+  annotations: { readOnlyHint: false },
   handler: gitAddHandler,
 };
 
@@ -547,9 +686,12 @@ export const gitAddTool: Tool = {
 
 /** git_commit 输入 schema。 */
 export const gitCommitInputSchema = z.object({
-  cwd: z.string().optional().describe('git 仓库路径，默认当前工作目录'),
-  message: z.string().min(1).describe('提交信息'),
-  amend: z.boolean().optional().describe('若为 true，修改上一个提交（--amend）'),
+  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  message: z.string().min(1).describe("提交信息"),
+  amend: z
+    .boolean()
+    .optional()
+    .describe("若为 true，修改上一个提交（--amend）"),
 });
 
 /** git_commit 输出。 */
@@ -570,37 +712,54 @@ interface GitCommitResult {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function gitCommitHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitCommitHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const amend = args['amend'] === true;
-  const rawMessage = args['message'];
+  const amend = args["amend"] === true;
+  const rawMessage = args["message"];
 
-  if (typeof rawMessage !== 'string' || rawMessage.length === 0) {
-    return fail(ErrorCode.EINVAL, 'message 不能为空');
+  if (typeof rawMessage !== "string" || rawMessage.length === 0) {
+    return fail(ErrorCode.EINVAL, "message 不能为空");
   }
   const message = rawMessage;
 
-  const commitArgs = ['commit', '-m', message];
-  if (amend) commitArgs.push('--amend');
+  const commitArgs = ["commit", "-m", message];
+  if (amend) commitArgs.push("--amend");
 
   const result = await runGit(commitArgs, cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'commit'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "commit"));
   }
 
   // 获取新提交 hash
-  const hashResult = await runGit(['rev-parse', 'HEAD'], cwd);
-  const hash = hashResult.exitCode === 0 ? hashResult.stdout.trim() : '';
+  const hashResult = await runGit(["rev-parse", "HEAD"], cwd);
+  const hash = hashResult.exitCode === 0 ? hashResult.stdout.trim() : "";
 
   const out: GitCommitResult = { committed: true, hash, message };
   return ok(out);
 }
 
+/**
+ * git_commit 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ committed, hash, message }`。
+ */
+export const gitCommitOutputSchema = z.object({
+  committed: z.boolean().describe("是否提交成功"),
+  hash: z.string().describe("新提交 hash"),
+  message: z.string().describe("提交信息"),
+});
+
 /** git_commit 工具定义。 */
 export const gitCommitTool: Tool = {
-  name: 'git_commit',
-  description: '提交暂存的变更。返回 { committed, hash, message }。amend 修改上一个提交。不推送。',
+  name: "git_commit",
+  description:
+    "提交暂存的变更。返回 { committed, hash, message }。amend 修改上一个提交。不推送。",
   inputSchema: gitCommitInputSchema,
+  outputSchema: gitCommitOutputSchema,
+  // 创建新提交（或 amend 改写历史），readOnlyHint: false
+  annotations: { readOnlyHint: false },
   handler: gitCommitHandler,
 };
 
@@ -608,173 +767,267 @@ export const gitCommitTool: Tool = {
 
 /** git_checkout 输入 schema。 */
 export const gitCheckoutInputSchema = z.object({
-  branch: z.string().min(1).optional().describe('分支名或提交 ref；与 paths 同时提供时作为还原源'),
-  create: z.boolean().optional().describe('true 时创建新分支（git checkout -b），仅 branch 单独使用时有效'),
-  paths: z.array(z.string().min(1)).optional().describe('要还原的文件路径数组；提供时执行 git checkout [branch] -- paths'),
-  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+  branch: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("分支名或提交 ref；与 paths 同时提供时作为还原源"),
+  create: z
+    .boolean()
+    .optional()
+    .describe("true 时创建新分支（git checkout -b），仅 branch 单独使用时有效"),
+  paths: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      "要还原的文件路径数组；提供时执行 git checkout [branch] -- paths",
+    ),
+  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
 });
 
 /** git_checkout handler：切换/创建分支或还原文件。 */
-export async function gitCheckoutHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitCheckoutHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const branch = args['branch'];
-  const create = args['create'] === true;
-  const paths = args['paths'];
+  const branch = args["branch"];
+  const create = args["create"] === true;
+  const paths = args["paths"];
 
-  const hasBranch = typeof branch === 'string' && branch.length > 0;
+  const hasBranch = typeof branch === "string" && branch.length > 0;
   const hasPaths = Array.isArray(paths) && paths.length > 0;
 
   if (!hasBranch && !hasPaths) {
-    return fail(ErrorCode.EINVAL, 'branch 与 paths 至少提供其一');
+    return fail(ErrorCode.EINVAL, "branch 与 paths 至少提供其一");
   }
 
   if (create && !hasBranch) {
-    return fail(ErrorCode.EINVAL, 'create=true 时必须提供 branch');
+    return fail(ErrorCode.EINVAL, "create=true 时必须提供 branch");
   }
 
   if (create && hasPaths) {
-    return fail(ErrorCode.EINVAL, 'create=true 时不能同时提供 paths');
+    return fail(ErrorCode.EINVAL, "create=true 时不能同时提供 paths");
   }
 
-  const gitArgs = ['checkout'];
+  const gitArgs = ["checkout"];
   if (create) {
-    gitArgs.push('-b', branch as string);
+    gitArgs.push("-b", branch as string);
   } else if (hasBranch && !hasPaths) {
     gitArgs.push(branch as string);
   } else if (hasBranch && hasPaths) {
-    gitArgs.push(branch as string, '--', ...(paths as string[]));
+    gitArgs.push(branch as string, "--", ...(paths as string[]));
   } else {
-    gitArgs.push('--', ...(paths as string[]));
+    gitArgs.push("--", ...(paths as string[]));
   }
 
   const result = await runGit(gitArgs, cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'checkout'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "checkout"));
   }
 
-  return ok({ checkedOut: true, ...(hasBranch ? { branch } : {}), ...(hasPaths ? { paths } : {}) }) as unknown as AnyToolResult;
+  return ok({
+    checkedOut: true,
+    ...(hasBranch ? { branch } : {}),
+    ...(hasPaths ? { paths } : {}),
+  }) as unknown as AnyToolResult;
 }
+
+/**
+ * git_checkout 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ checkedOut, branch?, paths? }`：branch 与 paths 至少返回其一。
+ */
+export const gitCheckoutOutputSchema = z.object({
+  checkedOut: z.boolean().describe("是否操作成功"),
+  branch: z.string().optional().describe("切换/创建的分支名"),
+  paths: z.array(z.string()).optional().describe("还原的文件路径"),
+});
 
 /** git_checkout 工具定义。 */
 export const gitCheckoutTool: Tool = {
-  name: 'git_checkout',
-  description: '切换/创建分支或还原文件（≈ git checkout）。branch 单独提供时切换分支；create=true 创建分支；paths 提供时还原文件，可配合 branch 指定源 ref。返回 { checkedOut, branch?, paths? }。',
+  name: "git_checkout",
+  description:
+    "切换/创建分支或还原文件（≈ git checkout）。branch 单独提供时切换分支；create=true 创建分支；paths 提供时还原文件，可配合 branch 指定源 ref。返回 { checkedOut, branch?, paths? }。",
   inputSchema: gitCheckoutInputSchema,
+  outputSchema: gitCheckoutOutputSchema,
+  // 切换分支/创建分支/还原文件均改变工作区或 HEAD，readOnlyHint: false
+  annotations: { readOnlyHint: false },
   handler: gitCheckoutHandler,
-  aliases: ['checkout'],
+  aliases: ["checkout"],
 };
 
 // ===================== git_push =====================
 
 /** git_push 输入 schema。 */
 export const gitPushInputSchema = z.object({
-  remote: z.string().optional().describe('远程名，默认 origin'),
-  branch: z.string().optional().describe('分支名，默认当前分支'),
-  force: z.boolean().optional().describe('true 时强制推送（--force）'),
-  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+  remote: z.string().optional().describe("远程名，默认 origin"),
+  branch: z.string().optional().describe("分支名，默认当前分支"),
+  force: z.boolean().optional().describe("true 时强制推送（--force）"),
+  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
 });
 
 /** git_push handler：推送提交到远程。 */
-export async function gitPushHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitPushHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const remote = (args['remote'] as string | undefined) ?? 'origin';
-  const branch = args['branch'] as string | undefined;
-  const force = args['force'] === true;
+  const remote = (args["remote"] as string | undefined) ?? "origin";
+  const branch = args["branch"] as string | undefined;
+  const force = args["force"] === true;
 
-  const gitArgs = ['push'];
-  if (force) gitArgs.push('--force');
+  const gitArgs = ["push"];
+  if (force) gitArgs.push("--force");
   gitArgs.push(remote);
-  if (typeof branch === 'string' && branch.length > 0) gitArgs.push(branch);
+  if (typeof branch === "string" && branch.length > 0) gitArgs.push(branch);
 
   const result = await runGit(gitArgs, cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'push'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "push"));
   }
 
-  return ok({ pushed: true, remote, branch: branch ?? '' }) as unknown as AnyToolResult;
+  return ok({
+    pushed: true,
+    remote,
+    branch: branch ?? "",
+  }) as unknown as AnyToolResult;
 }
+
+/**
+ * git_push 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ pushed, remote, branch }`。
+ */
+export const gitPushOutputSchema = z.object({
+  pushed: z.boolean().describe("是否推送成功"),
+  remote: z.string().describe("远程名"),
+  branch: z.string().describe("分支名（未指定时为空串）"),
+});
 
 /** git_push 工具定义。 */
 export const gitPushTool: Tool = {
-  name: 'git_push',
-  description: '推送提交到远程（≈ git push）。remote 默认 origin；force 强制推送。返回 { pushed, remote, branch }。',
+  name: "git_push",
+  description:
+    "推送提交到远程（≈ git push）。remote 默认 origin；force 强制推送。返回 { pushed, remote, branch }。",
   inputSchema: gitPushInputSchema,
+  outputSchema: gitPushOutputSchema,
+  // 改写远程分支引用（force 时更甚），readOnlyHint: false
+  annotations: { readOnlyHint: false },
   handler: gitPushHandler,
-  aliases: ['push'],
+  aliases: ["push"],
 };
 
 // ===================== git_pull =====================
 
 /** git_pull 输入 schema。 */
 export const gitPullInputSchema = z.object({
-  remote: z.string().optional().describe('远程名，默认 origin'),
-  branch: z.string().optional().describe('分支名，默认当前分支'),
-  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+  remote: z.string().optional().describe("远程名，默认 origin"),
+  branch: z.string().optional().describe("分支名，默认当前分支"),
+  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
 });
 
 /** git_pull handler：从远程拉取并合并。 */
-export async function gitPullHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitPullHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const remote = (args['remote'] as string | undefined) ?? 'origin';
-  const branch = args['branch'] as string | undefined;
+  const remote = (args["remote"] as string | undefined) ?? "origin";
+  const branch = args["branch"] as string | undefined;
 
-  const gitArgs = ['pull', remote];
-  if (typeof branch === 'string' && branch.length > 0) gitArgs.push(branch);
+  const gitArgs = ["pull", remote];
+  if (typeof branch === "string" && branch.length > 0) gitArgs.push(branch);
 
   const result = await runGit(gitArgs, cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'pull'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "pull"));
   }
 
-  return ok({ pulled: true, remote, branch: branch ?? '' }) as unknown as AnyToolResult;
+  return ok({
+    pulled: true,
+    remote,
+    branch: branch ?? "",
+  }) as unknown as AnyToolResult;
 }
+
+/**
+ * git_pull 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ pulled, remote, branch }`。
+ */
+export const gitPullOutputSchema = z.object({
+  pulled: z.boolean().describe("是否拉取成功"),
+  remote: z.string().describe("远程名"),
+  branch: z.string().describe("分支名（未指定时为空串）"),
+});
 
 /** git_pull 工具定义。 */
 export const gitPullTool: Tool = {
-  name: 'git_pull',
-  description: '从远程拉取并合并（≈ git pull）。remote 默认 origin。返回 { pulled, remote, branch }。',
+  name: "git_pull",
+  description:
+    "从远程拉取并合并（≈ git pull）。remote 默认 origin。返回 { pulled, remote, branch }。",
   inputSchema: gitPullInputSchema,
+  outputSchema: gitPullOutputSchema,
+  // 拉取并合并改变工作区与本地分支引用，readOnlyHint: false
+  annotations: { readOnlyHint: false },
   handler: gitPullHandler,
-  aliases: ['pull'],
+  aliases: ["pull"],
 };
 
 // ===================== git_clone =====================
 
 /** git_clone 输入 schema。 */
 export const gitCloneInputSchema = z.object({
-  url: z.string().min(1).describe('仓库 URL'),
-  path: z.string().optional().describe('目标目录'),
-  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+  url: z.string().min(1).describe("仓库 URL"),
+  path: z.string().optional().describe("目标目录"),
+  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
 });
 
 /** git_clone handler：克隆仓库。 */
-export async function gitCloneHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitCloneHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const url = args['url'];
-  const targetPath = args['path'] as string | undefined;
+  const url = args["url"];
+  const targetPath = args["path"] as string | undefined;
 
-  if (typeof url !== 'string' || url.length === 0) {
-    return fail(ErrorCode.EINVAL, 'url 不能为空');
+  if (typeof url !== "string" || url.length === 0) {
+    return fail(ErrorCode.EINVAL, "url 不能为空");
   }
 
-  const gitArgs = ['clone', url];
-  if (typeof targetPath === 'string' && targetPath.length > 0) gitArgs.push(targetPath);
+  const gitArgs = ["clone", url];
+  if (typeof targetPath === "string" && targetPath.length > 0)
+    gitArgs.push(targetPath);
 
   const result = await runGit(gitArgs, cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'clone'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "clone"));
   }
 
-  return ok({ cloned: true, path: targetPath ?? '' }) as unknown as AnyToolResult;
+  return ok({
+    cloned: true,
+    path: targetPath ?? "",
+  }) as unknown as AnyToolResult;
 }
+
+/**
+ * git_clone 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ cloned, path }`。
+ */
+export const gitCloneOutputSchema = z.object({
+  cloned: z.boolean().describe("是否克隆成功"),
+  path: z.string().describe("目标目录（未指定时为空串）"),
+});
 
 /** git_clone 工具定义。 */
 export const gitCloneTool: Tool = {
-  name: 'git_clone',
-  description: '克隆仓库（≈ git clone）。返回 { cloned, path }。',
+  name: "git_clone",
+  description: "克隆仓库（≈ git clone）。返回 { cloned, path }。",
   inputSchema: gitCloneInputSchema,
+  outputSchema: gitCloneOutputSchema,
+  // 在文件系统创建新仓库目录，readOnlyHint: false
+  annotations: { readOnlyHint: false },
   handler: gitCloneHandler,
-  aliases: ['clone'],
+  aliases: ["clone"],
 };
 
 // ===================== git_stash =====================
@@ -782,42 +1035,44 @@ export const gitCloneTool: Tool = {
 /** git_stash 输入 schema。 */
 export const gitStashInputSchema = z.object({
   action: z
-    .enum(['push', 'pop', 'list', 'drop'])
+    .enum(["push", "pop", "list", "drop"])
     .optional()
-    .describe('操作，默认 push'),
-  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+    .describe("操作，默认 push"),
+  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
 });
 
 /** git_stash handler：暂存/恢复工作区变更。 */
-export async function gitStashHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
+export async function gitStashHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
   const cwd = getCwd(args);
-  const action = (args['action'] as string | undefined) ?? 'push';
+  const action = (args["action"] as string | undefined) ?? "push";
 
   let gitArgs: string[];
   switch (action) {
-    case 'pop':
-      gitArgs = ['stash', 'pop'];
+    case "pop":
+      gitArgs = ["stash", "pop"];
       break;
-    case 'list':
-      gitArgs = ['stash', 'list'];
+    case "list":
+      gitArgs = ["stash", "list"];
       break;
-    case 'drop':
-      gitArgs = ['stash', 'drop'];
+    case "drop":
+      gitArgs = ["stash", "drop"];
       break;
     default:
-      gitArgs = ['stash', 'push'];
+      gitArgs = ["stash", "push"];
       break;
   }
 
   const result = await runGit(gitArgs, cwd);
   if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, 'stash'));
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "stash"));
   }
 
-  if (action === 'list') {
+  if (action === "list") {
     const stashes = result.stdout
       .trim()
-      .split('\n')
+      .split("\n")
       .filter((l) => l.length > 0);
     return ok({ action, stashes }) as unknown as AnyToolResult;
   }
@@ -825,11 +1080,45 @@ export async function gitStashHandler(args: Record<string, unknown>): Promise<An
   return ok({ action, success: true }) as unknown as AnyToolResult;
 }
 
-/** git_stash 工具定义。 */
+/**
+ * git_stash 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * - action='list'：返回 `{ action, stashes: string[] }`
+ * - 其他 action（push/pop/drop）：返回 `{ action, success: true }`
+ *
+ * 用 optional 字段表达两种形状的最通用集合。
+ */
+export const gitStashOutputSchema = z.object({
+  action: z.string().describe("操作类型（push/pop/list/drop）"),
+  stashes: z
+    .array(z.string())
+    .optional()
+    .describe("stash 列表（仅 action=list 时返回）"),
+  success: z
+    .boolean()
+    .optional()
+    .describe("是否操作成功（仅 action≠list 时返回）"),
+});
+
+/**
+ * git_stash 工具定义。
+ *
+ * 逃生舱语义（ADR-0014）：git_stash 的 action 参数决定只读/变更：
+ * - action='list' 仅列 stash 不改仓库，语义上只读、可并发
+ * - 其他 action（push/pop/drop）改变 stash 栈，独占
+ *
+ * 静态 annotations 无法按参数动态分类，故保守标 readOnlyHint: false（默认独占）。
+ * 逃生舱的并发分类需 plugin 层基于 args.action 动态判断，当前静态投影将其归为独占；
+ * action='list' 的并发安全性由 handler 只读语义保证（不修改仓库状态）。
+ */
 export const gitStashTool: Tool = {
-  name: 'git_stash',
-  description: '暂存/恢复工作区变更（≈ git stash）。action 支持 push/pop/list/drop，默认 push。',
+  name: "git_stash",
+  description:
+    "暂存/恢复工作区变更（≈ git stash）。action 支持 push/pop/list/drop，默认 push。",
   inputSchema: gitStashInputSchema,
+  outputSchema: gitStashOutputSchema,
+  // 保守默认独占：action='list' 只读但静态投影无法区分，归独占
+  annotations: { readOnlyHint: false },
   handler: gitStashHandler,
-  aliases: ['stash'],
+  aliases: ["stash"],
 };

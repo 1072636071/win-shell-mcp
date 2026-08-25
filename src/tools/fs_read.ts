@@ -185,12 +185,39 @@ export async function fsListHandler(args: Record<string, unknown>): Promise<AnyT
   }
 }
 
+/**
+ * fs_list 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ entries: string[] }`（相对路径）；verbose 返回
+ * `{ entries: [{ name, type, size, mtime }] }`。顶层用 z.object（MCP 协议要求
+ * outputSchema 顶层为 object），entries 元素用 union 表达极简/verbose 两种条目形状。
+ */
+export const fsListOutputSchema = z.object({
+  entries: z
+    .array(
+      z.union([
+        z.string().describe('相对路径名（极简模式）'),
+        z
+          .object({
+            name: z.string().describe('相对路径名'),
+            type: z.enum(['file', 'dir', 'symlink']).describe('条目类型'),
+            size: z.number().int().nonnegative().describe('字节数'),
+            mtime: z.string().describe('修改时间（ISO 8601）'),
+          })
+          .describe('verbose 条目'),
+      ]),
+    )
+    .describe('条目列表：极简模式为相对路径字符串，verbose 模式为含 type/size/mtime 的对象'),
+});
+
 /** fs_list 工具定义。 */
 export const fsListTool: Tool = {
   name: 'fs_list',
   description:
     '列目录（≈ Unix ls）。极简返回相对路径列表；verbose 含类型、大小与修改时间；recursive 递归；sort/sortOrder 排序；type/glob 过滤。',
   inputSchema: fsListInputSchema,
+  outputSchema: fsListOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: fsListHandler,
   aliases: ['ls', 'list_directory'],
 };
@@ -207,6 +234,20 @@ export const fsReadInputSchema = z.object({
   start: z.number().int().positive().optional().describe('起始行号（1-indexed，含）'),
   end: z.number().int().positive().optional().describe('结束行号（1-indexed，含；与 cat 的 startLine/endLine 语义一致）'),
   maxLen: z.number().int().positive().optional().describe('最大字符数，默认 2000'),
+});
+
+/**
+ * fs_read 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ content, truncated, lines }`：
+ * - content：文件内容（可能截断）
+ * - truncated：是否触发了截断
+ * - lines：内容行数
+ */
+export const fsReadOutputSchema = z.object({
+  content: z.string().describe('文件内容（可能截断）'),
+  truncated: z.boolean().describe('是否触发截断'),
+  lines: z.number().int().nonnegative().describe('内容行数'),
 });
 
 /**
@@ -271,6 +312,8 @@ export const fsReadTool: Tool = {
   description:
     '读文件。支持行范围（start/end，1-indexed 闭区间含端点，与 cat 的 startLine/endLine 语义一致）、编码自动检测（GBK/UTF-8）、截断。',
   inputSchema: fsReadInputSchema,
+  outputSchema: fsReadOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: fsReadHandler,
 };
 
@@ -318,11 +361,29 @@ export async function fsStatHandler(args: Record<string, unknown>): Promise<AnyT
   }
 }
 
+/**
+ * fs_stat 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ type, size, mtime, birthtime }`：
+ * - type：条目类型（file/dir/symlink，lstat 不跟随链接）
+ * - size：字节数
+ * - mtime：修改时间（毫秒时间戳）
+ * - birthtime：创建时间（毫秒时间戳，接口标 optional 以兼容平台差异）
+ */
+export const fsStatOutputSchema = z.object({
+  type: z.enum(['file', 'dir', 'symlink']).describe('条目类型'),
+  size: z.number().int().nonnegative().describe('字节数'),
+  mtime: z.number().describe('修改时间（毫秒时间戳）'),
+  birthtime: z.number().optional().describe('创建时间（毫秒时间戳）'),
+});
+
 /** fs_stat 工具定义。 */
 export const fsStatTool: Tool = {
   name: 'fs_stat',
   description:
     '获取文件/目录信息。返回 type（file/dir/symlink）、size、mtime、birthtime。',
   inputSchema: fsStatInputSchema,
+  outputSchema: fsStatOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: fsStatHandler,
 };

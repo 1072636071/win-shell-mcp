@@ -9,42 +9,66 @@
  * 测试可直接传入子集。工具结果（ToolResult）序列化为 MCP text content（JSON）。
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from "@modelcontextprotocol/sdk/server";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
-import { fail, isFail, type AnyToolResult } from './contract/output.js';
-import { ErrorCode, toErrorCode, toErrorMessage } from './contract/errors.js';
-import { builtinTools, type Tool } from './registry.js';
+} from "@modelcontextprotocol/sdk/types.js";
+import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
+import { fail, isFail, type AnyToolResult } from "./contract/output.js";
+import { ErrorCode, toErrorCode, toErrorMessage } from "./contract/errors.js";
+import { builtinTools, type Tool } from "./registry.js";
 
 /** Server 信息。 */
 const SERVER_INFO = {
-  name: 'win-shell-mcp',
-  version: '0.1.0',
+  name: "win-shell-mcp",
+  version: "0.2.0",
 } as const;
 
 /**
  * 列出所有工具的 MCP 描述（name、description、inputSchema JSON schema）。
  *
+ * outputSchema 与 annotations 条件透传：工具声明了才附上。
+ * 全部 58 个工具均由 guard-mutating.test.ts 强制声明 outputSchema 与
+ * annotations.readOnlyHint，此处条件透传为防御性编程，不依赖回退默认值。
+ *
  * 供 ListTools handler 与测试使用。
  *
  * @param tools 工具列表，默认内置全部工具
  */
-export function listTools(
-  tools: readonly Tool[] = builtinTools,
-): Array<{
+export function listTools(tools: readonly Tool[] = builtinTools): Array<{
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  annotations?: import("./registry.js").ToolAnnotations;
 }> {
-  return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: toJsonSchemaCompat(tool.inputSchema as never) as Record<string, unknown>,
-  }));
+  return tools.map((tool) => {
+    const entry: {
+      name: string;
+      description: string;
+      inputSchema: Record<string, unknown>;
+      outputSchema?: Record<string, unknown>;
+      annotations?: import("./registry.js").ToolAnnotations;
+    } = {
+      name: tool.name,
+      description: tool.description,
+      inputSchema: toJsonSchemaCompat(tool.inputSchema as never) as Record<
+        string,
+        unknown
+      >,
+    };
+    if (tool.outputSchema) {
+      entry.outputSchema = toJsonSchemaCompat(
+        tool.outputSchema as never,
+      ) as Record<string, unknown>;
+    }
+    if (tool.annotations) {
+      entry.annotations = tool.annotations;
+    }
+    return entry;
+  });
 }
 
 /**
@@ -71,7 +95,10 @@ export async function callTool(
   // 验证参数
   const parsed = tool.inputSchema.safeParse(args);
   if (!parsed.success) {
-    return fail(ErrorCode.EINVAL, `Invalid arguments: ${toErrorMessage(parsed.error)}`);
+    return fail(
+      ErrorCode.EINVAL,
+      `Invalid arguments: ${toErrorMessage(parsed.error)}`,
+    );
   }
 
   try {
@@ -87,11 +114,11 @@ export async function callTool(
  * 结果以 JSON 字符串放入 text content；失败时 isError=true。
  */
 function toMcpContent(result: AnyToolResult): {
-  content: Array<{ type: 'text'; text: string }>;
+  content: Array<{ type: "text"; text: string }>;
   isError: boolean;
 } {
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+    content: [{ type: "text" as const, text: JSON.stringify(result) }],
     isError: isFail(result),
   };
 }

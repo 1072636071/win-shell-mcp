@@ -8,15 +8,15 @@
  * 因此 `ls` / `list_directory` 等短名/别名调用与正名返回一致结果。
  */
 
-import type { z } from 'zod';
-import type { AnyToolResult } from './contract/output.js';
+import type { z } from "zod";
+import type { AnyToolResult } from "./contract/output.js";
 import {
   systemInfoTool,
   systemDiskTool,
   systemMemoryTool,
   systemPathTool,
-} from './tools/system.js';
-import { fsListTool, fsReadTool, fsStatTool } from './tools/fs_read.js';
+} from "./tools/system.js";
+import { fsListTool, fsReadTool, fsStatTool } from "./tools/fs_read.js";
 import {
   fsWriteTool,
   fsMkdirTool,
@@ -24,7 +24,7 @@ import {
   fsCpTool,
   fsMvTool,
   fsTouchTool,
-} from './tools/fs_write.js';
+} from "./tools/fs_write.js";
 import {
   textGrepTool,
   textHeadTool,
@@ -32,13 +32,22 @@ import {
   textWcTool,
   textDiffTool,
   textReplaceTool,
-} from './tools/text.js';
-import { searchGlobTool, searchContentTool, searchWhichTool } from './tools/search.js';
-import { processListTool, processKillTool } from './tools/process.js';
-import { shellExecTool } from './tools/shell_exec.js';
-import { envGetTool, envSetTool, envUnsetTool } from './tools/env.js';
-import { netGetTool, netPostTool, netDnsTool, netTcpTool } from './tools/net.js';
-import { pkgDetectTool, pkgRunTool } from './tools/pkg.js';
+} from "./tools/text.js";
+import {
+  searchGlobTool,
+  searchContentTool,
+  searchWhichTool,
+} from "./tools/search.js";
+import { processListTool, processKillTool } from "./tools/process.js";
+import { shellExecTool } from "./tools/shell_exec.js";
+import { envGetTool, envSetTool, envUnsetTool } from "./tools/env.js";
+import {
+  netGetTool,
+  netPostTool,
+  netDnsTool,
+  netTcpTool,
+} from "./tools/net.js";
+import { pkgDetectTool, pkgRunTool } from "./tools/pkg.js";
 import {
   gitStatusTool,
   gitLogTool,
@@ -51,18 +60,35 @@ import {
   gitPullTool,
   gitCloneTool,
   gitStashTool,
-} from './tools/git.js';
-import { pwdTool, echoTool } from './tools/core.js';
-import { runCommandTool } from './tools/run_command.js';
-import { fsFindTool } from './tools/fs_find.js';
-import { textCatTool } from './tools/text_cat.js';
-import { netPingTool } from './tools/net_ping.js';
-import { hashFileTool } from './tools/hash.js';
-import { fsDuTool } from './tools/fs_du.js';
-import { jsonGetTool } from './tools/json.js';
-import { netListenTool } from './tools/net_listen.js';
-import { netDownloadTool } from './tools/net_download.js';
-import { archiveCreateTool, archiveExtractTool } from './tools/archive.js';
+} from "./tools/git.js";
+import { pwdTool, echoTool } from "./tools/core.js";
+import { runCommandTool } from "./tools/run_command.js";
+import { fsFindTool } from "./tools/fs_find.js";
+import { textCatTool } from "./tools/text_cat.js";
+import { netPingTool } from "./tools/net_ping.js";
+import { hashFileTool } from "./tools/hash.js";
+import { fsDuTool } from "./tools/fs_du.js";
+import { jsonGetTool } from "./tools/json.js";
+import { netListenTool } from "./tools/net_listen.js";
+import { netDownloadTool } from "./tools/net_download.js";
+import { archiveCreateTool, archiveExtractTool } from "./tools/archive.js";
+
+/**
+ * 工具注解（对齐 MCP 标准 ToolAnnotations）。
+ *
+ * 用于向宿主（MCP 客户端 / DSH Code Mode）声明工具行为特征，便于宿主做
+ * 只读检测、并发分类与 UI 提示。所有字段可选，由各工具按需显式裁决。
+ */
+export interface ToolAnnotations {
+  /** 只读：不改变外部世界状态（可并发执行）。 */
+  readOnlyHint?: boolean;
+  /** 破坏性：可能不可逆地改变状态（如 rm）。 */
+  destructiveHint?: boolean;
+  /** 幂等：相同参数重复调用结果一致。 */
+  idempotentHint?: boolean;
+  /** 开放世界：工具与外部实体交互（网络、系统资源等）。 */
+  openWorldHint?: boolean;
+}
 
 /**
  * 工具定义。
@@ -70,6 +96,10 @@ import { archiveCreateTool, archiveExtractTool } from './tools/archive.js';
  * handler 接收 `Record<string, unknown>`：callTool 已用 zod 校验，但各工具
  * 测试会直接以非法类型调用 handler 验证 EINVAL 防御，故 handler 保留防御性
  * 类型检查。成功结果经 `ok()` 统一收窄为输出契约，调用点无需强转。
+ *
+ * outputSchema / annotations 类型上可选，但由 guard-mutating.test.ts
+ * 运行时强制：全部 58 个工具均声明非空 outputSchema 与显式 readOnlyHint。
+ * 该 guard test 是防漂移护栏，保留可选类型以避免大量类型断言噪音。
  */
 export interface Tool {
   /** 工具名（唯一标识，AI 调用时使用）。 */
@@ -79,9 +109,15 @@ export interface Tool {
   /** 输入参数的 zod schema（用于验证）。 */
   inputSchema: z.ZodType;
   /** 处理函数，接收已验证参数，返回统一输出契约。 */
-  handler: (args: Record<string, unknown>) => Promise<AnyToolResult> | AnyToolResult;
+  handler: (
+    args: Record<string, unknown>,
+  ) => Promise<AnyToolResult> | AnyToolResult;
   /** 别名（短名/同义名）；tools/call 可通过别名调用，返回与正名一致的结果。 */
   aliases?: string[];
+  /** 输出参数的 zod schema（描述 success data 结构，不含 ok 包装）。 */
+  outputSchema?: z.ZodType;
+  /** 工具注解（readOnlyHint 等，供宿主做并发分类与 UI 提示）。 */
+  annotations?: ToolAnnotations;
 }
 
 /** 内部工具存储。 */

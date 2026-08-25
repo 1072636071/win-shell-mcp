@@ -12,24 +12,24 @@
  * verbose 输出：额外 { pid, duration }
  */
 
-import { z } from 'zod';
-import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { runCommand } from '../exec/run.js';
-import type { Tool } from '../registry.js';
+import { z } from "zod";
+import { ok, fail, truncate, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { runCommand } from "../exec/run.js";
+import type { Tool } from "../registry.js";
 
 /** 默认检测的包管理器列表。 */
 const DEFAULT_MANAGERS = [
-  'npm',
-  'yarn',
-  'pnpm',
-  'bun',
-  'pip',
-  'pip3',
-  'cargo',
-  'go',
-  'python',
-  'python3',
+  "npm",
+  "yarn",
+  "pnpm",
+  "bun",
+  "pip",
+  "pip3",
+  "cargo",
+  "go",
+  "python",
+  "python3",
 ] as const;
 
 // ===================== pkg_detect =====================
@@ -40,7 +40,7 @@ export const pkgDetectInputSchema = z.object({
     .array(z.string().min(1))
     .optional()
     .describe(
-      '要检测的包管理器列表，默认检测全部（npm/yarn/pnpm/bun/pip/pip3/cargo/go/python/python3）',
+      "要检测的包管理器列表，默认检测全部（npm/yarn/pnpm/bun/pip/pip3/cargo/go/python/python3）",
     ),
 });
 
@@ -63,7 +63,7 @@ interface PkgDetectResult {
  * @returns true 表示可用
  */
 async function detectManager(manager: string): Promise<boolean> {
-  const outcome = await runCommand(manager, ['--version'], { shell: true });
+  const outcome = await runCommand(manager, ["--version"], { shell: true });
   return outcome.spawnError === undefined && outcome.exitCode === 0;
 }
 
@@ -76,10 +76,13 @@ async function detectManager(manager: string): Promise<boolean> {
  * @param args 已验证的参数
  * @returns 统一输出契约（始终为 ok）
  */
-export async function pkgDetectHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const rawManagers = args['managers'];
+export async function pkgDetectHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const rawManagers = args["managers"];
   const checked: string[] =
-    Array.isArray(rawManagers) && rawManagers.every((m) => typeof m === 'string' && m.length > 0)
+    Array.isArray(rawManagers) &&
+    rawManagers.every((m) => typeof m === "string" && m.length > 0)
       ? (rawManagers as string[])
       : [...DEFAULT_MANAGERS];
 
@@ -96,12 +99,20 @@ export async function pkgDetectHandler(args: Record<string, unknown>): Promise<A
   return ok(result);
 }
 
+/** pkg_detect 输出 schema：各包管理器可用性检测结果。 */
+export const pkgDetectOutputSchema = z.object({
+  available: z.record(z.string(), z.boolean()),
+  checked: z.array(z.string()),
+});
+
 /** pkg_detect 工具定义。 */
 export const pkgDetectTool: Tool = {
-  name: 'pkg_detect',
+  name: "pkg_detect",
   description:
-    '检测各包管理器（npm/yarn/pnpm/bun/pip/pip3/cargo/go/python/python3）可用性。返回 { available: Record<string, boolean>, checked: string[] }。managers 可指定要检测的子集。',
+    "检测各包管理器（npm/yarn/pnpm/bun/pip/pip3/cargo/go/python/python3）可用性。返回 { available: Record<string, boolean>, checked: string[] }。managers 可指定要检测的子集。",
   inputSchema: pkgDetectInputSchema,
+  outputSchema: pkgDetectOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: pkgDetectHandler,
 };
 
@@ -109,22 +120,19 @@ export const pkgDetectTool: Tool = {
 
 /** pkg_run 输入 schema。 */
 export const pkgRunInputSchema = z.object({
-  manager: z.string().min(1).describe('包管理器名（如 npm、pnpm、pip）'),
+  manager: z.string().min(1).describe("包管理器名（如 npm、pnpm、pip）"),
   args: z
     .array(z.string())
     .optional()
     .describe('传给包管理器的参数（如 ["install", "lodash"]）'),
-  cwd: z.string().optional().describe('工作目录（绝对或相对路径）'),
+  cwd: z.string().optional().describe("工作目录（绝对或相对路径）"),
   timeout: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('超时毫秒，超时杀子进程并返回 EXEC_TIMEOUT'),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe('若为 true，返回 pid 与 duration'),
+    .describe("超时毫秒，超时杀子进程并返回 EXEC_TIMEOUT"),
+  verbose: z.boolean().optional().describe("若为 true，返回 pid 与 duration"),
 });
 
 /** pkg_run 输入类型。 */
@@ -158,24 +166,27 @@ interface PkgRunFull extends PkgRunMinimal {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function pkgRunHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const manager = args['manager'];
-  if (typeof manager !== 'string' || manager.length === 0) {
-    return fail(ErrorCode.EINVAL, 'manager 必须是非空字符串');
+export async function pkgRunHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const manager = args["manager"];
+  if (typeof manager !== "string" || manager.length === 0) {
+    return fail(ErrorCode.EINVAL, "manager 必须是非空字符串");
   }
 
-  const rawArgs = args['args'];
+  const rawArgs = args["args"];
   const cmdArgs: string[] =
-    Array.isArray(rawArgs) && rawArgs.every((a) => typeof a === 'string')
+    Array.isArray(rawArgs) && rawArgs.every((a) => typeof a === "string")
       ? (rawArgs as string[])
       : [];
 
-  const cwd = args['cwd'];
-  const timeout = args['timeout'];
-  const verbose = args['verbose'] === true;
+  const cwd = args["cwd"];
+  const timeout = args["timeout"];
+  const verbose = args["verbose"] === true;
 
-  const cwdOpt = typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined;
-  const timeoutMs = typeof timeout === 'number' && timeout > 0 ? timeout : undefined;
+  const cwdOpt = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
+  const timeoutMs =
+    typeof timeout === "number" && timeout > 0 ? timeout : undefined;
 
   const outcome = await runCommand(manager, cmdArgs, {
     cwd: cwdOpt,
@@ -183,17 +194,20 @@ export async function pkgRunHandler(args: Record<string, unknown>): Promise<AnyT
     shell: true,
   });
 
-  const cmdLabel = `${manager} ${cmdArgs.join(' ')}`.trim();
+  const cmdLabel = `${manager} ${cmdArgs.join(" ")}`.trim();
 
   if (outcome.spawnError !== undefined) {
-    if (outcome.spawnError.code === 'ENOENT') {
+    if (outcome.spawnError.code === "ENOENT") {
       return fail(ErrorCode.EXEC_FAIL, `包管理器不存在: ${manager}`);
     }
     return fail(ErrorCode.EXEC_FAIL, `执行失败: ${outcome.spawnError.message}`);
   }
 
   if (outcome.timedOut) {
-    return fail(ErrorCode.EXEC_TIMEOUT, `命令超时（${timeoutMs}ms）: ${cmdLabel}`);
+    return fail(
+      ErrorCode.EXEC_TIMEOUT,
+      `命令超时（${timeoutMs}ms）: ${cmdLabel}`,
+    );
   }
 
   const minimal: PkgRunMinimal = {
@@ -214,11 +228,33 @@ export async function pkgRunHandler(args: Record<string, unknown>): Promise<AnyT
   return ok(full);
 }
 
+/**
+ * pkg_run 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ exitCode, stdout, stderr }`；verbose 额外返回 `{ pid, duration }`。
+ */
+export const pkgRunOutputSchema = z.object({
+  exitCode: z.number().int().describe("退出码（非零是正常结果，不是工具失败）"),
+  stdout: z.string().describe("标准输出（可能截断）"),
+  stderr: z.string().describe("标准错误（可能截断）"),
+  pid: z.number().int().optional().describe("子进程 pid（verbose 时返回）"),
+  duration: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("耗时毫秒（verbose 时返回）"),
+});
+
 /** pkg_run 工具定义。 */
 export const pkgRunTool: Tool = {
-  name: 'pkg_run',
+  name: "pkg_run",
   description:
     '执行包管理器命令，返回 { exitCode, stdout, stderr }。manager 如 npm/pnpm/pip，args 如 ["install", "lodash"]。支持 cwd、timeout、verbose。非零退出码是正常结果。',
   inputSchema: pkgRunInputSchema,
+  outputSchema: pkgRunOutputSchema,
+  // 执行任意包管理器命令（install/uninstall/run 等），副作用不可控且可能改变文件系统/依赖树，
+  // readOnlyHint: false；destructiveHint 省略（副作用类型由子命令决定，无法静态裁决）
+  annotations: { readOnlyHint: false },
   handler: pkgRunHandler,
 };

@@ -5,21 +5,21 @@
  * verbose 输出：额外 uptime、loadavg、cpus、totalmem、freemem
  */
 
-import os from 'node:os';
-import { statfs, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { z } from 'zod';
-import { ok, withVerbose, type AnyToolResult } from '../contract/output.js';
-import { toFail } from '../utils/errors.js';
-import { IS_WIN } from '../utils/platform.js';
-import type { Tool } from '../registry.js';
+import os from "node:os";
+import { statfs, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { z } from "zod";
+import { ok, withVerbose, type AnyToolResult } from "../contract/output.js";
+import { toFail } from "../utils/errors.js";
+import { IS_WIN } from "../utils/platform.js";
+import type { Tool } from "../registry.js";
 
 /** 输入 schema：verbose 可选布尔。 */
 export const systemInfoInputSchema = z.object({
   verbose: z
     .boolean()
     .optional()
-    .describe('若为 true，返回完整系统信息（含 uptime、内存、CPU 等）'),
+    .describe("若为 true，返回完整系统信息（含 uptime、内存、CPU 等）"),
 });
 
 /** system_info 输入类型。 */
@@ -80,7 +80,9 @@ async function sampleCpuUsage(
     return Math.max(0, Math.min(100, usage));
   });
 
-  const cpuUsage = perCore.length ? perCore.reduce((a, b) => a + b, 0) / perCore.length : 0;
+  const cpuUsage = perCore.length
+    ? perCore.reduce((a, b) => a + b, 0) / perCore.length
+    : 0;
   return { cpuUsage, cpuUsagePerCore: perCore };
 }
 
@@ -90,8 +92,10 @@ async function sampleCpuUsage(
  * @param args 已验证的参数（含 verbose 开关）
  * @returns 统一输出契约
  */
-export async function systemInfoHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const verbose = args['verbose'] === true;
+export async function systemInfoHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const verbose = args["verbose"] === true;
 
   const minimal: SystemInfoMinimal = {
     os: os.type(),
@@ -104,7 +108,7 @@ export async function systemInfoHandler(args: Record<string, unknown>): Promise<
   };
 
   const cpus = os.cpus();
-  const cpuUsage = verbose ? (await sampleCpuUsage()) : undefined;
+  const cpuUsage = verbose ? await sampleCpuUsage() : undefined;
   const full: SystemInfoFull = {
     ...minimal,
     uptime: os.uptime(),
@@ -120,12 +124,39 @@ export async function systemInfoHandler(args: Record<string, unknown>): Promise<
   return ok(withVerbose(minimal, full, verbose));
 }
 
+/**
+ * system_info 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ os, arch, platform, hostname, cwd, node, time }`；
+ * verbose 额外返回 `{ uptime, loadavg, cpus, cpuModel?, cpuUsage?, cpuUsagePerCore?, totalmem, freemem }`。
+ * verbose 专属字段用 optional 表达最通用形状。
+ */
+export const systemInfoOutputSchema = z.object({
+  os: z.string(),
+  arch: z.string(),
+  platform: z.string(),
+  hostname: z.string(),
+  cwd: z.string(),
+  node: z.string(),
+  time: z.string(),
+  uptime: z.number().optional(),
+  loadavg: z.array(z.number()).optional(),
+  cpus: z.number().int().nonnegative().optional(),
+  cpuModel: z.string().optional(),
+  cpuUsage: z.number().optional(),
+  cpuUsagePerCore: z.array(z.number()).optional(),
+  totalmem: z.number().optional(),
+  freemem: z.number().optional(),
+});
+
 /** system_info 工具定义。 */
 export const systemInfoTool: Tool = {
-  name: 'system_info',
+  name: "system_info",
   description:
-    '获取当前系统信息（os、arch、platform、hostname、cwd、node 版本、当前时间 ISO 8601）。开启 verbose 时返回完整信息（uptime、loadavg、cpus、内存）。',
+    "获取当前系统信息（os、arch、platform、hostname、cwd、node 版本、当前时间 ISO 8601）。开启 verbose 时返回完整信息（uptime、loadavg、cpus、内存）。",
   inputSchema: systemInfoInputSchema,
+  outputSchema: systemInfoOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: systemInfoHandler,
 };
 
@@ -142,11 +173,11 @@ export const systemInfoTool: Tool = {
 
 /** 输入 schema：path 可选，默认 process.cwd()；all 可选，枚举所有磁盘。 */
 export const systemDiskInputSchema = z.object({
-  path: z
-    .string()
+  path: z.string().optional().describe("挂载点或目录路径，默认当前工作目录"),
+  all: z
+    .boolean()
     .optional()
-    .describe('挂载点或目录路径，默认当前工作目录'),
-  all: z.boolean().optional().describe('若为 true，枚举所有磁盘/挂载点（返回 { disks: [...] }）'),
+    .describe("若为 true，枚举所有磁盘/挂载点（返回 { disks: [...] }）"),
 });
 
 /** system_disk 输入类型。 */
@@ -229,31 +260,31 @@ function enumerateWindowsDrives(): string[] {
 /* c8 ignore start */
 async function enumerateUnixDisks(): Promise<SystemDiskEntry[]> {
   const entries: SystemDiskEntry[] = [];
-  if (os.platform() === 'linux') {
+  if (os.platform() === "linux") {
     const skip = new Set([
-      'proc',
-      'sysfs',
-      'devpts',
-      'tmpfs',
-      'devtmpfs',
-      'cgroup',
-      'cgroup2',
-      'overlay',
-      'securityfs',
-      'mqueue',
-      'hugetlbfs',
-      'pstore',
-      'bpf',
-      'debugfs',
-      'tracefs',
-      'fusectl',
-      'configfs',
-      'autofs',
-      'binfmt_misc',
+      "proc",
+      "sysfs",
+      "devpts",
+      "tmpfs",
+      "devtmpfs",
+      "cgroup",
+      "cgroup2",
+      "overlay",
+      "securityfs",
+      "mqueue",
+      "hugetlbfs",
+      "pstore",
+      "bpf",
+      "debugfs",
+      "tracefs",
+      "fusectl",
+      "configfs",
+      "autofs",
+      "binfmt_misc",
     ]);
     try {
-      const content = await readFile('/proc/mounts', 'utf8');
-      for (const line of content.split('\n')) {
+      const content = await readFile("/proc/mounts", "utf8");
+      for (const line of content.split("\n")) {
         if (!line.trim()) continue;
         const parts = line.split(/\s+/);
         const mountPoint = parts[1];
@@ -272,8 +303,8 @@ async function enumerateUnixDisks(): Promise<SystemDiskEntry[]> {
   } else {
     // macOS 及其他平台：尽力而为，仅探测根挂载
     try {
-      const stats = await statfs('/');
-      entries.push(buildDiskEntry(stats, '/', ''));
+      const stats = await statfs("/");
+      entries.push(buildDiskEntry(stats, "/", ""));
     } catch {
       // 忽略
     }
@@ -295,7 +326,7 @@ async function enumerateDisks(): Promise<SystemDiskEntry[]> {
     for (const root of enumerateWindowsDrives()) {
       try {
         const stats = await statfs(root);
-        entries.push(buildDiskEntry(stats, root, ''));
+        entries.push(buildDiskEntry(stats, root, ""));
       } catch {
         // 跳过不可访问的盘符
       }
@@ -312,9 +343,11 @@ async function enumerateDisks(): Promise<SystemDiskEntry[]> {
  * @param args 已验证的参数（含可选 path 与 all）
  * @returns 统一输出契约；all=true 返回 { disks: [...] }；path 不存在时返回 ENOENT
  */
-export async function systemDiskHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const rawPath = args['path'];
-  const all = args['all'] === true;
+export async function systemDiskHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const rawPath = args["path"];
+  const all = args["all"] === true;
 
   // all=true：枚举多盘
   if (all) {
@@ -323,11 +356,12 @@ export async function systemDiskHandler(args: Record<string, unknown>): Promise<
     return ok(result) as unknown as AnyToolResult;
   }
 
-  const path = typeof rawPath === 'string' && rawPath.length > 0 ? rawPath : process.cwd();
+  const path =
+    typeof rawPath === "string" && rawPath.length > 0 ? rawPath : process.cwd();
 
   try {
     const stats = await statfs(path);
-    const { total, free, used } = buildDiskEntry(stats, path, '');
+    const { total, free, used } = buildDiskEntry(stats, path, "");
     const result: SystemDiskResult = { total, free, used, path };
     return ok(result);
   } catch (err) {
@@ -335,12 +369,39 @@ export async function systemDiskHandler(args: Record<string, unknown>): Promise<
   }
 }
 
+/**
+ * system_disk 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 单盘模式返回 `{ total, free, used, path }`；
+ * all=true 模式返回 `{ disks: [{ total, free, used, path, type }] }`。
+ * 两种形状互斥，用 optional 字段表达最通用形状。
+ */
+export const systemDiskOutputSchema = z.object({
+  total: z.number().optional(),
+  free: z.number().optional(),
+  used: z.number().optional(),
+  path: z.string().optional(),
+  disks: z
+    .array(
+      z.object({
+        total: z.number(),
+        free: z.number(),
+        used: z.number(),
+        path: z.string(),
+        type: z.string(),
+      }),
+    )
+    .optional(),
+});
+
 /** system_disk 工具定义。 */
 export const systemDiskTool: Tool = {
-  name: 'system_disk',
+  name: "system_disk",
   description:
-    '获取磁盘用量（total/free/used，字节）。path 指定挂载点或目录，默认当前工作目录；all=true 时枚举所有磁盘/挂载点并返回 { disks: [...] }。',
+    "获取磁盘用量（total/free/used，字节）。path 指定挂载点或目录，默认当前工作目录；all=true 时枚举所有磁盘/挂载点并返回 { disks: [...] }。",
   inputSchema: systemDiskInputSchema,
+  outputSchema: systemDiskOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: systemDiskHandler,
 };
 
@@ -360,7 +421,7 @@ export const systemMemoryInputSchema = z.object({
   verbose: z
     .boolean()
     .optional()
-    .describe('若为 true，返回完整内存信息（含 used、swap）'),
+    .describe("若为 true，返回完整内存信息（含 used、swap）"),
 });
 
 /** system_memory 输入类型。 */
@@ -386,21 +447,24 @@ interface SystemMemoryFull extends SystemMemoryMinimal {
  *
  * @returns { swapTotal?, swapFree? }，单位字节；不可读时为空对象
  */
-async function readSwapInfo(): Promise<{ swapTotal?: number; swapFree?: number }> {
-  if (os.platform() !== 'linux') return {};
+async function readSwapInfo(): Promise<{
+  swapTotal?: number;
+  swapFree?: number;
+}> {
+  if (os.platform() !== "linux") return {};
   /* c8 ignore start */
   try {
-    const content = await readFile('/proc/meminfo', 'utf8');
+    const content = await readFile("/proc/meminfo", "utf8");
     let swapTotal: number | undefined;
     let swapFree: number | undefined;
-    for (const line of content.split('\n')) {
+    for (const line of content.split("\n")) {
       const m = /^(\w+):\s+(\d+)/.exec(line);
       if (!m) continue;
       const key = m[1]!;
       // /proc/meminfo 单位为 kB，转换为字节
       const value = Number(m[2]!) * 1024;
-      if (key === 'SwapTotal') swapTotal = value;
-      else if (key === 'SwapFree') swapFree = value;
+      if (key === "SwapTotal") swapTotal = value;
+      else if (key === "SwapFree") swapFree = value;
     }
     return { swapTotal, swapFree };
   } catch {
@@ -415,8 +479,10 @@ async function readSwapInfo(): Promise<{ swapTotal?: number; swapFree?: number }
  * @param args 已验证的参数（含 verbose 开关）
  * @returns 统一输出契约
  */
-export async function systemMemoryHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const verbose = args['verbose'] === true;
+export async function systemMemoryHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const verbose = args["verbose"] === true;
   const total = os.totalmem();
   const free = os.freemem();
 
@@ -428,12 +494,27 @@ export async function systemMemoryHandler(args: Record<string, unknown>): Promis
   return ok(withVerbose(minimal, full, verbose));
 }
 
+/**
+ * system_memory 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ total, free }`；verbose 额外返回 `{ used, swapTotal?, swapFree? }`。
+ */
+export const systemMemoryOutputSchema = z.object({
+  total: z.number(),
+  free: z.number(),
+  used: z.number().optional(),
+  swapTotal: z.number().optional(),
+  swapFree: z.number().optional(),
+});
+
 /** system_memory 工具定义。 */
 export const systemMemoryTool: Tool = {
-  name: 'system_memory',
+  name: "system_memory",
   description:
-    '获取系统内存信息（total/free，字节）。开启 verbose 时返回 used 与 swap 信息。',
+    "获取系统内存信息（total/free，字节）。开启 verbose 时返回 used 与 swap 信息。",
   inputSchema: systemMemoryInputSchema,
+  outputSchema: systemMemoryOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: systemMemoryHandler,
 };
 
@@ -453,7 +534,7 @@ export const systemPathInputSchema = z.object({
   verbose: z
     .boolean()
     .optional()
-    .describe('若为 true，返回 count 与 existing 统计'),
+    .describe("若为 true，返回 count 与 existing 统计"),
 });
 
 /** system_path 输入类型。 */
@@ -471,7 +552,7 @@ interface SystemPathFull extends SystemPathMinimal {
 }
 
 /** PATH 分隔符：Windows 用 ;，unix 用 :。 */
-const PATH_SEPARATOR = process.platform === 'win32' ? ';' : ':';
+const PATH_SEPARATOR = process.platform === "win32" ? ";" : ":";
 
 /**
  * 获取 PATH 环境变量（跨平台兼容 Path/PATH 大小写）。
@@ -480,7 +561,7 @@ const PATH_SEPARATOR = process.platform === 'win32' ? ';' : ':';
  */
 function getPathEnv(): string {
   const env = process.env;
-  return env['PATH'] ?? env['Path'] ?? '';
+  return env["PATH"] ?? env["Path"] ?? "";
 }
 
 /**
@@ -489,8 +570,10 @@ function getPathEnv(): string {
  * @param args 已验证的参数（含 verbose 开关）
  * @returns 统一输出契约
  */
-export async function systemPathHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const verbose = args['verbose'] === true;
+export async function systemPathHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const verbose = args["verbose"] === true;
   const pathStr = getPathEnv();
   const entries = pathStr.length > 0 ? pathStr.split(PATH_SEPARATOR) : [];
 
@@ -504,11 +587,24 @@ export async function systemPathHandler(args: Record<string, unknown>): Promise<
   return ok(withVerbose(minimal, full, verbose));
 }
 
+/**
+ * system_path 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ entries: string[] }`；verbose 额外返回 `{ count, existing }`。
+ */
+export const systemPathOutputSchema = z.object({
+  entries: z.array(z.string()),
+  count: z.number().int().nonnegative().optional(),
+  existing: z.number().int().nonnegative().optional(),
+});
+
 /** system_path 工具定义。 */
 export const systemPathTool: Tool = {
-  name: 'system_path',
+  name: "system_path",
   description:
-    '获取 PATH 环境变量条目列表。开启 verbose 时返回 count 与 existing（实际存在的目录数）。',
+    "获取 PATH 环境变量条目列表。开启 verbose 时返回 count 与 existing（实际存在的目录数）。",
   inputSchema: systemPathInputSchema,
+  outputSchema: systemPathOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: systemPathHandler,
 };

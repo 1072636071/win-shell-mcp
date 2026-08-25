@@ -7,10 +7,10 @@
  * 极简输出，无 verbose 模式。
  */
 
-import { z } from 'zod';
-import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import type { Tool } from '../registry.js';
+import { z } from "zod";
+import { ok, fail, truncate, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import type { Tool } from "../registry.js";
 
 // ---------------------------------------------------------------------------
 // env_get：读取环境变量
@@ -18,20 +18,21 @@ import type { Tool } from '../registry.js';
 
 /** env_get 输入 schema：name 可选，省略时返回全部。 */
 export const envGetInputSchema = z.object({
-  name: z
-    .string()
-    .optional()
-    .describe('变量名，省略则返回全部环境变量'),
+  name: z.string().optional().describe("变量名，省略则返回全部环境变量"),
   filter: z
     .string()
     .optional()
-    .describe('按变量名过滤（includes 匹配，大小写不敏感），仅 name 省略时生效'),
+    .describe(
+      "按变量名过滤（includes 匹配，大小写不敏感），仅 name 省略时生效",
+    ),
   maxLen: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('每个变量值截断到 N 字符（控制全量返回的 token 成本），仅 name 省略时生效'),
+    .describe(
+      "每个变量值截断到 N 字符（控制全量返回的 token 成本），仅 name 省略时生效",
+    ),
 });
 
 /** env_get 输入类型。 */
@@ -60,24 +61,30 @@ interface EnvGetAllResult {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function envGetHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const name = args['name'];
+export async function envGetHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const name = args["name"];
 
-  if (typeof name === 'string' && name.length > 0) {
+  if (typeof name === "string" && name.length > 0) {
     const value = process.env[name] ?? null;
     const result: EnvGetOneResult = { name, value };
     return ok(result);
   }
 
   // 返回全部环境变量（可选 filter 与 maxLen）
-  const filter = args['filter'];
-  const maxLen = args['maxLen'];
-  const filterStr = typeof filter === 'string' && filter.length > 0 ? filter.toLowerCase() : null;
-  const limit = typeof maxLen === 'number' && maxLen > 0 ? Math.floor(maxLen) : null;
+  const filter = args["filter"];
+  const maxLen = args["maxLen"];
+  const filterStr =
+    typeof filter === "string" && filter.length > 0
+      ? filter.toLowerCase()
+      : null;
+  const limit =
+    typeof maxLen === "number" && maxLen > 0 ? Math.floor(maxLen) : null;
 
   const vars: Record<string, string> = {};
   for (const [key, val] of Object.entries(process.env)) {
-    if (typeof val !== 'string') continue;
+    if (typeof val !== "string") continue;
     if (filterStr !== null && !key.toLowerCase().includes(filterStr)) continue;
     vars[key] = limit !== null ? truncate(val, limit) : val;
   }
@@ -85,12 +92,27 @@ export async function envGetHandler(args: Record<string, unknown>): Promise<AnyT
   return ok(result);
 }
 
+/**
+ * env_get 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * name 指定时返回 `{ name, value }`（value 为 string 或 null）；
+ * name 省略时返回 `{ vars, count }`。两种形状互斥，用 optional 字段表达最通用形状。
+ */
+export const envGetOutputSchema = z.object({
+  name: z.string().optional(),
+  value: z.union([z.string(), z.null()]).optional(),
+  vars: z.record(z.string(), z.string()).optional(),
+  count: z.number().int().nonnegative().optional(),
+});
+
 /** env_get 工具定义。 */
 export const envGetTool: Tool = {
-  name: 'env_get',
+  name: "env_get",
   description:
-    '读取环境变量。name 指定时返回 {name, value}（value 为 null 表示未设置）；省略时返回全部 {vars, count}，可用 filter 按名过滤、maxLen 截断每个值以控制 token 成本。',
+    "读取环境变量。name 指定时返回 {name, value}（value 为 null 表示未设置）；省略时返回全部 {vars, count}，可用 filter 按名过滤、maxLen 截断每个值以控制 token 成本。",
   inputSchema: envGetInputSchema,
+  outputSchema: envGetOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: envGetHandler,
 };
 
@@ -100,8 +122,8 @@ export const envGetTool: Tool = {
 
 /** env_set 输入 schema。 */
 export const envSetInputSchema = z.object({
-  name: z.string().min(1).describe('变量名（非空字符串）'),
-  value: z.string().describe('变量值'),
+  name: z.string().min(1).describe("变量名（非空字符串）"),
+  value: z.string().describe("变量值"),
 });
 
 /** env_set 输入类型。 */
@@ -121,15 +143,17 @@ interface EnvSetResult {
  * @param args 已验证的参数
  * @returns 统一输出契约；name 为空返回 EINVAL
  */
-export async function envSetHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const name = args['name'];
-  const value = args['value'];
+export async function envSetHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const name = args["name"];
+  const value = args["value"];
 
-  if (typeof name !== 'string' || name.length === 0) {
-    return fail(ErrorCode.EINVAL, 'name 必须是非空字符串');
+  if (typeof name !== "string" || name.length === 0) {
+    return fail(ErrorCode.EINVAL, "name 必须是非空字符串");
   }
-  if (typeof value !== 'string') {
-    return fail(ErrorCode.EINVAL, 'value 必须是字符串');
+  if (typeof value !== "string") {
+    return fail(ErrorCode.EINVAL, "value 必须是字符串");
   }
 
   process.env[name] = value;
@@ -137,11 +161,25 @@ export async function envSetHandler(args: Record<string, unknown>): Promise<AnyT
   return ok(result);
 }
 
+/**
+ * env_set 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ set, name }`。
+ */
+export const envSetOutputSchema = z.object({
+  set: z.boolean().describe("是否设置成功"),
+  name: z.string().describe("变量名"),
+});
+
 /** env_set 工具定义。 */
 export const envSetTool: Tool = {
-  name: 'env_set',
-  description: '设置环境变量，写入 process.env，对后续会话生效。返回 {set, name}。',
+  name: "env_set",
+  description:
+    "设置环境变量，写入 process.env，对后续会话生效。返回 {set, name}。",
   inputSchema: envSetInputSchema,
+  outputSchema: envSetOutputSchema,
+  // 修改进程环境变量，destructiveHint: true（覆盖既有值）
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: envSetHandler,
 };
 
@@ -151,7 +189,7 @@ export const envSetTool: Tool = {
 
 /** env_unset 输入 schema。 */
 export const envUnsetInputSchema = z.object({
-  name: z.string().min(1).describe('变量名（非空字符串）'),
+  name: z.string().min(1).describe("变量名（非空字符串）"),
 });
 
 /** env_unset 输入类型。 */
@@ -171,11 +209,13 @@ interface EnvUnsetResult {
  * @param args 已验证的参数
  * @returns 统一输出契约；name 为空返回 EINVAL
  */
-export async function envUnsetHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const name = args['name'];
+export async function envUnsetHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const name = args["name"];
 
-  if (typeof name !== 'string' || name.length === 0) {
-    return fail(ErrorCode.EINVAL, 'name 必须是非空字符串');
+  if (typeof name !== "string" || name.length === 0) {
+    return fail(ErrorCode.EINVAL, "name 必须是非空字符串");
   }
 
   delete process.env[name];
@@ -183,10 +223,23 @@ export async function envUnsetHandler(args: Record<string, unknown>): Promise<An
   return ok(result);
 }
 
+/**
+ * env_unset 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ unset, name }`。
+ */
+export const envUnsetOutputSchema = z.object({
+  unset: z.boolean().describe("是否删除成功"),
+  name: z.string().describe("变量名"),
+});
+
 /** env_unset 工具定义。 */
 export const envUnsetTool: Tool = {
-  name: 'env_unset',
-  description: '删除环境变量，从 process.env 移除。返回 {unset, name}。',
+  name: "env_unset",
+  description: "删除环境变量，从 process.env 移除。返回 {unset, name}。",
   inputSchema: envUnsetInputSchema,
+  outputSchema: envUnsetOutputSchema,
+  // 删除环境变量不可逆，destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: envUnsetHandler,
 };

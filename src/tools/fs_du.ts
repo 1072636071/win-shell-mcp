@@ -5,21 +5,18 @@
  * 设计原则：极简输出（仅总大小）、verbose 含文件/目录数。
  */
 
-import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
-import { z } from 'zod';
-import { ok, fail, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { failFromError } from '../utils/errors.js';
-import type { Tool } from '../registry.js';
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
+import { z } from "zod";
+import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { failFromError } from "../utils/errors.js";
+import type { Tool } from "../registry.js";
 
 /** fs_du 输入 schema。 */
 export const fsDuInputSchema = z.object({
-  path: z.string().describe('目录路径'),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe('若为 true，额外返回文件数与目录数'),
+  path: z.string().describe("目录路径"),
+  verbose: z.boolean().optional().describe("若为 true，额外返回文件数与目录数"),
 });
 
 /** 极简输出。 */
@@ -70,18 +67,23 @@ async function computeDirSize(
  *
  * 错误：ENOENT（不存在）/ ENOTDIR（不是目录）/ EACCES（无权限）
  */
-export async function fsDuHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const dirPath = args['path'];
-  const verbose = args['verbose'] === true;
+export async function fsDuHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const dirPath = args["path"];
+  const verbose = args["verbose"] === true;
 
-  if (typeof dirPath !== 'string' || dirPath.length === 0) {
-    return fail(ErrorCode.EINVAL, 'path 必须是非空字符串');
+  if (typeof dirPath !== "string" || dirPath.length === 0) {
+    return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
   }
 
   try {
     const stats = await fs.stat(dirPath);
     if (!stats.isDirectory()) {
-      return fail(ErrorCode.ENOTDIR, `不是目录: ${dirPath}`) as unknown as AnyToolResult;
+      return fail(
+        ErrorCode.ENOTDIR,
+        `不是目录: ${dirPath}`,
+      ) as unknown as AnyToolResult;
     }
 
     const { size, files, dirs } = await computeDirSize(dirPath);
@@ -97,12 +99,37 @@ export async function fsDuHandler(args: Record<string, unknown>): Promise<AnyToo
   }
 }
 
+/**
+ * fs_du 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ size, path }`；verbose 额外返回 `{ files, dirs }`。
+ * 用通用形状（files/dirs 可选）描述两种模式。
+ */
+export const fsDuOutputSchema = z.object({
+  size: z.number().int().nonnegative().describe("累计字节数"),
+  path: z.string().describe("目录路径"),
+  files: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("文件数（verbose 模式）"),
+  dirs: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("子目录数（verbose 模式）"),
+});
+
 /** fs_du 工具定义。 */
 export const fsDuTool: Tool = {
-  name: 'fs_du',
+  name: "fs_du",
   description:
-    '递归累计目录大小（≈ Unix du）。极简返回 { size, path }；verbose 额外返回 files 与 dirs 计数。',
+    "递归累计目录大小（≈ Unix du）。极简返回 { size, path }；verbose 额外返回 files 与 dirs 计数。",
   inputSchema: fsDuInputSchema,
+  outputSchema: fsDuOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: fsDuHandler,
-  aliases: ['du'],
+  aliases: ["du"],
 };

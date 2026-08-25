@@ -156,10 +156,23 @@ export async function searchGlobHandler(args: Record<string, unknown>): Promise<
   return ok({ files: matched, count: matched.length, truncated });
 }
 
+/**
+ * search_glob 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ files, count, truncated }`：files 为匹配的相对路径列表，count 为返回数，truncated 标识是否触发 maxResults 截断。
+ */
+export const searchGlobOutputSchema = z.object({
+  files: z.array(z.string()).describe('匹配的相对路径列表'),
+  count: z.number().int().nonnegative().describe('返回结果数'),
+  truncated: z.boolean().describe('是否触发 maxResults 截断'),
+});
+
 export const searchGlobTool: Tool = {
   name: 'search_glob',
   description: '按 glob 模式匹配文件路径，返回相对路径列表。支持 *、**、?、[]。',
   inputSchema: searchGlobInputSchema,
+  outputSchema: searchGlobOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: searchGlobHandler,
 };
 
@@ -306,11 +319,39 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
   return ok(payload) as unknown as AnyToolResult;
 }
 
+/**
+ * search_content 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ matches, count, truncated, patternMode, hint? }`：
+ * - matches：跨文件匹配列表，每项 { file, line（1-indexed）, text }
+ * - count：返回的匹配数（maxResults 截断后）
+ * - truncated：是否触发 maxResults 截断
+ * - patternMode：pattern 解释模式（literal/regex）
+ * - hint：可选双向提示文案
+ */
+export const searchContentOutputSchema = z.object({
+  matches: z
+    .array(
+      z.object({
+        file: z.string().describe('相对路径'),
+        line: z.number().int().positive().describe('行号（1-indexed）'),
+        text: z.string().describe('行文本（可能截断）'),
+      }),
+    )
+    .describe('跨文件匹配列表'),
+  count: z.number().int().nonnegative().describe('返回的匹配数'),
+  truncated: z.boolean().describe('是否触发 maxResults 截断'),
+  patternMode: z.enum(['literal', 'regex']).describe('pattern 解释模式'),
+  hint: z.string().optional().describe('可选双向提示文案'),
+});
+
 export const searchContentTool: Tool = {
   name: 'search_content',
   description:
     '跨文件内容搜索（≈ grep），返回 [{file, line, text}]，自动跳过二进制文件。pattern 默认按字面量子串匹配——元字符一律原样，含反斜杠的路径免转义直接可搜，如 C:\\Users\\alice 反斜杠原样参与匹配；写 "a|b" 只匹配 a|b 本身。需要正则时用首尾斜杠包裹并附尾部可选 flags i/m/s，如 "/a|b/" 匹配 a 或 b、"/\\d{3}/im" 忽略大小写匹配三位数字，体内斜杠须写作 \\/。判定永远向字面量收敛：/usr/bin、/api/v1/ 等不符合规范的写法整体按字面量处理。已知残余洞：形如 /tmp/ 的首尾斜杠短字面量会被判为正则 tmp——命中异常偏多时结果附 hint 兜底。与 text_grep 对同一 pattern 的解释完全一致，返回 count 与 patternMode（literal/regex）。',
   inputSchema: searchContentInputSchema,
+  outputSchema: searchContentOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: searchContentHandler,
 };
 
@@ -386,9 +427,25 @@ export async function searchWhichHandler(args: Record<string, unknown>): Promise
   return ok(withVerbose(minimal, full, verbose));
 }
 
+/**
+ * search_which 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 未找到返回 `{ found: false }`；找到返回 `{ found: true, path, all? }`：
+ * - path：首个匹配路径
+ * - all：所有匹配路径（verbose 模式）
+ * 顶层用 z.object（MCP 协议要求 outputSchema 顶层为 object），用可选字段描述通用形状。
+ */
+export const searchWhichOutputSchema = z.object({
+  found: z.boolean().describe('是否找到'),
+  path: z.string().optional().describe('首个匹配路径（found=true 时存在）'),
+  all: z.array(z.string()).optional().describe('所有匹配路径（verbose 模式）'),
+});
+
 export const searchWhichTool: Tool = {
   name: 'search_which',
   description: '在 PATH 中定位可执行文件。Windows 自动尝试 .exe/.cmd/.bat/.ps1 后缀。',
   inputSchema: searchWhichInputSchema,
+  outputSchema: searchWhichOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: searchWhichHandler,
 };

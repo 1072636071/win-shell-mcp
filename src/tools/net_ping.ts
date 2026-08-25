@@ -14,11 +14,16 @@
  * 错误仅用于参数非法（EINVAL）。
  */
 
-import { createConnection, type Socket } from 'node:net';
-import { z } from 'zod';
-import { ok, fail, withVerbose, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import type { Tool } from '../registry.js';
+import { createConnection, type Socket } from "node:net";
+import { z } from "zod";
+import {
+  ok,
+  fail,
+  withVerbose,
+  type AnyToolResult,
+} from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import type { Tool } from "../registry.js";
 
 /** 默认探测次数。 */
 const DEFAULT_PING_COUNT = 4;
@@ -54,31 +59,31 @@ interface PingFull extends PingMinimal {
 
 /** net_ping 输入 schema。 */
 export const netPingInputSchema = z.object({
-  host: z.string().describe('目标主机名或 IP'),
+  host: z.string().describe("目标主机名或 IP"),
   count: z
     .number()
     .int()
     .min(1)
     .max(20)
     .optional()
-    .describe('探测次数（1-20），默认 4'),
+    .describe("探测次数（1-20），默认 4"),
   port: z
     .number()
     .int()
     .min(1)
     .max(65535)
     .optional()
-    .describe('探测端口（1-65535），默认 80'),
+    .describe("探测端口（1-65535），默认 80"),
   timeoutMs: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('单次探测超时（毫秒），默认 3000'),
+    .describe("单次探测超时（毫秒），默认 3000"),
   verbose: z
     .boolean()
     .optional()
-    .describe('若为 true，返回每次探测的 rtt 明细'),
+    .describe("若为 true，返回每次探测的 rtt 明细"),
 });
 
 /** net_ping 输入类型。 */
@@ -92,7 +97,11 @@ export type NetPingInput = z.infer<typeof netPingInputSchema>;
  * @param timeoutMs 超时毫秒
  * @returns 成功返回往返耗时（毫秒），失败/超时返回 null
  */
-function probeOnce(host: string, port: number, timeoutMs: number): Promise<number | null> {
+function probeOnce(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     const start = Date.now();
     let socket: Socket | undefined;
@@ -117,10 +126,10 @@ function probeOnce(host: string, port: number, timeoutMs: number): Promise<numbe
 
     try {
       socket = createConnection({ host, port });
-      socket.once('connect', () => {
+      socket.once("connect", () => {
         finish(Date.now() - start);
       });
-      socket.once('error', () => {
+      socket.once("error", () => {
         finish(null);
       });
     } catch {
@@ -142,20 +151,22 @@ function probeOnce(host: string, port: number, timeoutMs: number): Promise<numbe
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function netPingHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const host = args['host'];
+export async function netPingHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const host = args["host"];
   const count =
-    typeof args['count'] === 'number' ? args['count'] : DEFAULT_PING_COUNT;
+    typeof args["count"] === "number" ? args["count"] : DEFAULT_PING_COUNT;
   const port =
-    typeof args['port'] === 'number' ? args['port'] : DEFAULT_PING_PORT;
+    typeof args["port"] === "number" ? args["port"] : DEFAULT_PING_PORT;
   const timeoutMs =
-    typeof args['timeoutMs'] === 'number' && args['timeoutMs'] > 0
-      ? args['timeoutMs']
+    typeof args["timeoutMs"] === "number" && args["timeoutMs"] > 0
+      ? args["timeoutMs"]
       : DEFAULT_PING_TIMEOUT_MS;
-  const verbose = args['verbose'] === true;
+  const verbose = args["verbose"] === true;
 
-  if (typeof host !== 'string' || host.length === 0) {
-    return fail(ErrorCode.EINVAL, 'host 必须是非空字符串');
+  if (typeof host !== "string" || host.length === 0) {
+    return fail(ErrorCode.EINVAL, "host 必须是非空字符串");
   }
 
   // 逐次探测
@@ -167,7 +178,8 @@ export async function netPingHandler(args: Record<string, unknown>): Promise<Any
 
   // 汇总统计
   const received = probes.filter((p) => p.ok).length;
-  const loss = probes.length === 0 ? 1 : (probes.length - received) / probes.length;
+  const loss =
+    probes.length === 0 ? 1 : (probes.length - received) / probes.length;
   const rtts = probes.filter((p) => p.ok).map((p) => p.rtt);
   const min = rtts.length > 0 ? Math.min(...rtts) : 0;
   const max = rtts.length > 0 ? Math.max(...rtts) : 0;
@@ -175,17 +187,54 @@ export async function netPingHandler(args: Record<string, unknown>): Promise<Any
     rtts.length > 0 ? rtts.reduce((a, b) => a + b, 0) / rtts.length : 0;
   const alive = received > 0;
 
-  const minimal: PingMinimal = { host, sent: count, received, loss, min, max, avg, alive };
+  const minimal: PingMinimal = {
+    host,
+    sent: count,
+    received,
+    loss,
+    min,
+    max,
+    avg,
+    alive,
+  };
   const full: PingFull = { ...minimal, probes };
   return ok(withVerbose(minimal, full, verbose)) as unknown as AnyToolResult;
 }
 
+/**
+ * net_ping 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ host, sent, received, loss, min, max, avg, alive }`；
+ * verbose 额外返回 `{ probes: [{ index, rtt, ok }] }`。
+ */
+export const netPingOutputSchema = z.object({
+  host: z.string(),
+  sent: z.number().int().nonnegative(),
+  received: z.number().int().nonnegative(),
+  loss: z.number().min(0).max(1),
+  min: z.number().nonnegative(),
+  max: z.number().nonnegative(),
+  avg: z.number().nonnegative(),
+  alive: z.boolean(),
+  probes: z
+    .array(
+      z.object({
+        index: z.number().int().nonnegative(),
+        rtt: z.number().nonnegative(),
+        ok: z.boolean(),
+      }),
+    )
+    .optional(),
+});
+
 /** net_ping 工具定义。 */
 export const netPingTool: Tool = {
-  name: 'ping',
+  name: "ping",
   description:
-    '对目标主机执行 ping 网络诊断（TCP 探测）。返回 { host, sent, received, loss, min, max, avg, alive }。时间单位毫秒。目标不可达返回 ok（received=0，alive=false）。count 默认 4，port 默认 80，timeoutMs 默认 3000。verbose 含每次探测 rtt。',
+    "对目标主机执行 ping 网络诊断（TCP 探测）。返回 { host, sent, received, loss, min, max, avg, alive }。时间单位毫秒。目标不可达返回 ok（received=0，alive=false）。count 默认 4，port 默认 80，timeoutMs 默认 3000。verbose 含每次探测 rtt。",
   inputSchema: netPingInputSchema,
+  outputSchema: netPingOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: netPingHandler,
-  aliases: ['net_ping'],
+  aliases: ["net_ping"],
 };

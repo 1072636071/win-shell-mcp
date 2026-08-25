@@ -9,15 +9,15 @@
  * 设计原则：极简输出、跨平台、统一错误码。
  */
 
-import { createReadStream, createWriteStream } from 'node:fs';
-import { readdir, stat, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, relative, dirname, basename, resolve } from 'node:path';
-import { gzipSync, gunzipSync } from 'node:zlib';
-import { z } from 'zod';
-import { ok, fail, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { failFromError } from '../utils/errors.js';
-import type { Tool } from '../registry.js';
+import { createReadStream, createWriteStream } from "node:fs";
+import { readdir, stat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, relative, dirname, basename, resolve } from "node:path";
+import { gzipSync, gunzipSync } from "node:zlib";
+import { z } from "zod";
+import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { failFromError } from "../utils/errors.js";
+import type { Tool } from "../registry.js";
 
 // ============================================================================
 // tar 实现（POSIX ustar）
@@ -32,22 +32,38 @@ import type { Tool } from '../registry.js';
  * @param mtime 修改时间（ms）
  * @param isDir 是否为目录
  */
-function tarHeader(filePath: string, size: number, mode: number, mtime: number, isDir: boolean): Buffer {
+function tarHeader(
+  filePath: string,
+  size: number,
+  mode: number,
+  mtime: number,
+  isDir: boolean,
+): Buffer {
   const header = Buffer.alloc(512, 0);
   const name = filePath.slice(0, 100);
-  header.write(name, 0, 'ascii');
-  header.write((mode & 0o777).toString(8).padStart(7, '0') + '\0', 100, 'ascii');
-  header.write('0000000\0', 108, 'ascii');
-  header.write('0000000\0', 116, 'ascii');
-  header.write(size.toString(8).padStart(11, '0') + '\0', 124, 'ascii');
-  header.write(Math.floor(mtime / 1000).toString(8).padStart(11, '0') + '\0', 136, 'ascii');
-  header.write('        ', 148, 'ascii');
-  header.write(isDir ? '5' : '0', 156, 'ascii');
-  header.write('ustar\0', 257, 'ascii');
-  header.write('00', 263, 'ascii');
+  header.write(name, 0, "ascii");
+  header.write(
+    (mode & 0o777).toString(8).padStart(7, "0") + "\0",
+    100,
+    "ascii",
+  );
+  header.write("0000000\0", 108, "ascii");
+  header.write("0000000\0", 116, "ascii");
+  header.write(size.toString(8).padStart(11, "0") + "\0", 124, "ascii");
+  header.write(
+    Math.floor(mtime / 1000)
+      .toString(8)
+      .padStart(11, "0") + "\0",
+    136,
+    "ascii",
+  );
+  header.write("        ", 148, "ascii");
+  header.write(isDir ? "5" : "0", 156, "ascii");
+  header.write("ustar\0", 257, "ascii");
+  header.write("00", 263, "ascii");
   let sum = 0;
   for (let i = 0; i < 512; i++) sum += header[i]!;
-  header.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 'ascii');
+  header.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, "ascii");
   return header;
 }
 
@@ -59,19 +75,51 @@ function padTo512(buf: Buffer): Buffer {
 }
 
 /** 递归收集文件列表。 */
-async function collectFiles(root: string): Promise<Array<{ rel: string; abs: string; isDir: boolean; size: number; mode: number; mtime: number }>> {
-  const result: Array<{ rel: string; abs: string; isDir: boolean; size: number; mode: number; mtime: number }> = [];
+async function collectFiles(
+  root: string,
+): Promise<
+  Array<{
+    rel: string;
+    abs: string;
+    isDir: boolean;
+    size: number;
+    mode: number;
+    mtime: number;
+  }>
+> {
+  const result: Array<{
+    rel: string;
+    abs: string;
+    isDir: boolean;
+    size: number;
+    mode: number;
+    mtime: number;
+  }> = [];
   async function walk(dir: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const abs = join(dir, entry.name);
-      const rel = relative(root, abs).split('\\').join('/');
+      const rel = relative(root, abs).split("\\").join("/");
       const s = await stat(abs);
       if (entry.isDirectory()) {
-        result.push({ rel: rel + '/', abs, isDir: true, size: 0, mode: s.mode, mtime: s.mtimeMs });
+        result.push({
+          rel: rel + "/",
+          abs,
+          isDir: true,
+          size: 0,
+          mode: s.mode,
+          mtime: s.mtimeMs,
+        });
         await walk(abs);
       } else if (entry.isFile()) {
-        result.push({ rel, abs, isDir: false, size: s.size, mode: s.mode, mtime: s.mtimeMs });
+        result.push({
+          rel,
+          abs,
+          isDir: false,
+          size: s.size,
+          mode: s.mode,
+          mtime: s.mtimeMs,
+        });
       }
     }
   }
@@ -89,14 +137,18 @@ async function createTar(sources: string[]): Promise<Buffer> {
   for (const src of sources) {
     const s = await stat(src);
     const root = s.isDirectory() ? src : dirname(src);
-    const files = s.isDirectory() ? await collectFiles(src) : [{
-      rel: basename(src),
-      abs: src,
-      isDir: false,
-      size: s.size,
-      mode: s.mode,
-      mtime: s.mtimeMs,
-    }];
+    const files = s.isDirectory()
+      ? await collectFiles(src)
+      : [
+          {
+            rel: basename(src),
+            abs: src,
+            isDir: false,
+            size: s.size,
+            mode: s.mode,
+            mtime: s.mtimeMs,
+          },
+        ];
     for (const f of files) {
       chunks.push(tarHeader(f.rel, f.size, f.mode, f.mtime, f.isDir));
       if (!f.isDir) {
@@ -124,15 +176,18 @@ async function extractTar(tarBuf: Buffer, dest: string): Promise<void> {
     const header = tarBuf.subarray(offset, offset + 512);
     // 全零块表示结束
     if (header.every((b) => b === 0)) break;
-    const name = header.subarray(0, 100).toString('ascii').replace(/\0+$/, '');
+    const name = header.subarray(0, 100).toString("ascii").replace(/\0+$/, "");
     if (name.length === 0) break;
-    const sizeStr = header.subarray(124, 136).toString('ascii').replace(/\0+$/, '');
+    const sizeStr = header
+      .subarray(124, 136)
+      .toString("ascii")
+      .replace(/\0+$/, "");
     const size = parseInt(sizeStr, 8);
     const typeflag = String.fromCharCode(header[156] ?? 0);
     offset += 512;
 
     const targetPath = join(dest, name);
-    if (typeflag === '5') {
+    if (typeflag === "5") {
       await mkdir(targetPath, { recursive: true });
     } else {
       await mkdir(dirname(targetPath), { recursive: true });
@@ -170,20 +225,24 @@ async function createZip(sources: string[]): Promise<Buffer> {
   for (const src of sources) {
     const s = await stat(src);
     const root = s.isDirectory() ? src : dirname(src);
-    const files = s.isDirectory() ? await collectFiles(src) : [{
-      rel: basename(src),
-      abs: src,
-      isDir: false,
-      size: s.size,
-      mode: s.mode,
-      mtime: s.mtimeMs,
-    }];
+    const files = s.isDirectory()
+      ? await collectFiles(src)
+      : [
+          {
+            rel: basename(src),
+            abs: src,
+            isDir: false,
+            size: s.size,
+            mode: s.mode,
+            mtime: s.mtimeMs,
+          },
+        ];
 
     for (const f of files) {
       if (f.isDir) continue; // 目录由文件路径隐含创建
       const data = await readFile(f.abs);
       const crc = crc32(data);
-      const nameBuf = Buffer.from(f.rel, 'utf8');
+      const nameBuf = Buffer.from(f.rel, "utf8");
 
       // Local file header (30 bytes + name)
       const localHeader = Buffer.alloc(30);
@@ -209,7 +268,7 @@ async function createZip(sources: string[]): Promise<Buffer> {
   const centralChunks: Buffer[] = [];
   let centralOffset = offset;
   for (const e of entries) {
-    const nameBuf = Buffer.from(e.name, 'utf8');
+    const nameBuf = Buffer.from(e.name, "utf8");
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0); // signature
     central.writeUInt16LE(20, 4); // version made by
@@ -263,7 +322,7 @@ async function extractZip(zipBuf: Buffer, dest: string): Promise<void> {
     }
   }
   if (eocdOffset === -1) {
-    throw new Error('zip EOCD 签名未找到');
+    throw new Error("zip EOCD 签名未找到");
   }
   const centralOffset = zipBuf.readUInt32LE(eocdOffset + 16);
   const totalEntries = zipBuf.readUInt16LE(eocdOffset + 10);
@@ -275,7 +334,9 @@ async function extractZip(zipBuf: Buffer, dest: string): Promise<void> {
     const extraLen = zipBuf.readUInt16LE(offset + 30);
     const commentLen = zipBuf.readUInt16LE(offset + 32);
     const localHeaderOffset = zipBuf.readUInt32LE(offset + 42);
-    const name = zipBuf.subarray(offset + 46, offset + 46 + nameLen).toString('utf8');
+    const name = zipBuf
+      .subarray(offset + 46, offset + 46 + nameLen)
+      .toString("utf8");
 
     // 从 local header 读取数据
     const compSize = zipBuf.readUInt32LE(localHeaderOffset + 18);
@@ -320,13 +381,18 @@ function crc32(buf: Buffer): number {
 
 /** archive_create 输入 schema。 */
 export const archiveCreateInputSchema = z.object({
-  path: z.string().describe('输出归档文件路径'),
-  sources: z.array(z.string().min(1)).min(1).describe('要归档的文件/目录路径数组'),
+  path: z.string().describe("输出归档文件路径"),
+  sources: z
+    .array(z.string().min(1))
+    .min(1)
+    .describe("要归档的文件/目录路径数组"),
   format: z
-    .enum(['tar', 'tar.gz', 'zip'])
+    .enum(["tar", "tar.gz", "zip"])
     .optional()
-    .describe('归档格式，默认按路径扩展名推断（.tar.gz/.tgz→tar.gz, .zip→zip, 其他→tar）'),
-  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+    .describe(
+      "归档格式，默认按路径扩展名推断（.tar.gz/.tgz→tar.gz, .zip→zip, 其他→tar）",
+    ),
+  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
 });
 
 /** archive_create 输出。 */
@@ -337,30 +403,34 @@ interface ArchiveCreateResult {
   bytes: number;
 }
 
-function inferFormat(archivePath: string): 'tar' | 'tar.gz' | 'zip' {
+function inferFormat(archivePath: string): "tar" | "tar.gz" | "zip" {
   const lower = archivePath.toLowerCase();
-  if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) return 'tar.gz';
-  if (lower.endsWith('.zip')) return 'zip';
-  return 'tar';
+  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return "tar.gz";
+  if (lower.endsWith(".zip")) return "zip";
+  return "tar";
 }
 
 /**
  * archive_create handler：创建归档。
  */
-export async function archiveCreateHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const archivePath = args['path'] as string | undefined;
-  const rawSources = args['sources'];
-  const formatArg = args['format'] as string | undefined;
-  const cwd = (args['cwd'] as string | undefined) ?? process.cwd();
+export async function archiveCreateHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const archivePath = args["path"] as string | undefined;
+  const rawSources = args["sources"];
+  const formatArg = args["format"] as string | undefined;
+  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
 
-  if (typeof archivePath !== 'string' || archivePath.length === 0) {
-    return fail(ErrorCode.EINVAL, 'path 必须是非空字符串');
+  if (typeof archivePath !== "string" || archivePath.length === 0) {
+    return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
   }
   if (!Array.isArray(rawSources) || rawSources.length === 0) {
-    return fail(ErrorCode.EINVAL, 'sources 必须是非空字符串数组');
+    return fail(ErrorCode.EINVAL, "sources 必须是非空字符串数组");
   }
 
-  const format = (formatArg as 'tar' | 'tar.gz' | 'zip' | undefined) ?? inferFormat(archivePath);
+  const format =
+    (formatArg as "tar" | "tar.gz" | "zip" | undefined) ??
+    inferFormat(archivePath);
   const sources = (rawSources as string[]).map((s) => resolve(cwd, s));
   const outputPath = resolve(cwd, archivePath);
 
@@ -369,17 +439,20 @@ export async function archiveCreateHandler(args: Record<string, unknown>): Promi
     try {
       await stat(src);
     } catch {
-      return fail(ErrorCode.ENOENT, `源路径不存在: ${src}`) as unknown as AnyToolResult;
+      return fail(
+        ErrorCode.ENOENT,
+        `源路径不存在: ${src}`,
+      ) as unknown as AnyToolResult;
     }
   }
 
   try {
     let buf: Buffer;
-    if (format === 'zip') {
+    if (format === "zip") {
       buf = await createZip(sources);
     } else {
       const tarBuf = await createTar(sources);
-      buf = format === 'tar.gz' ? gzipSync(tarBuf) : tarBuf;
+      buf = format === "tar.gz" ? gzipSync(tarBuf) : tarBuf;
     }
 
     await mkdir(dirname(outputPath), { recursive: true });
@@ -397,14 +470,29 @@ export async function archiveCreateHandler(args: Record<string, unknown>): Promi
   }
 }
 
+/**
+ * archive_create 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ created, path, format, bytes }`。
+ */
+export const archiveCreateOutputSchema = z.object({
+  created: z.boolean().describe("是否创建成功"),
+  path: z.string().describe("归档文件路径"),
+  format: z.string().describe("归档格式（tar/tar.gz/zip）"),
+  bytes: z.number().int().nonnegative().describe("归档字节数"),
+});
+
 /** archive_create 工具定义。 */
 export const archiveCreateTool: Tool = {
-  name: 'archive_create',
+  name: "archive_create",
   description:
-    '创建归档（≈ tar -czf / zip）。纯 Node 实现，支持 tar/tar.gz/zip（STORE）。format 默认按扩展名推断。返回 { created, path, format, bytes }。',
+    "创建归档（≈ tar -czf / zip）。纯 Node 实现，支持 tar/tar.gz/zip（STORE）。format 默认按扩展名推断。返回 { created, path, format, bytes }。",
   inputSchema: archiveCreateInputSchema,
+  outputSchema: archiveCreateOutputSchema,
+  // 写归档文件到文件系统，readOnlyHint: false；不覆盖既有源（仅创建归档），destructiveHint 省略
+  annotations: { readOnlyHint: false },
   handler: archiveCreateHandler,
-  aliases: ['tar_create', 'zip_create'],
+  aliases: ["tar_create", "zip_create"],
 };
 
 // ============================================================================
@@ -413,9 +501,9 @@ export const archiveCreateTool: Tool = {
 
 /** archive_extract 输入 schema。 */
 export const archiveExtractInputSchema = z.object({
-  path: z.string().describe('归档文件路径'),
-  dest: z.string().optional().describe('目标目录，默认归档文件所在目录'),
-  cwd: z.string().optional().describe('工作目录，默认 process.cwd()'),
+  path: z.string().describe("归档文件路径"),
+  dest: z.string().optional().describe("目标目录，默认归档文件所在目录"),
+  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
 });
 
 /** archive_extract 输出。 */
@@ -427,13 +515,15 @@ interface ArchiveExtractResult {
 /**
  * archive_extract handler：解压归档。
  */
-export async function archiveExtractHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const archivePath = args['path'] as string | undefined;
-  const destArg = args['dest'] as string | undefined;
-  const cwd = (args['cwd'] as string | undefined) ?? process.cwd();
+export async function archiveExtractHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const archivePath = args["path"] as string | undefined;
+  const destArg = args["dest"] as string | undefined;
+  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
 
-  if (typeof archivePath !== 'string' || archivePath.length === 0) {
-    return fail(ErrorCode.EINVAL, 'path 必须是非空字符串');
+  if (typeof archivePath !== "string" || archivePath.length === 0) {
+    return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
   }
 
   const inputPath = resolve(cwd, archivePath);
@@ -443,9 +533,9 @@ export async function archiveExtractHandler(args: Record<string, unknown>): Prom
     const buf = await readFile(inputPath);
     const format = inferFormat(archivePath);
 
-    if (format === 'zip') {
+    if (format === "zip") {
       await extractZip(buf, dest);
-    } else if (format === 'tar.gz') {
+    } else if (format === "tar.gz") {
       const tarBuf = gunzipSync(buf);
       await extractTar(tarBuf, dest);
     } else {
@@ -459,12 +549,26 @@ export async function archiveExtractHandler(args: Record<string, unknown>): Prom
   }
 }
 
+/**
+ * archive_extract 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ extracted, dest }`。
+ */
+export const archiveExtractOutputSchema = z.object({
+  extracted: z.boolean().describe("是否解压成功"),
+  dest: z.string().describe("目标目录"),
+});
+
 /** archive_extract 工具定义。 */
 export const archiveExtractTool: Tool = {
-  name: 'archive_extract',
+  name: "archive_extract",
   description:
-    '解压归档（≈ tar -x / unzip）。纯 Node 实现，支持 tar/tar.gz/zip。dest 默认归档所在目录。返回 { extracted, dest }。',
+    "解压归档（≈ tar -x / unzip）。纯 Node 实现，支持 tar/tar.gz/zip。dest 默认归档所在目录。返回 { extracted, dest }。",
   inputSchema: archiveExtractInputSchema,
+  outputSchema: archiveExtractOutputSchema,
+  // 解压会向文件系统写入多个文件，可能覆盖既有内容，readOnlyHint: false；
+  // 当前实现未显式拒绝覆盖，保守标 destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: archiveExtractHandler,
-  aliases: ['tar_extract', 'zip_extract'],
+  aliases: ["tar_extract", "zip_extract"],
 };

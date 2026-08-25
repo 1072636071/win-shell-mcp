@@ -6,10 +6,10 @@
 
 win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现一组确定性命令，统一 JSON 输出，自动抹平 Windows 路径/编码/引号差异，以 MCP Server 形态供 AI Agent 调用，替代 AI 直接编写 Windows shell 命令。定位为可发布开源产品（npm 包）。
 
-## 现状基线（2026-08-24）
+## 现状基线（2026-08-25）
 
 - **已实现**：MCP stdio 单入口；15 个命令域、58 个工具；统一输出契约；JX 模式（dsh preset，权威模板见 `docs/dsh/`）。
-- **已决策未实施**：dsh 插件双入口交付（ADR-0010/0011/0012）；破坏性操作保护（ADR-0008/0009，PRD ready-for-agent）。
+- **已决策未实施**：dsh 插件双入口交付（ADR-0010/0011/0012）；破坏性操作保护（ADR-0008/0009，PRD ready-for-agent）；**PTC/Code Mode 适配（ADR-0014，memorial 006）——适配壳定位、MCP 标准注解作并发分类单一事实源、outputSchema 纳入首版**。
 
 ## 术语表
 
@@ -30,6 +30,11 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 | deepseek-harness（dsh） | DeepSeek 的 Cordis 插件框架式 agent harness；win-shell-mcp 的第二交付入口（ADR-0010） |
 | Cordis 插件 | dsh 的插件形态（name/inject/Config/apply 约定）；win-shell-mcp 经 `defineTool()` 把全部工具注册进 dsh 的 `ctx.tools` 服务 |
 | 双入口交付【未实施】 | 核心库 + MCP server 薄壳 + dsh 插件薄壳的架构：同包多入口 exports（`./core` / `./mcp` / `./plugin`）、插件名 `tool-win-shell`、全量注册不裁剪、不接 dsh 审批/沙箱/后台、输出保持统一契约（ADR-0010/0011/0012） |
+| 适配壳【未实施】 | dsh 专用模式深度 = 薄壳 + 能力元数据（isConcurrencySafe/outputSchema/annotations），不接 approval/jobs/渲染；首版即含 outputSchema 与并发标注（memorial 006 / ADR-0014） |
+| 单一事实源 | 标注体系设计模式：MCP 标准 ToolAnnotations（readOnlyHint/destructiveHint/idempotentHint）同时服务 MCP 面与 dsh 插件面，插件派生 `readOnlyHint===true ⇒ isConcurrencySafe`（memorial 006 / ADR-0014） |
+| 防漂移护栏 | 单测强制每工具显式声明 annotations 与 outputSchema，缺失即测试失败，杜绝静默默认（memorial 006） |
+| 规范 JSON 值 | dsh 概念：工具主体返回的、匹配 output schema 的精确结构化值（canonical value），区别于 Native 渲染内容；win-shell-mcp 的 `AnyToolResult.data` 即规范值载体（memorial 006） |
+| outputSchema | 每工具声明的成功返回数据结构（zod→JSON Schema），一鱼三吃：MCP structuredContent + dsh defineTool 强制项 + Code Mode SDK 类型推导（memorial 006 / ADR-0014） |
 | JX 模式 | dsh 用户级 agent preset（会话工作模式）：标准能力 + 两条规则——工具优先 win-shell-mcp、过程事实沉淀进知识库 MCP（imagetutu/jxk）；权威模板在本仓库 `docs/dsh/`，部署于 `~/.dsh/.agent-presets/jx-mode/` |
 | pattern 双模约定 | pattern 类参数统一语义：默认按字面量子串匹配（`.` `\` `*` 等原样），`/…/` 包裹启用正则（flags：i/m/s，replace 另收 g）；判定规则严格、任何歧义一律向字面量收敛；结构似正则但 flags 非法则 EINVAL 报错（ADR-0013） |
 | 响错误 / 哑错误 | 误用后果分类：哑错误 = 调用方误用后仍得到看似正常的结果（如正则语义下 `foo.ts` 错配 `foopts`），坏数据带着流程继续跑；响错误 = 失败显式可见（0 命中 / 报错 + hint），调用方一轮内自纠。工具设计目标：把哑错误变响错误（ADR-0013 可观测层的立项原则） |

@@ -5,17 +5,22 @@
  * 长内容通过 truncate 截断，错误返回统一 fail 契约。
  */
 
-import { writeFile, readFile, stat } from 'node:fs/promises';
-import { z } from 'zod';
-import iconvLite from 'iconv-lite';
+import { writeFile, readFile, stat } from "node:fs/promises";
+import { z } from "zod";
+import iconvLite from "iconv-lite";
 
 const iconvEncode = iconvLite.encode;
-import { ok, fail, truncate, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { codedError, toFail } from '../utils/errors.js';
-import { readTextAutoDetect, splitLines } from '../utils/readText.js';
-import { isLikelyGBK, decodeBuffer } from '../encoding/detect.js';
-import { parsePattern, REPLACE_PATTERN_FLAGS, SEARCH_PATTERN_FLAGS, type PatternParseResult } from '../utils/pattern.js';
+import { ok, fail, truncate, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { codedError, toFail } from "../utils/errors.js";
+import { readTextAutoDetect, splitLines } from "../utils/readText.js";
+import { isLikelyGBK, decodeBuffer } from "../encoding/detect.js";
+import {
+  parsePattern,
+  REPLACE_PATTERN_FLAGS,
+  SEARCH_PATTERN_FLAGS,
+  type PatternParseResult,
+} from "../utils/pattern.js";
 import {
   buildSearchHint,
   hasRegexMetacharacters,
@@ -24,8 +29,8 @@ import {
   isAbnormalHitCount,
   suggestWrapped,
   DEFAULT_HINT_THRESHOLDS,
-} from '../utils/hints.js';
-import type { Tool } from '../registry.js';
+} from "../utils/hints.js";
+import type { Tool } from "../registry.js";
 
 // ─── 辅助 ───────────────────────────────────────────────
 
@@ -37,28 +42,39 @@ async function readTextFile(path: string): Promise<string> {
   try {
     return await readTextAutoDetect(path);
   } catch (err) {
-    const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
-    if (code === 'ENOENT') throw codedError(ErrorCode.ENOENT, `文件不存在: ${path}`);
-    if (code === 'EISDIR') throw codedError(ErrorCode.EISDIR, `是目录而非文件: ${path}`);
+    const code =
+      err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
+    if (code === "ENOENT")
+      throw codedError(ErrorCode.ENOENT, `文件不存在: ${path}`);
+    if (code === "EISDIR")
+      throw codedError(ErrorCode.EISDIR, `是目录而非文件: ${path}`);
     throw err;
   }
 }
 
-
-
 // ─── text_grep ──────────────────────────────────────────
 
 export const textGrepInputSchema = z.object({
-  path: z.string().min(1).describe('要搜索的文件路径'),
+  path: z.string().min(1).describe("要搜索的文件路径"),
   pattern: z
     .string()
     .min(1)
     .describe(
-      '搜索模式：默认字面量子串匹配（元字符原样，如 C:\\Users 免转义）；/正则/ 形式启用正则，尾部可选 flags i/m/s',
+      "搜索模式：默认字面量子串匹配（元字符原样，如 C:\\Users 免转义）；/正则/ 形式启用正则，尾部可选 flags i/m/s",
     ),
-  ignoreCase: z.boolean().optional().describe('忽略大小写'),
-  context: z.number().int().nonnegative().optional().describe('上下文行数（匹配行前后各 N 行）'),
-  maxResults: z.number().int().positive().optional().describe('最大匹配数，超出则截断'),
+  ignoreCase: z.boolean().optional().describe("忽略大小写"),
+  context: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("上下文行数（匹配行前后各 N 行）"),
+  maxResults: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("最大匹配数，超出则截断"),
 });
 
 export type TextGrepInput = z.infer<typeof textGrepInputSchema>;
@@ -70,12 +86,14 @@ export type TextGrepInput = z.infer<typeof textGrepInputSchema>;
  * 尾部仅合法 flags i/m/s；结构似正则但 flags 非法 → EINVAL 列明合法标志；
  * 任何结构歧义整串归字面量）。ignoreCase 对两种模式均生效。
  */
-export async function textGrepHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const path = args['path'] as string;
-  const pattern = args['pattern'] as string;
-  const ignoreCase = args['ignoreCase'] === true;
-  const context = (args['context'] as number | undefined) ?? 0;
-  const maxResults = args['maxResults'] as number | undefined;
+export async function textGrepHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const path = args["path"] as string;
+  const pattern = args["pattern"] as string;
+  const ignoreCase = args["ignoreCase"] === true;
+  const context = (args["context"] as number | undefined) ?? 0;
+  const maxResults = args["maxResults"] as number | undefined;
 
   let content: string;
   try {
@@ -88,10 +106,14 @@ export async function textGrepHandler(args: Record<string, unknown>): Promise<An
   if (!parsed.ok) {
     return fail(ErrorCode.EINVAL, parsed.error);
   }
-  const isRegex = parsed.mode === 'regex';
+  const isRegex = parsed.mode === "regex";
   const regex = isRegex ? parsed.regex : null;
   // 字面量匹配针：ignoreCase 时两侧统一小写比较（与 search_content 一致），元字符不参与任何转义
-  const needle = isRegex ? '' : ignoreCase ? parsed.value.toLowerCase() : parsed.value;
+  const needle = isRegex
+    ? ""
+    : ignoreCase
+      ? parsed.value.toLowerCase()
+      : parsed.value;
 
   const lines = splitLines(content);
 
@@ -147,31 +169,65 @@ export async function textGrepHandler(args: Record<string, unknown>): Promise<An
     matchCount: totalMatches,
     totalLines: lines.length,
   });
-  if (hint !== undefined) payload['hint'] = hint;
+  if (hint !== undefined) payload["hint"] = hint;
 
   return ok(payload) as unknown as AnyToolResult;
 }
 
+/**
+ * text_grep 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ matches, count, truncated, patternMode, hint? }`：
+ * - matches：匹配行列表（含上下文），每项 { line（1-indexed）, text }
+ * - count：返回的匹配数（maxResults 截断后）
+ * - truncated：是否触发 maxResults 截断
+ * - patternMode：pattern 解释模式（literal/regex）
+ * - hint：可选双向提示文案（无规则触发时不占位）
+ */
+export const textGrepOutputSchema = z.object({
+  matches: z
+    .array(
+      z.object({
+        line: z.number().int().positive().describe("行号（1-indexed）"),
+        text: z.string().describe("行文本（可能截断）"),
+      }),
+    )
+    .describe("匹配行列表（含上下文）"),
+  count: z.number().int().nonnegative().describe("返回的匹配数"),
+  truncated: z.boolean().describe("是否触发 maxResults 截断"),
+  patternMode: z.enum(["literal", "regex"]).describe("pattern 解释模式"),
+  hint: z.string().optional().describe("可选双向提示文案"),
+});
+
 export const textGrepTool: Tool = {
-  name: 'text_grep',
+  name: "text_grep",
   description:
     '在文件中搜索匹配行。pattern 默认按字面量子串匹配——元字符一律原样，含反斜杠的路径免转义直接可搜，如 C:\\Users\\alice 反斜杠原样参与匹配；写 "a|b" 只匹配 a|b 这三个字符本身，不按「或」展开。需要正则时用首尾斜杠包裹并附尾部可选 flags i/m/s，如 "/a|b/" 匹配 a 或 b、"/\\d{3}/" 匹配三位数字，体内斜杠须写作 \\/。判定永远向字面量收敛：不符合 /…/ 规范的写法整体按字面量处理（如 /usr/bin、/api/v1/）。已知残余洞：形如 /tmp/ 的恰好首尾斜杠短字面量会被判为正则 tmp——命中异常偏多时结果会附 hint 提示核对。返回匹配行（含上下文）、count 与 patternMode（literal/regex）。',
   inputSchema: textGrepInputSchema,
+  outputSchema: textGrepOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: textGrepHandler,
 };
 
 // ─── text_head ──────────────────────────────────────────
 
 export const textHeadInputSchema = z.object({
-  path: z.string().min(1).describe('文件路径'),
-  lines: z.number().int().nonnegative().optional().describe('取头 N 行，默认 10'),
+  path: z.string().min(1).describe("文件路径"),
+  lines: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("取头 N 行，默认 10"),
 });
 
 export type TextHeadInput = z.infer<typeof textHeadInputSchema>;
 
-export async function textHeadHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const path = args['path'] as string;
-  const n = (args['lines'] as number | undefined) ?? 10;
+export async function textHeadHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const path = args["path"] as string;
+  const n = (args["lines"] as number | undefined) ?? 10;
 
   let content: string;
   try {
@@ -186,25 +242,44 @@ export async function textHeadHandler(args: Record<string, unknown>): Promise<An
   return ok({ lines: head, total: allLines.length });
 }
 
+/**
+ * text_head 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ lines, total }`：lines 为头 N 行文本数组，total 为文件总行数。
+ */
+export const textHeadOutputSchema = z.object({
+  lines: z.array(z.string()).describe("头 N 行文本"),
+  total: z.number().int().nonnegative().describe("文件总行数"),
+});
+
 export const textHeadTool: Tool = {
-  name: 'text_head',
-  description: '取文件头 N 行（默认 10）。返回行数组与文件总行数。',
+  name: "text_head",
+  description: "取文件头 N 行（默认 10）。返回行数组与文件总行数。",
   inputSchema: textHeadInputSchema,
+  outputSchema: textHeadOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: textHeadHandler,
 };
 
 // ─── text_tail ──────────────────────────────────────────
 
 export const textTailInputSchema = z.object({
-  path: z.string().min(1).describe('文件路径'),
-  lines: z.number().int().nonnegative().optional().describe('取尾 N 行，默认 10'),
+  path: z.string().min(1).describe("文件路径"),
+  lines: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("取尾 N 行，默认 10"),
 });
 
 export type TextTailInput = z.infer<typeof textTailInputSchema>;
 
-export async function textTailHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const path = args['path'] as string;
-  const n = (args['lines'] as number | undefined) ?? 10;
+export async function textTailHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const path = args["path"] as string;
+  const n = (args["lines"] as number | undefined) ?? 10;
 
   let content: string;
   try {
@@ -214,28 +289,43 @@ export async function textTailHandler(args: Record<string, unknown>): Promise<An
   }
 
   const allLines = splitLines(content);
-  const tail = n >= allLines.length ? allLines : allLines.slice(allLines.length - n);
+  const tail =
+    n >= allLines.length ? allLines : allLines.slice(allLines.length - n);
 
   return ok({ lines: tail, total: allLines.length });
 }
 
+/**
+ * text_tail 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ lines, total }`：lines 为尾 N 行文本数组，total 为文件总行数。
+ */
+export const textTailOutputSchema = z.object({
+  lines: z.array(z.string()).describe("尾 N 行文本"),
+  total: z.number().int().nonnegative().describe("文件总行数"),
+});
+
 export const textTailTool: Tool = {
-  name: 'text_tail',
-  description: '取文件尾 N 行（默认 10）。返回行数组与文件总行数。',
+  name: "text_tail",
+  description: "取文件尾 N 行（默认 10）。返回行数组与文件总行数。",
   inputSchema: textTailInputSchema,
+  outputSchema: textTailOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: textTailHandler,
 };
 
 // ─── text_wc ────────────────────────────────────────────
 
 export const textWcInputSchema = z.object({
-  path: z.string().min(1).describe('文件路径'),
+  path: z.string().min(1).describe("文件路径"),
 });
 
 export type TextWcInput = z.infer<typeof textWcInputSchema>;
 
-export async function textWcHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const path = args['path'] as string;
+export async function textWcHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const path = args["path"] as string;
 
   let content: string;
   try {
@@ -247,7 +337,7 @@ export async function textWcHandler(args: Record<string, unknown>): Promise<AnyT
   const allLines = splitLines(content);
   const words = (content.match(/\S+/g) ?? []).length;
   const chars = content.length;
-  const bytes = Buffer.byteLength(content, 'utf8');
+  const bytes = Buffer.byteLength(content, "utf8");
 
   return ok({
     lines: allLines.length,
@@ -257,26 +347,45 @@ export async function textWcHandler(args: Record<string, unknown>): Promise<AnyT
   });
 }
 
+/**
+ * text_wc 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ lines, words, chars, bytes }`：行数、词数、字符数、字节数。
+ */
+export const textWcOutputSchema = z.object({
+  lines: z.number().int().nonnegative().describe("行数"),
+  words: z.number().int().nonnegative().describe("词数"),
+  chars: z.number().int().nonnegative().describe("字符数"),
+  bytes: z.number().int().nonnegative().describe("字节数"),
+});
+
 export const textWcTool: Tool = {
-  name: 'text_wc',
-  description: '统计文件的行数、词数、字符数、字节数。',
+  name: "text_wc",
+  description: "统计文件的行数、词数、字符数、字节数。",
   inputSchema: textWcInputSchema,
+  outputSchema: textWcOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: textWcHandler,
 };
 
 // ─── text_diff ──────────────────────────────────────────
 
 export const textDiffInputSchema = z.object({
-  a: z.string().min(1).describe('文件 A 路径'),
-  b: z.string().min(1).describe('文件 B 路径'),
-  context: z.number().int().nonnegative().optional().describe('上下文行数，默认 3'),
+  a: z.string().min(1).describe("文件 A 路径"),
+  b: z.string().min(1).describe("文件 B 路径"),
+  context: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("上下文行数，默认 3"),
 });
 
 export type TextDiffInput = z.infer<typeof textDiffInputSchema>;
 
 /** diff 操作类型。 */
 interface DiffOp {
-  type: 'eq' | 'del' | 'add';
+  type: "eq" | "del" | "add";
   line: string;
 }
 
@@ -291,10 +400,10 @@ function naiveLineDiff(aLines: string[], bLines: string[]): DiffOp[] {
     const a = i < aLines.length ? aLines[i] : undefined;
     const b = i < bLines.length ? bLines[i] : undefined;
     if (a !== undefined && b !== undefined && a === b) {
-      ops.push({ type: 'eq', line: a });
+      ops.push({ type: "eq", line: a });
     } else {
-      if (a !== undefined) ops.push({ type: 'del', line: a });
-      if (b !== undefined) ops.push({ type: 'add', line: b });
+      if (a !== undefined) ops.push({ type: "del", line: a });
+      if (b !== undefined) ops.push({ type: "add", line: b });
     }
   }
   return ops;
@@ -342,14 +451,14 @@ function lineDiff(aLines: string[], bLines: string[]): DiffOp[] {
   let j = m;
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && aLines[i - 1] === bLines[j - 1]) {
-      ops.push({ type: 'eq', line: aLines[i - 1]! });
+      ops.push({ type: "eq", line: aLines[i - 1]! });
       i--;
       j--;
     } else if (j > 0 && (i === 0 || dp[i]![j - 1]! >= dp[i - 1]![j]!)) {
-      ops.push({ type: 'add', line: bLines[j - 1]! });
+      ops.push({ type: "add", line: bLines[j - 1]! });
       j--;
     } else {
-      ops.push({ type: 'del', line: aLines[i - 1]! });
+      ops.push({ type: "del", line: aLines[i - 1]! });
       i--;
     }
   }
@@ -368,8 +477,8 @@ function formatUnifiedDiff(
   const ops = lineDiff(aLines, bLines);
 
   // 完全相同
-  if (ops.every((op) => op.type === 'eq')) {
-    return '';
+  if (ops.every((op) => op.type === "eq")) {
+    return "";
   }
 
   // 预计算每个 op 的 aLine / bLine（1-indexed）
@@ -377,10 +486,10 @@ function formatUnifiedDiff(
   let bLine = 1;
   const annotated = ops.map((op) => {
     const info = { ...op, aLine, bLine };
-    if (op.type === 'eq') {
+    if (op.type === "eq") {
       aLine++;
       bLine++;
-    } else if (op.type === 'del') {
+    } else if (op.type === "del") {
       aLine++;
     } else {
       bLine++;
@@ -391,7 +500,7 @@ function formatUnifiedDiff(
   // 找出变更索引
   const changeIndices: number[] = [];
   for (let i = 0; i < annotated.length; i++) {
-    if (annotated[i]!.type !== 'eq') changeIndices.push(i);
+    if (annotated[i]!.type !== "eq") changeIndices.push(i);
   }
 
   // 按 context 分组为 hunk（合并相邻/重叠区间）
@@ -421,11 +530,11 @@ function formatUnifiedDiff(
         aStart = op.aLine;
         bStart = op.bLine;
       }
-      if (op.type === 'eq') {
+      if (op.type === "eq") {
         aLen++;
         bLen++;
         hunkLines.push(` ${op.line}`);
-      } else if (op.type === 'del') {
+      } else if (op.type === "del") {
         aLen++;
         hunkLines.push(`-${op.line}`);
       } else {
@@ -437,13 +546,15 @@ function formatUnifiedDiff(
     out.push(...hunkLines);
   }
 
-  return out.join('\n');
+  return out.join("\n");
 }
 
-export async function textDiffHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const aPath = args['a'] as string;
-  const bPath = args['b'] as string;
-  const context = (args['context'] as number | undefined) ?? 3;
+export async function textDiffHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const aPath = args["a"] as string;
+  const bPath = args["b"] as string;
+  const context = (args["context"] as number | undefined) ?? 3;
 
   let aContent: string;
   let bContent: string;
@@ -457,58 +568,75 @@ export async function textDiffHandler(args: Record<string, unknown>): Promise<An
   const aLines = splitLines(aContent);
   const bLines = splitLines(bContent);
   const diff = formatUnifiedDiff(aPath, bPath, aLines, bLines, context);
-  const same = diff === '';
+  const same = diff === "";
 
   return ok({ diff: truncate(diff), same });
 }
 
+/**
+ * text_diff 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ diff, same }`：diff 为 unified diff 文本（可能截断），same 表示两文件是否完全相同。
+ */
+export const textDiffOutputSchema = z.object({
+  diff: z.string().describe("unified diff 文本（可能截断）"),
+  same: z.boolean().describe("两文件是否完全相同"),
+});
+
 export const textDiffTool: Tool = {
-  name: 'text_diff',
+  name: "text_diff",
   description:
-    '基于 LCS 的真行级 diff，生成 unified diff 文本。插入一行仅影响对应 hunk，不会其后行全被误报。same 表示是否完全相同。',
+    "基于 LCS 的真行级 diff，生成 unified diff 文本。插入一行仅影响对应 hunk，不会其后行全被误报。same 表示是否完全相同。",
   inputSchema: textDiffInputSchema,
+  outputSchema: textDiffOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: textDiffHandler,
 };
 
 // ─── text_replace ───────────────────────────────────────
 
 export const textReplaceInputSchema = z.object({
-  path: z.string().min(1).describe('文件路径'),
+  path: z.string().min(1).describe("文件路径"),
   pattern: z
     .string()
     .min(1)
     .describe(
-      '查找模式：默认字面量子串匹配（元字符原样，如 C:\\Users\\alice 反斜杠免转义）；/正则/ 形式启用正则，尾部可选 flags i/m/s/g',
+      "查找模式：默认字面量子串匹配（元字符原样，如 C:\\Users\\alice 反斜杠免转义）；/正则/ 形式启用正则，尾部可选 flags i/m/s/g",
     ),
   replacement: z
     .string()
     .describe(
-      '替换文本：字面量模式下按原样插入（$1/$&/$$ 记号不展开）；正则模式下支持 $1、$&、$$ 回引用',
+      "替换文本：字面量模式下按原样插入（$1/$&/$$ 记号不展开）；正则模式下支持 $1、$&、$$ 回引用",
     ),
-  write: z.boolean().optional().describe('为 true 时原地写回文件，默认 false'),
+  write: z.boolean().optional().describe("为 true 时原地写回文件，默认 false"),
   all: z
     .boolean()
     .optional()
     .describe(
-      '显式全量替换开关：true 时替换全部命中；与 maxReplace 同时提供时本参数优先。正则模式尾部 g 标志等价本开关',
+      "显式全量替换开关：true 时替换全部命中；与 maxReplace 同时提供时本参数优先。正则模式尾部 g 标志等价本开关",
     ),
   maxReplace: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('最大替换次数（多命中时的限量表态）。all 为 true 或正则尾部带 g 时忽略'),
+    .describe(
+      "最大替换次数（多命中时的限量表态）。all 为 true 或正则尾部带 g 时忽略",
+    ),
 });
 
 export type TextReplaceInput = z.infer<typeof textReplaceInputSchema>;
 
 /** 替换回引用：$1-$9（捕获组）、$&（整体匹配）、$$（字面 $）。仅正则模式使用。 */
-function substituteBackrefs(replacement: string, match: RegExpExecArray): string {
+function substituteBackrefs(
+  replacement: string,
+  match: RegExpExecArray,
+): string {
   return replacement.replace(/\$(&|\$|\d)/g, (m, p1) => {
-    if (p1 === '$') return '$';
-    if (p1 === '&') return match[0];
+    if (p1 === "$") return "$";
+    if (p1 === "&") return match[0];
     const idx = parseInt(p1, 10);
-    return match[idx] !== undefined ? match[idx]! : '';
+    return match[idx] !== undefined ? match[idx]! : "";
   });
 }
 
@@ -531,7 +659,7 @@ type ParsedPattern = Extract<PatternParseResult, { ok: true }>;
  * 零长度匹配手动前进一步防死循环。
  */
 function findAllMatches(content: string, parsed: ParsedPattern): MatchSpan[] {
-  if (parsed.mode === 'literal') {
+  if (parsed.mode === "literal") {
     const spans: MatchSpan[] = [];
     let from = 0;
     for (;;) {
@@ -542,7 +670,9 @@ function findAllMatches(content: string, parsed: ParsedPattern): MatchSpan[] {
     }
     return spans;
   }
-  const flags = parsed.regex.flags.includes('g') ? parsed.regex.flags : `${parsed.regex.flags}g`;
+  const flags = parsed.regex.flags.includes("g")
+    ? parsed.regex.flags
+    : `${parsed.regex.flags}g`;
   const scanner = new RegExp(parsed.regex.source, flags);
   const spans: MatchSpan[] = [];
   let m: RegExpExecArray | null;
@@ -566,8 +696,12 @@ function applyReplacement(
   matches: readonly MatchSpan[],
   replacement: string,
   limit: number,
-): { content: string; replaced: number; first: { index: number; text: string } | null } {
-  let result = '';
+): {
+  content: string;
+  replaced: number;
+  first: { index: number; text: string } | null;
+} {
+  let result = "";
   let lastIndex = 0;
   let replaced = 0;
   let first: { index: number; text: string } | null = null;
@@ -575,7 +709,9 @@ function applyReplacement(
     if (replaced >= limit) break;
     result += content.slice(lastIndex, span.index);
     const inserted =
-      span.match !== null ? substituteBackrefs(replacement, span.match) : replacement;
+      span.match !== null
+        ? substituteBackrefs(replacement, span.match)
+        : replacement;
     result += inserted;
     if (first === null) first = { index: span.index, text: inserted };
     replaced++;
@@ -586,11 +722,14 @@ function applyReplacement(
 }
 
 /** 把原文偏移换算为 1-based 行号与列号。 */
-function lineColOf(content: string, index: number): { line: number; col: number } {
+function lineColOf(
+  content: string,
+  index: number,
+): { line: number; col: number } {
   let line = 1;
   let lineStart = 0;
   for (let i = 0; i < index; i++) {
-    if (content[i] === '\n') {
+    if (content[i] === "\n") {
       line += 1;
       lineStart = i + 1;
     }
@@ -600,9 +739,9 @@ function lineColOf(content: string, index: number): { line: number; col: number 
 
 /** 截取替换点所在行片段（跨行匹配覆盖首尾行，单行超长截断），供单命中结果核验回显。 */
 function snippetAround(content: string, index: number, length: number): string {
-  const lineStart = index > 0 ? content.lastIndexOf('\n', index - 1) + 1 : 0;
+  const lineStart = index > 0 ? content.lastIndexOf("\n", index - 1) + 1 : 0;
   const endIdx = Math.min(index + length, content.length);
-  const nlAfter = content.indexOf('\n', endIdx);
+  const nlAfter = content.indexOf("\n", endIdx);
   const lineEnd = nlAfter === -1 ? content.length : nlAfter;
   return truncate(content.slice(lineStart, lineEnd), 200);
 }
@@ -615,7 +754,10 @@ const MAX_LISTED_POSITIONS = 20;
  * 复用 lineColOf 逐展示位换算（t6/S2 去重：与单命中回显共用同一套行号推进逻辑）；
  * 展示上限 MAX_LISTED_POSITIONS=20 有界，逐位换算的性能成本可接受。
  */
-function buildPositionList(content: string, matches: readonly MatchSpan[]): string {
+function buildPositionList(
+  content: string,
+  matches: readonly MatchSpan[],
+): string {
   const shown = Math.min(matches.length, MAX_LISTED_POSITIONS);
   const parts: string[] = [];
   for (let k = 0; k < shown; k++) {
@@ -623,8 +765,10 @@ function buildPositionList(content: string, matches: readonly MatchSpan[]): stri
     parts.push(`${line}:${col}`);
   }
   const suffix =
-    matches.length > MAX_LISTED_POSITIONS ? `（仅列前 ${MAX_LISTED_POSITIONS} 处）` : '';
-  return parts.length > 0 ? `命中位置${suffix}：${parts.join(', ')}` : '';
+    matches.length > MAX_LISTED_POSITIONS
+      ? `（仅列前 ${MAX_LISTED_POSITIONS} 处）`
+      : "";
+  return parts.length > 0 ? `命中位置${suffix}：${parts.join(", ")}` : "";
 }
 
 /**
@@ -635,27 +779,30 @@ function buildPositionList(content: string, matches: readonly MatchSpan[]): stri
  * 指向动作不同），属有意保留的适配而非重复——判定逻辑（元字符清单、路径样谓词）
  * 已通过 hints.ts 共享谓词复用，仅文案分工具表述。
  */
-function buildZeroMatchHint(pattern: string, mode: 'literal' | 'regex'): string {
-  if (mode === 'literal') {
+function buildZeroMatchHint(
+  pattern: string,
+  mode: "literal" | "regex",
+): string {
+  if (mode === "literal") {
     // ① 更具体：含正则元字符时给出 /…/ 包裹写法（包裹建议复用 hints.ts 共享实现，t6/S2）
     if (hasRegexMetacharacters(pattern)) {
-      const wrapped = suggestWrapped(pattern, REPLACE_PATTERN_FLAGS.join(''));
+      const wrapped = suggestWrapped(pattern, REPLACE_PATTERN_FLAGS.join(""));
       return (
         `pattern 含正则元字符，本次已按【字面量】原样查找。若想使用正则，请写作 ${wrapped} 形式` +
-        `（尾部可选 flags ${REPLACE_PATTERN_FLAGS.join('')}）。`
+        `（尾部可选 flags ${REPLACE_PATTERN_FLAGS.join("")}）。`
       );
     }
     // ② 通用兜底：拼写/大小写方向
-    return '本次已按【字面量】原样查找。请检查拼写与大小写，或确认目标文本确实存在于该文件。';
+    return "本次已按【字面量】原样查找。请检查拼写与大小写，或确认目标文本确实存在于该文件。";
   }
   // ④ 正则侧：反斜杠路径样 pattern 的转义吞没提示
   if (looksLikeBackslashPath(pattern)) {
     return (
-      'pattern 呈反斜杠路径样式且被按【正则】解释——路径中的 \\U 等片段会被当作转义序列而丢失反斜杠。' +
-      '若想替换路径文本，请去掉首尾斜杠按【字面量】重试（默认即字面量，反斜杠无需转义）。'
+      "pattern 呈反斜杠路径样式且被按【正则】解释——路径中的 \\U 等片段会被当作转义序列而丢失反斜杠。" +
+      "若想替换路径文本，请去掉首尾斜杠按【字面量】重试（默认即字面量，反斜杠无需转义）。"
     );
   }
-  return '请核对该正则是否确能与目标文本匹配（可先用 text_grep 验证命中情况）。';
+  return "请核对该正则是否确能与目标文本匹配（可先用 text_grep 验证命中情况）。";
 }
 
 /**
@@ -669,12 +816,12 @@ function buildZeroMatchHint(pattern: string, mode: 'literal' | 'regex'): string 
  */
 function isReplaceHint3(
   pattern: string,
-  mode: 'literal' | 'regex',
+  mode: "literal" | "regex",
   totalLines: number,
   count: number,
 ): boolean {
   return (
-    mode === 'regex' &&
+    mode === "regex" &&
     looksLikeRegex(pattern) &&
     isAbnormalHitCount(count, totalLines, DEFAULT_HINT_THRESHOLDS)
   );
@@ -684,21 +831,21 @@ function isReplaceHint3(
 function buildAbnormalRegexHint(count: number): string {
   return (
     `命中 ${count} 处：命中数异常偏多且 pattern 形似正则，疑似被当作【正则】解释。` +
-    '若本意是替换字面文本（如以斜杠包裹的路径），请去掉首尾斜杠按【字面量】重试。'
+    "若本意是替换字面文本（如以斜杠包裹的路径），请去掉首尾斜杠按【字面量】重试。"
   );
 }
 
 /** 多命中未表态的拒绝消息：表态要求 + 命中总数 + 位置清单 + 残余洞兜底提示。 */
 function buildMultiHitMessage(
   pattern: string,
-  mode: 'literal' | 'regex',
+  mode: "literal" | "regex",
   content: string,
   matches: readonly MatchSpan[],
   totalLines: number,
 ): string {
   let msg =
     `发现 ${matches.length} 处命中，未显式表态替换范围，已拒绝执行。` +
-    '请提供 all:true（全量替换）或 maxReplace:N（限量替换）。';
+    "请提供 all:true（全量替换）或 maxReplace:N（限量替换）。";
   msg += buildPositionList(content, matches);
   // ③ 异常偏多 + 形似正则 → 疑似误入正则模式（兜住 /tmp/ 类残余洞）。
   // 判据与搜索侧共用 isAbnormalHitCount（绝对阈值 + 比例阈值，t6/C3 对齐）；
@@ -712,7 +859,7 @@ function buildMultiHitMessage(
 /** 源文件编码检测结果。 */
 interface SourceEncoding {
   content: string;
-  encoding: 'gbk' | 'utf-8';
+  encoding: "gbk" | "utf-8";
   bom: boolean;
 }
 
@@ -729,13 +876,16 @@ interface SourceEncoding {
 async function readTextWithEncoding(path: string): Promise<SourceEncoding> {
   const stats = await stat(path);
   if (stats.isDirectory()) {
-    throw Object.assign(new Error(`是目录而非文件: ${path}`), { code: 'EISDIR' });
+    throw Object.assign(new Error(`是目录而非文件: ${path}`), {
+      code: "EISDIR",
+    });
   }
   const buf = await readFile(path);
-  const bom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
+  const bom =
+    buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
   const isGbk = isLikelyGBK(buf);
   const content = decodeBuffer(buf);
-  return { content, encoding: isGbk ? 'gbk' : 'utf-8', bom };
+  return { content, encoding: isGbk ? "gbk" : "utf-8", bom };
 }
 
 /**
@@ -746,21 +896,30 @@ async function readTextWithEncoding(path: string): Promise<SourceEncoding> {
  * @param bom 是否保留 UTF-8 BOM
  * @returns 编码后的 Buffer
  */
-function encodeWithEncoding(content: string, encoding: 'gbk' | 'utf-8', bom: boolean): Buffer {
-  const body = encoding === 'gbk' ? iconvEncode(content, 'gbk') : Buffer.from(content, 'utf8');
-  if (bom && encoding === 'utf-8') {
+function encodeWithEncoding(
+  content: string,
+  encoding: "gbk" | "utf-8",
+  bom: boolean,
+): Buffer {
+  const body =
+    encoding === "gbk"
+      ? iconvEncode(content, "gbk")
+      : Buffer.from(content, "utf8");
+  if (bom && encoding === "utf-8") {
     return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), body]);
   }
   return body;
 }
 
-export async function textReplaceHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const path = args['path'] as string;
-  const pattern = args['pattern'] as string;
-  const replacement = args['replacement'] as string;
-  const write = args['write'] === true;
-  const all = args['all'] === true;
-  const maxReplace = args['maxReplace'] as number | undefined;
+export async function textReplaceHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const path = args["path"] as string;
+  const pattern = args["pattern"] as string;
+  const replacement = args["replacement"] as string;
+  const write = args["write"] === true;
+  const all = args["all"] === true;
+  const maxReplace = args["maxReplace"] as number | undefined;
 
   let source: SourceEncoding;
   try {
@@ -791,18 +950,27 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
   }
 
   // 表态优先级：all:true > 正则尾部 g > maxReplace
-  const gStatement = parsed.mode === 'regex' && parsed.regex.flags.includes('g');
+  const gStatement =
+    parsed.mode === "regex" && parsed.regex.flags.includes("g");
   // 分支三：多于 1 命中且未显式表态 → 拒绝执行并列出命中清单
   if (total > 1 && !all && !gStatement && maxReplace === undefined) {
     return fail(
       ErrorCode.EINVAL,
-      buildMultiHitMessage(pattern, parsed.mode, source.content, matches, totalLines),
+      buildMultiHitMessage(
+        pattern,
+        parsed.mode,
+        source.content,
+        matches,
+        totalLines,
+      ),
     );
   }
 
   // 分支二/执行：恰 1 命中自动替换；有表态时按语义限量替换
   const limit =
-    all || gStatement || maxReplace === undefined ? Number.POSITIVE_INFINITY : maxReplace;
+    all || gStatement || maxReplace === undefined
+      ? Number.POSITIVE_INFINITY
+      : maxReplace;
   const res = applyReplacement(source.content, matches, replacement, limit);
 
   let written = false;
@@ -825,8 +993,12 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
   };
   // 恰 1 命中：附命中位置（原文 行:列）与替换后上下文片段供核验
   if (total === 1 && res.first !== null) {
-    payload['position'] = lineColOf(source.content, matches[0]!.index);
-    payload['context'] = snippetAround(res.content, res.first.index, res.first.text.length);
+    payload["position"] = lineColOf(source.content, matches[0]!.index);
+    payload["context"] = snippetAround(
+      res.content,
+      res.first.index,
+      res.first.text.length,
+    );
   }
   // 双向表③兜底（t8）：显式表态放行的成功路径与拒绝路径同样提示「疑似被当正则」，
   // 防止哑错误在成功侧复活；判据不满足时不占位。恰 1 命中不可能满足异常判据，
@@ -834,16 +1006,49 @@ export async function textReplaceHandler(args: Record<string, unknown>): Promise
   const hint3 = isReplaceHint3(pattern, parsed.mode, totalLines, total)
     ? buildAbnormalRegexHint(total)
     : undefined;
-  if (hint3 !== undefined) payload['hint'] = hint3;
+  if (hint3 !== undefined) payload["hint"] = hint3;
 
   return ok(payload) as unknown as AnyToolResult;
 }
 
+/**
+ * text_replace 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ replaced, totalMatches, content, written, patternMode, position?, context?, hint? }`：
+ * - replaced：实际替换次数
+ * - totalMatches：全文命中总数
+ * - content：替换后内容（可能截断）
+ * - written：是否写回文件
+ * - patternMode：pattern 解释模式（literal/regex）
+ * - position：恰 1 命中时的命中位置（行:列）
+ * - context：恰 1 命中时的替换后上下文片段
+ * - hint：可选双向提示文案（异常偏多兜底）
+ */
+export const textReplaceOutputSchema = z.object({
+  replaced: z.number().int().nonnegative().describe("实际替换次数"),
+  totalMatches: z.number().int().nonnegative().describe("全文命中总数"),
+  content: z.string().describe("替换后内容（可能截断）"),
+  written: z.boolean().describe("是否写回文件"),
+  patternMode: z.enum(["literal", "regex"]).describe("pattern 解释模式"),
+  position: z
+    .object({
+      line: z.number().int().positive().describe("行号（1-indexed）"),
+      col: z.number().int().positive().describe("列号（1-indexed）"),
+    })
+    .optional()
+    .describe("恰 1 命中时的命中位置"),
+  context: z.string().optional().describe("恰 1 命中时的替换后上下文片段"),
+  hint: z.string().optional().describe("可选双向提示文案"),
+});
+
 export const textReplaceTool: Tool = {
-  name: 'text_replace',
+  name: "text_replace",
   description:
     '在文件中查找并替换文本。pattern 默认按字面量子串匹配——元字符一律原样，含反斜杠的路径免转义直接可换，如把 C:\\Users\\alice 替换为 C:\\Users\\bob 时反斜杠原样参与匹配；写 "a|b" 只查找 a|b 字面量本身。此时 replacement 为纯字面插入，$1/$&/$$ 等回引用记号原样保留、不展开；正则 pattern（"/(\\w+)\\.ts/" 式）的 replacement 支持 JS 风格回引用 $1/$&/$$，尾部可选 flags i/m/s/g 中 g 表示全量替换。替换数量永不静默决定：0 命中报错；恰 1 命中自动替换并回显上下文供核验；多于 1 命中须提供 all:true 或 maxReplace:N 显式表态（正则尾部 g 等价全量表态），否则拒绝并列出命中位置清单。write 为 true 时原地写回（沿用源文件编码，GBK 不被静默改写为 UTF-8），否则只返回结果。残余洞同搜索工具：形如 /tmp/ 的首尾斜杠短字面量会被判为正则，命中异常偏多时的提示兜底提醒核对。返回 patternMode（literal/regex）。',
   inputSchema: textReplaceInputSchema,
+  outputSchema: textReplaceOutputSchema,
+  // write=true 时原地修改文件，destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: textReplaceHandler,
 };
 

@@ -1,0 +1,64 @@
+# cordis.yml — DSH 本地集成配置（工单 05）
+#
+# 用途：让 DSH 本地环境（E:\work\sp\deepseek-harness）通过 cordis 加载
+# win-shell-mcp 插件，全量注册 58 工具，并启用 Code Mode。
+#
+# 用法：
+#   1. 先构建 win-shell-mcp：npm run build（产物在 dist/plugin.js）
+#   2. 将本文件（或其内容）放入 DSH 项目或通过 --config 指定
+#   3. 启动 DSH：node --import tsx ../../deepseek-harness/vendor/cordis/bin.js
+#      或 DSH 的对应启动命令
+#
+# 加载方式说明：
+#   - name 字段是 Cordis 模块说明符，支持相对路径或 npm 包名。
+#   - 此处用相对路径 ../win-shell-mcp/dist/plugin.js 指向本仓库构建产物
+#     （等价于 npm 的 file: 协议：在 DSH package.json 中声明
+#      "win-shell-mcp": "file:../win-shell-mcp" 后用 name: win-shell-mcp/plugin）。
+#   - 如已 npm link / npm install win-shell-mcp，可改用 name: win-shell-mcp/plugin。
+#
+# Code Mode 说明：
+#   - tools.mode: code 让 DSH 把工具暴露为 run_code 单一入口 + 生成的 TS SDK，
+#     程序内 Promise.all 触发子调用重叠（tool/code-dispatch-start/code-dispatch 事件）。
+#   - Native 模式（默认）直接暴露各工具为独立 tool，rolling pool 并发。
+#   - Exclusive 工具（isConcurrencySafe 未定义）排空池、阻挡后续。
+
+# === win-shell-mcp 工具插件 ===
+# 全量注册 58 工具；config.exclude 可按需裁剪。
+- id: tool-win-shell
+  name: "../win-shell-mcp/dist/plugin.js"
+  config:
+    # 按工具名排除（可选）。示例：排除 shell_exec 与 git_push
+    # exclude:
+    #   - shell_exec
+    #   - git_push
+# === 以下为 DSH agent 组合示例（按需启用） ===
+# 完整 agent 还需 llm / sandbox / agent-spine 等插件。
+# 参考 deepseek-harness/examples/headless-agent/cordis.yml 获取完整组合。
+
+# LLM 适配器（示例，需 DEEPSEEK_API_KEY）
+# - id: llm-deepseek
+#   name: '@deepseek-ai/dsh-llm-deepseek'
+#   config:
+#     thinking: enabled
+#     reasoningEffort: max
+#     models:
+#       - id: deepseek-v4-pro
+
+# Agent 主干（启用 Code Mode）
+# - id: agent-spine
+#   name: '@deepseek-ai/dsh-agent-spine-demo'
+#   config:
+#     agents:
+#       - id: main
+#         provider: deepseek-official
+#         model: deepseek-v4-pro
+#         cwd: !!js process.cwd()
+#     # Code Mode：工具暴露为 run_code + TS SDK，程序内并发
+#     tools:
+#       mode: code
+#     persona: |
+#       You are a coding assistant powered by {{model}}. cwd={{cwd}}.
+
+# Code Runtime（Code Mode 必需）
+# - id: code-runtime
+#   name: '@deepseek-ai/dsh-code-runtime-worker-thread'

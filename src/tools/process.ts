@@ -11,18 +11,23 @@
  * - unix（Linux/macOS）：ps / process.kill
  */
 
-import { z } from 'zod';
-import { ok, fail, withVerbose, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode, toErrorMessage } from '../contract/errors.js';
-import { decodeBuffer } from '../encoding/detect.js';
-import { execFileAsync } from '../exec/run.js';
-import { IS_WIN } from '../utils/platform.js';
-import type { Tool } from '../registry.js';
+import { z } from "zod";
+import {
+  ok,
+  fail,
+  withVerbose,
+  type AnyToolResult,
+} from "../contract/output.js";
+import { ErrorCode, toErrorMessage } from "../contract/errors.js";
+import { decodeBuffer } from "../encoding/detect.js";
+import { execFileAsync } from "../exec/run.js";
+import { IS_WIN } from "../utils/platform.js";
+import type { Tool } from "../registry.js";
 
 /** Windows taskkill 错误关键词（进程不存在）。 */
-const TASKKILL_NOT_FOUND_PATTERNS = ['找不到', 'not found', 'no such process'];
+const TASKKILL_NOT_FOUND_PATTERNS = ["找不到", "not found", "no such process"];
 /** Windows taskkill 错误关键词（权限拒绝）。 */
-const TASKKILL_ACCESS_DENIED_PATTERNS = ['access is denied', '拒绝访问'];
+const TASKKILL_ACCESS_DENIED_PATTERNS = ["access is denied", "拒绝访问"];
 
 // ===================== process_list =====================
 
@@ -31,17 +36,17 @@ export const processListInputSchema = z.object({
   filter: z
     .string()
     .optional()
-    .describe('按进程名过滤（includes 匹配，大小写不敏感）'),
+    .describe("按进程名过滤（includes 匹配，大小写不敏感）"),
   verbose: z
     .boolean()
     .optional()
-    .describe('若为 true，返回每个进程的内存使用与命令行（尽力而为）'),
+    .describe("若为 true，返回每个进程的内存使用与命令行（尽力而为）"),
   maxResults: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('返回结果上限，超出则截断并标记 truncated'),
+    .describe("返回结果上限，超出则截断并标记 truncated"),
 });
 
 /** 进程条目（极简）。 */
@@ -94,10 +99,10 @@ export function parseTasklistLine(line: string): ProcessEntryVerbose | null {
       fields.push(line.slice(i + 1, end));
       i = end + 1;
       // 跳过逗号
-      if (line[i] === ',') i++;
+      if (line[i] === ",") i++;
     } else {
       // 无引号字段
-      const end = line.indexOf(',', i);
+      const end = line.indexOf(",", i);
       if (end === -1) {
         fields.push(line.slice(i));
         i = line.length;
@@ -122,7 +127,7 @@ export function parseTasklistLine(line: string): ProcessEntryVerbose | null {
     // 提取数字部分（去掉逗号与单位）
     const memMatch = /([\d,]+)/.exec(memStr);
     if (memMatch) {
-      const memNum = Number(memMatch[1]!.replace(/,/g, ''));
+      const memNum = Number(memMatch[1]!.replace(/,/g, ""));
       if (Number.isFinite(memNum)) {
         // tasklist 单位为 KBytes，转换为字节
         entry.memory = memNum * 1024;
@@ -164,7 +169,7 @@ export function parsePsLine(line: string): ProcessEntry | null {
  */
 async function listWindowsProcesses(): Promise<ProcessEntryVerbose[]> {
   // /FO CSV：CSV 格式；/NH：无表头
-  const { stdout } = await execFileAsync('tasklist', ['/FO', 'CSV', '/NH'], {
+  const { stdout } = await execFileAsync("tasklist", ["/FO", "CSV", "/NH"], {
     maxBuffer: 8 * 1024 * 1024,
     windowsHide: true,
   });
@@ -185,11 +190,11 @@ async function listWindowsProcesses(): Promise<ProcessEntryVerbose[]> {
  */
 async function listUnixProcesses(): Promise<ProcessEntry[]> {
   // pid=,comm= 去除表头（赋空标题）
-  const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,comm='], {
+  const { stdout } = await execFileAsync("ps", ["-eo", "pid=,comm="], {
     maxBuffer: 8 * 1024 * 1024,
   });
   const result: ProcessEntry[] = [];
-  for (const line of stdout.split('\n')) {
+  for (const line of stdout.split("\n")) {
     const entry = parsePsLine(line);
     if (entry) result.push(entry);
   }
@@ -212,11 +217,15 @@ async function listWindowsProcessesVerbose(): Promise<ProcessEntryVerbose[]> {
  * ps -ww -o pid=,comm=,args=：ww 不截断宽度，comm 为进程名（不含空格），args 为完整命令行。
  */
 async function listUnixProcessesVerbose(): Promise<ProcessEntryVerbose[]> {
-  const { stdout } = await execFileAsync('ps', ['-ww', '-o', 'pid=,comm=,args='], {
-    maxBuffer: 16 * 1024 * 1024,
-  });
+  const { stdout } = await execFileAsync(
+    "ps",
+    ["-ww", "-o", "pid=,comm=,args="],
+    {
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
   const result: ProcessEntryVerbose[] = [];
-  for (const line of stdout.split('\n')) {
+  for (const line of stdout.split("\n")) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     const sp1 = trimmed.search(/\s/);
@@ -228,7 +237,7 @@ async function listUnixProcessesVerbose(): Promise<ProcessEntryVerbose[]> {
     const sp2 = rest.search(/\s/);
     const name = sp2 === -1 ? rest : rest.slice(0, sp2);
     if (name.length === 0) continue;
-    const cmdline = sp2 === -1 ? '' : rest.slice(sp2).trimStart();
+    const cmdline = sp2 === -1 ? "" : rest.slice(sp2).trimStart();
     result.push({ pid, name, cmdline });
   }
   return result;
@@ -243,11 +252,11 @@ async function listUnixProcessesVerbose(): Promise<ProcessEntryVerbose[]> {
  * @returns 后代 pid 列表（含 rootPid，root 在前）
  */
 async function collectUnixDescendants(rootPid: number): Promise<number[]> {
-  const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,ppid='], {
+  const { stdout } = await execFileAsync("ps", ["-eo", "pid=,ppid="], {
     maxBuffer: 8 * 1024 * 1024,
   });
   const children = new Map<number, number[]>();
-  for (const line of stdout.split('\n')) {
+  for (const line of stdout.split("\n")) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     const parts = trimmed.split(/\s+/);
@@ -284,25 +293,34 @@ async function collectUnixDescendants(rootPid: number): Promise<number[]> {
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function processListHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const filter = args['filter'];
-  const verbose = args['verbose'] === true;
-  const maxResults = args['maxResults'];
+export async function processListHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const filter = args["filter"];
+  const verbose = args["verbose"] === true;
+  const maxResults = args["maxResults"];
 
   let entries: ProcessEntryVerbose[];
   try {
     if (IS_WIN) {
-      entries = verbose ? await listWindowsProcessesVerbose() : await listWindowsProcesses();
+      entries = verbose
+        ? await listWindowsProcessesVerbose()
+        : await listWindowsProcesses();
     } else {
-      entries = verbose ? await listUnixProcessesVerbose() : ((await listUnixProcesses()) as ProcessEntryVerbose[]);
+      entries = verbose
+        ? await listUnixProcessesVerbose()
+        : ((await listUnixProcesses()) as ProcessEntryVerbose[]);
     }
   } catch (err) {
-    return fail(ErrorCode.EXEC_FAIL, `执行进程列表命令失败: ${toErrorMessage(err)}`);
+    return fail(
+      ErrorCode.EXEC_FAIL,
+      `执行进程列表命令失败: ${toErrorMessage(err)}`,
+    );
   }
 
   // filter 按进程名 includes 匹配（大小写不敏感）
   let filtered: ProcessEntryVerbose[];
-  if (typeof filter === 'string' && filter.length > 0) {
+  if (typeof filter === "string" && filter.length > 0) {
     const lower = filter.toLowerCase();
     filtered = entries.filter((e) => e.name.toLowerCase().includes(lower));
   } else {
@@ -310,7 +328,10 @@ export async function processListHandler(args: Record<string, unknown>): Promise
   }
 
   // maxResults 截断
-  const limit = typeof maxResults === 'number' && maxResults > 0 ? Math.floor(maxResults) : null;
+  const limit =
+    typeof maxResults === "number" && maxResults > 0
+      ? Math.floor(maxResults)
+      : null;
   let truncated = false;
   if (limit !== null && filtered.length > limit) {
     filtered = filtered.slice(0, limit);
@@ -330,12 +351,33 @@ export async function processListHandler(args: Record<string, unknown>): Promise
   return ok(result);
 }
 
+/**
+ * process_list 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ processes: [{ pid, name }], truncated }`；
+ * verbose 时每个进程额外含 `memory?` 与 `cmdline?`（尽力而为）。
+ * 用 optional 字段表达最通用形状。
+ */
+export const processListOutputSchema = z.object({
+  processes: z.array(
+    z.object({
+      pid: z.number().int().nonnegative(),
+      name: z.string(),
+      memory: z.number().optional(),
+      cmdline: z.string().optional(),
+    }),
+  ),
+  truncated: z.boolean(),
+});
+
 /** process_list 工具定义。 */
 export const processListTool: Tool = {
-  name: 'process_list',
+  name: "process_list",
   description:
-    '列出运行中进程。返回 { processes: [{ pid, name }], truncated }。filter 按进程名过滤（大小写不敏感）；verbose 含内存与命令行（Windows 仅内存，不取 WMI/PowerShell）；maxResults 截断。',
+    "列出运行中进程。返回 { processes: [{ pid, name }], truncated }。filter 按进程名过滤（大小写不敏感）；verbose 含内存与命令行（Windows 仅内存，不取 WMI/PowerShell）；maxResults 截断。",
   inputSchema: processListInputSchema,
+  outputSchema: processListOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: processListHandler,
 };
 
@@ -347,20 +389,25 @@ export const processKillInputSchema = z.object({
     .number()
     .int()
     .optional()
-    .describe('进程 ID（pid 与 name 至少提供其一）'),
+    .describe("进程 ID（pid 与 name 至少提供其一）"),
   name: z
     .string()
     .optional()
-    .describe('进程名（pid 与 name 至少提供其一；按名称终止所有匹配进程）'),
+    .describe("进程名（pid 与 name 至少提供其一；按名称终止所有匹配进程）"),
   signal: z
     .string()
     .optional()
-    .describe('信号名（unix），默认 SIGTERM；force 为 true 时覆盖为 SIGKILL'),
-  force: z.boolean().optional().describe('若为 true，强制终止（unix 用 SIGKILL，Windows 加 /F）'),
+    .describe("信号名（unix），默认 SIGTERM；force 为 true 时覆盖为 SIGKILL"),
+  force: z
+    .boolean()
+    .optional()
+    .describe("若为 true，强制终止（unix 用 SIGKILL，Windows 加 /F）"),
   tree: z
     .boolean()
     .optional()
-    .describe('若为 true，连同子进程一起终止（Windows 用 taskkill /T，unix 递归找子进程）'),
+    .describe(
+      "若为 true，连同子进程一起终止（Windows 用 taskkill /T，unix 递归找子进程）",
+    ),
 });
 
 /** process_kill 输出。 */
@@ -377,13 +424,20 @@ interface ProcessKillResult {
  * @param tree 是否连同子进程（/T）
  * @throws NodeJS.ErrnoException 退出码非 0 时
  */
-async function killWindowsProcess(pid: number, force: boolean, tree: boolean): Promise<void> {
-  const args = ['/PID', String(pid)];
-  if (force) args.unshift('/F');
-  if (tree) args.unshift('/T');
+async function killWindowsProcess(
+  pid: number,
+  force: boolean,
+  tree: boolean,
+): Promise<void> {
+  const args = ["/PID", String(pid)];
+  if (force) args.unshift("/F");
+  if (tree) args.unshift("/T");
   // 用 encoding: 'buffer' 获取原始字节，再用 decodeBuffer 自动识别 GBK/UTF-8
   // taskkill 退出码非 0 时 execFile 抛错；message 含命令文本，stderr 含中文/英文提示
-  await execFileAsync('taskkill', args, { windowsHide: true, encoding: 'buffer' });
+  await execFileAsync("taskkill", args, {
+    windowsHide: true,
+    encoding: "buffer",
+  });
 }
 
 /**
@@ -410,7 +464,12 @@ function killUnixProcess(pid: number, signal: string): void {
  * @param signal 信号名（unix）
  * @param tree 是否连同子进程
  */
-async function killPid(pid: number, force: boolean, signal: string, tree: boolean): Promise<void> {
+async function killPid(
+  pid: number,
+  force: boolean,
+  signal: string,
+  tree: boolean,
+): Promise<void> {
   if (IS_WIN) {
     await killWindowsProcess(pid, force, tree);
   } else {
@@ -423,7 +482,7 @@ async function killPid(pid: number, force: boolean, signal: string, tree: boolea
         try {
           killUnixProcess(d, signal);
         } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ESRCH') {
+          if ((err as NodeJS.ErrnoException).code !== "ESRCH") {
             errors.push(err);
           }
         }
@@ -445,7 +504,7 @@ async function killPid(pid: number, force: boolean, signal: string, tree: boolea
 /* c8 ignore start */
 function matchProcessName(entryName: string, query: string): boolean {
   if (IS_WIN) {
-    const norm = (s: string) => s.toLowerCase().replace(/\.exe$/i, '');
+    const norm = (s: string) => s.toLowerCase().replace(/\.exe$/i, "");
     return norm(entryName) === norm(query);
   }
   return entryName === query;
@@ -464,9 +523,12 @@ function mapKillError(err: unknown, target: string): AnyToolResult | null {
   const msg = toErrorMessage(err);
 
   // unix: ESRCH（进程不存在）→ PROC_NOT_FOUND；EPERM（无权限）→ EACCES
-  if (code === 'ESRCH') return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
-  if (code === 'EPERM') return fail(ErrorCode.EACCES, `无权限终止进程: ${target}`);
-  if (code === 'EINVAL') return fail(ErrorCode.EINVAL, `pid 或信号非法: ${msg}`);
+  if (code === "ESRCH")
+    return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
+  if (code === "EPERM")
+    return fail(ErrorCode.EACCES, `无权限终止进程: ${target}`);
+  if (code === "EINVAL")
+    return fail(ErrorCode.EINVAL, `pid 或信号非法: ${msg}`);
 
   // Windows taskkill 错误识别：
   // - code 为数字退出码（128=找不到进程，1=通用失败）
@@ -475,13 +537,14 @@ function mapKillError(err: unknown, target: string): AnyToolResult | null {
     const stderrBuf = (err as { stderr?: Buffer }).stderr;
     const stderrText = Buffer.isBuffer(stderrBuf)
       ? decodeBuffer(stderrBuf)
-      : typeof stderrBuf === 'string'
+      : typeof stderrBuf === "string"
         ? stderrBuf
-        : '';
+        : "";
     const text = stderrText.toLowerCase();
 
     // 退出码 128 → 进程不存在
-    if (Number(code) === 128) return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
+    if (Number(code) === 128)
+      return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
     // 中文/英文关键词匹配
     if (TASKKILL_NOT_FOUND_PATTERNS.some((p) => text.includes(p))) {
       return fail(ErrorCode.PROC_NOT_FOUND, `进程不存在: ${target}`);
@@ -490,8 +553,11 @@ function mapKillError(err: unknown, target: string): AnyToolResult | null {
       return fail(ErrorCode.EACCES, `无权限终止进程: ${target}`);
     }
     // "无法终止" / "只能强制终止" → 需 force，视为终止失败
-    if (text.includes('无法终止') || text.includes('强制终止')) {
-      return fail(ErrorCode.PROC_KILL_FAIL, `无法终止进程（可能需要 force=true）: ${target}`);
+    if (text.includes("无法终止") || text.includes("强制终止")) {
+      return fail(
+        ErrorCode.PROC_KILL_FAIL,
+        `无法终止进程（可能需要 force=true）: ${target}`,
+      );
     }
   }
 
@@ -521,7 +587,10 @@ async function killProcessesByName(
   try {
     entries = IS_WIN ? await listWindowsProcesses() : await listUnixProcesses();
   } catch (err) {
-    return fail(ErrorCode.EXEC_FAIL, `执行进程扫描失败: ${toErrorMessage(err)}`);
+    return fail(
+      ErrorCode.EXEC_FAIL,
+      `执行进程扫描失败: ${toErrorMessage(err)}`,
+    );
   }
 
   const matched = entries.filter((e) => matchProcessName(e.name, name));
@@ -538,7 +607,10 @@ async function killProcessesByName(
   } catch (err) {
     const mapped = mapKillError(err, name);
     if (mapped) return mapped;
-    return fail(ErrorCode.PROC_KILL_FAIL, `终止进程失败: ${toErrorMessage(err)}`);
+    return fail(
+      ErrorCode.PROC_KILL_FAIL,
+      `终止进程失败: ${toErrorMessage(err)}`,
+    );
   }
 
   const result: ProcessKillResult = { killed: true, pid: firstPid };
@@ -562,31 +634,37 @@ async function killProcessesByName(
  * @param args 已验证的参数
  * @returns 统一输出契约
  */
-export async function processKillHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const rawPid = args['pid'];
-  const rawName = args['name'];
-  const force = args['force'] === true;
-  const tree = args['tree'] === true;
-  const rawSignal = args['signal'];
+export async function processKillHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const rawPid = args["pid"];
+  const rawName = args["name"];
+  const force = args["force"] === true;
+  const tree = args["tree"] === true;
+  const rawSignal = args["signal"];
 
   // signal 决定：force 优先 SIGKILL，否则用显式 signal，否则默认 SIGTERM
   let signal: string;
   if (force) {
-    signal = 'SIGKILL';
-  } else if (typeof rawSignal === 'string' && rawSignal.length > 0) {
+    signal = "SIGKILL";
+  } else if (typeof rawSignal === "string" && rawSignal.length > 0) {
     signal = rawSignal;
   } else {
-    signal = 'SIGTERM';
+    signal = "SIGTERM";
   }
 
   // 按名称终止：pid 未提供但提供了 name
-  if (typeof rawPid !== 'number' && typeof rawName === 'string' && rawName.length > 0) {
+  if (
+    typeof rawPid !== "number" &&
+    typeof rawName === "string" &&
+    rawName.length > 0
+  ) {
     return killProcessesByName(rawName, force, signal, tree);
   }
 
   // pid 非法检查（pid 与 name 均未提供时也归入此处 → EINVAL）
-  if (typeof rawPid !== 'number' || !Number.isInteger(rawPid)) {
-    return fail(ErrorCode.EINVAL, 'pid 必须是整数，或用 name 指定进程名');
+  if (typeof rawPid !== "number" || !Number.isInteger(rawPid)) {
+    return fail(ErrorCode.EINVAL, "pid 必须是整数，或用 name 指定进程名");
   }
   const pid = rawPid;
 
@@ -595,18 +673,34 @@ export async function processKillHandler(args: Record<string, unknown>): Promise
   } catch (err) {
     const mapped = mapKillError(err, String(pid));
     if (mapped) return mapped;
-    return fail(ErrorCode.PROC_KILL_FAIL, `终止进程失败: ${toErrorMessage(err)}`);
+    return fail(
+      ErrorCode.PROC_KILL_FAIL,
+      `终止进程失败: ${toErrorMessage(err)}`,
+    );
   }
 
   const result: ProcessKillResult = { killed: true, pid };
   return ok(result);
 }
 
+/**
+ * process_kill 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 成功返回 `{ killed, pid }`：是否终止成功与首个匹配 pid。
+ */
+export const processKillOutputSchema = z.object({
+  killed: z.boolean().describe("是否终止成功"),
+  pid: z.number().int().describe("首个匹配 pid（按名称终止时为首个匹配）"),
+});
+
 /** process_kill 工具定义。 */
 export const processKillTool: Tool = {
-  name: 'process_kill',
+  name: "process_kill",
   description:
-    '按 PID 或进程名终止进程。pid 或 name 至少提供其一；提供 name 时按名称终止所有匹配进程。signal 默认 SIGTERM；force 为 true 时 unix 用 SIGKILL，Windows 加 /F；tree 为 true 时连同子进程一起终止（Windows /T，unix 递归）。返回 { killed, pid }。',
+    "按 PID 或进程名终止进程。pid 或 name 至少提供其一；提供 name 时按名称终止所有匹配进程。signal 默认 SIGTERM；force 为 true 时 unix 用 SIGKILL，Windows 加 /F；tree 为 true 时连同子进程一起终止（Windows /T，unix 递归）。返回 { killed, pid }。",
   inputSchema: processKillInputSchema,
+  outputSchema: processKillOutputSchema,
+  // 终止进程不可逆，destructiveHint: true
+  annotations: { readOnlyHint: false, destructiveHint: true },
   handler: processKillHandler,
 };

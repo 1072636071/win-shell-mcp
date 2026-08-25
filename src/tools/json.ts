@@ -5,18 +5,18 @@
  * 支持点路径（.foo.bar）与数组索引（[0]），不支持 jq 的高级功能（管道、过滤、函数）。
  */
 
-import { readFile } from 'node:fs/promises';
-import { z } from 'zod';
-import { ok, fail, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { failFromError } from '../utils/errors.js';
-import type { Tool } from '../registry.js';
+import { readFile } from "node:fs/promises";
+import { z } from "zod";
+import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { failFromError } from "../utils/errors.js";
+import type { Tool } from "../registry.js";
 
 /** json_get 输入 schema。 */
 export const jsonGetInputSchema = z.object({
-  path: z.string().optional().describe('JSON 文件路径（与 data 二选一）'),
-  data: z.string().optional().describe('JSON 字符串（与 path 二选一）'),
-  expr: z.string().describe('路径表达式，如 .foo.bar[0]；. 表示根'),
+  path: z.string().optional().describe("JSON 文件路径（与 data 二选一）"),
+  data: z.string().optional().describe("JSON 字符串（与 path 二选一）"),
+  expr: z.string().describe("路径表达式，如 .foo.bar[0]；. 表示根"),
 });
 
 /**
@@ -33,27 +33,31 @@ export const jsonGetInputSchema = z.object({
  * @throws Error 路径不合法或类型不匹配
  */
 function getByPath(data: unknown, expr: string): unknown {
-  if (expr === '.' || expr.length === 0) return data;
+  if (expr === "." || expr.length === 0) return data;
   let current = data;
   let i = 0;
   while (i < expr.length) {
-    if (expr[i] === '.') {
+    if (expr[i] === ".") {
       i++;
-      let key = '';
-      while (i < expr.length && expr[i] !== '.' && expr[i] !== '[') {
+      let key = "";
+      while (i < expr.length && expr[i] !== "." && expr[i] !== "[") {
         key += expr[i];
         i++;
       }
       if (key.length > 0) {
-        if (current === null || typeof current !== 'object' || Array.isArray(current)) {
+        if (
+          current === null ||
+          typeof current !== "object" ||
+          Array.isArray(current)
+        ) {
           throw new Error(`无法在非对象上取属性 .${key}`);
         }
         current = (current as Record<string, unknown>)[key];
       }
-    } else if (expr[i] === '[') {
+    } else if (expr[i] === "[") {
       i++;
-      let idxStr = '';
-      while (i < expr.length && expr[i] !== ']') {
+      let idxStr = "";
+      while (i < expr.length && expr[i] !== "]") {
         idxStr += expr[i];
         i++;
       }
@@ -78,22 +82,24 @@ function getByPath(data: unknown, expr: string): unknown {
  *
  * 错误：EINVAL（参数非法/路径不匹配）/ ENOENT（文件不存在）
  */
-export async function jsonGetHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const filePath = args['path'] as string | undefined;
-  const dataStr = args['data'] as string | undefined;
-  const expr = args['expr'] as string | undefined;
+export async function jsonGetHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const filePath = args["path"] as string | undefined;
+  const dataStr = args["data"] as string | undefined;
+  const expr = args["expr"] as string | undefined;
 
-  if (typeof expr !== 'string' || expr.length === 0) {
-    return fail(ErrorCode.EINVAL, 'expr 必须是非空字符串');
+  if (typeof expr !== "string" || expr.length === 0) {
+    return fail(ErrorCode.EINVAL, "expr 必须是非空字符串");
   }
-  if (typeof filePath !== 'string' && typeof dataStr !== 'string') {
-    return fail(ErrorCode.EINVAL, '必须提供 path 或 data');
+  if (typeof filePath !== "string" && typeof dataStr !== "string") {
+    return fail(ErrorCode.EINVAL, "必须提供 path 或 data");
   }
 
   try {
     let raw: string;
-    if (typeof filePath === 'string' && filePath.length > 0) {
-      raw = await readFile(filePath, 'utf8');
+    if (typeof filePath === "string" && filePath.length > 0) {
+      raw = await readFile(filePath, "utf8");
     } else {
       raw = dataStr as string;
     }
@@ -124,12 +130,23 @@ export async function jsonGetHandler(args: Record<string, unknown>): Promise<Any
   }
 }
 
+/**
+ * json_get 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 返回 `{ value }`，value 为按路径表达式取到的任意 JSON 值（用 unknown 表达）。
+ */
+export const jsonGetOutputSchema = z.object({
+  value: z.unknown(),
+});
+
 /** json_get 工具定义。 */
 export const jsonGetTool: Tool = {
-  name: 'json_get',
+  name: "json_get",
   description:
-    '按路径表达式从 JSON 文件或字符串取值（jq-lite 子集）。支持 .foo.bar 与 [0] 索引。返回 { value }。',
+    "按路径表达式从 JSON 文件或字符串取值（jq-lite 子集）。支持 .foo.bar 与 [0] 索引。返回 { value }。",
   inputSchema: jsonGetInputSchema,
+  outputSchema: jsonGetOutputSchema,
+  annotations: { readOnlyHint: true },
   handler: jsonGetHandler,
-  aliases: ['jq'],
+  aliases: ["jq"],
 };

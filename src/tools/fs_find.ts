@@ -11,32 +11,35 @@
  * 错误：EINVAL（pattern 非法）/ ENOENT（起始路径不存在）/ ENOTDIR（不是目录）/ EACCES（无权限）
  */
 
-import { readdir, lstat } from 'node:fs/promises';
-import { join, relative } from 'node:path';
-import { z } from 'zod';
-import { ok, fail, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { failFromError } from '../utils/errors.js';
-import { pathNormalize, toDisplay } from '../utils/path.js';
-import type { Tool } from '../registry.js';
+import { readdir, lstat } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { z } from "zod";
+import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { failFromError } from "../utils/errors.js";
+import { pathNormalize, toDisplay } from "../utils/path.js";
+import type { Tool } from "../registry.js";
 
 /** 条目类型。 */
-type EntryType = 'file' | 'dir' | 'symlink';
+type EntryType = "file" | "dir" | "symlink";
 
 /** 文件名匹配模式 schema。 */
 export const fsFindInputSchema = z.object({
-  pattern: z.string().min(1).describe('文件名匹配模式，支持 * 通配'),
+  pattern: z.string().min(1).describe("文件名匹配模式，支持 * 通配"),
   path: z
     .string()
     .optional()
-    .describe('起始目录，默认当前目录（经 pathNormalize 处理）'),
+    .describe("起始目录，默认当前目录（经 pathNormalize 处理）"),
   maxDepth: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('最大递归深度（1 表示仅起始目录本身）'),
-  verbose: z.boolean().optional().describe('若为 true，返回含 type 与 size 的条目'),
+    .describe("最大递归深度（1 表示仅起始目录本身）"),
+  verbose: z
+    .boolean()
+    .optional()
+    .describe("若为 true，返回含 type 与 size 的条目"),
 });
 
 /** verbose 条目结构。 */
@@ -59,9 +62,9 @@ interface FileTypeChecker {
  * 优先级：symlink > dir > file
  */
 function toEntryType(stats: FileTypeChecker): EntryType {
-  if (stats.isSymbolicLink()) return 'symlink';
-  if (stats.isDirectory()) return 'dir';
-  return 'file';
+  if (stats.isSymbolicLink()) return "symlink";
+  if (stats.isDirectory()) return "dir";
+  return "file";
 }
 
 /**
@@ -75,10 +78,10 @@ function toEntryType(stats: FileTypeChecker): EntryType {
  */
 export function patternToRegExp(pattern: string): RegExp {
   const escaped = pattern
-    .split('*')
-    .map((seg) => seg.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-    .join('.*');
-  return new RegExp(`^${escaped}$`, 'i');
+    .split("*")
+    .map((seg) => seg.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+    .join(".*");
+  return new RegExp(`^${escaped}$`, "i");
 }
 
 /**
@@ -123,7 +126,15 @@ async function walkFind(
     }
 
     if (entry.isDirectory() && (maxDepth === undefined || depth < maxDepth)) {
-      await walkFind(root, fullPath, depth + 1, regex, maxDepth, verbose, matches);
+      await walkFind(
+        root,
+        fullPath,
+        depth + 1,
+        regex,
+        maxDepth,
+        verbose,
+        matches,
+      );
     }
   }
 }
@@ -138,23 +149,28 @@ async function walkFind(
  *
  * 返回 `{ entries: string[] }`（极简）或 `{ entries: [{ name, type, size }] }`（verbose）。
  */
-export async function fsFindHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const pattern = args['pattern'];
-  const pathArg = args['path'];
-  const maxDepth = args['maxDepth'];
-  const verbose = args['verbose'] === true;
+export async function fsFindHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const pattern = args["pattern"];
+  const pathArg = args["path"];
+  const maxDepth = args["maxDepth"];
+  const verbose = args["verbose"] === true;
 
-  if (typeof pattern !== 'string' || pattern.length === 0) {
-    return fail(ErrorCode.EINVAL, 'pattern 必须是非空字符串');
+  if (typeof pattern !== "string" || pattern.length === 0) {
+    return fail(ErrorCode.EINVAL, "pattern 必须是非空字符串");
   }
-  if (pathArg !== undefined && typeof pathArg !== 'string') {
-    return fail(ErrorCode.EINVAL, 'path 必须是字符串');
+  if (pathArg !== undefined && typeof pathArg !== "string") {
+    return fail(ErrorCode.EINVAL, "path 必须是字符串");
   }
-  if (maxDepth !== undefined && (typeof maxDepth !== 'number' || maxDepth < 1)) {
-    return fail(ErrorCode.EINVAL, 'maxDepth 必须是正整数');
+  if (
+    maxDepth !== undefined &&
+    (typeof maxDepth !== "number" || maxDepth < 1)
+  ) {
+    return fail(ErrorCode.EINVAL, "maxDepth 必须是正整数");
   }
 
-  const base = pathNormalize(typeof pathArg === 'string' ? pathArg : '.');
+  const base = pathNormalize(typeof pathArg === "string" ? pathArg : ".");
 
   try {
     const regex = patternToRegExp(pattern);
@@ -167,12 +183,37 @@ export async function fsFindHandler(args: Record<string, unknown>): Promise<AnyT
   }
 }
 
+/**
+ * fs_find 输出 schema（描述 success data 结构，不含 ok 包装）。
+ *
+ * 极简返回 `{ entries: string[] }`（匹配的相对路径）；
+ * verbose 返回 `{ entries: [{ name, type, size }] }`。
+ * 用 union 表达两种条目形状（zod 顶层仍是 z.object，符合 MCP 协议要求）。
+ */
+export const fsFindOutputSchema = z.object({
+  entries: z
+    .array(
+      z.union([
+        z.string().describe("匹配的相对路径（极简）"),
+        z.object({
+          name: z.string().describe("匹配的相对路径"),
+          type: z.enum(["file", "dir", "symlink"]).describe("条目类型"),
+          size: z.number().int().nonnegative().describe("字节数"),
+        }),
+      ]),
+    )
+    .describe("匹配条目列表"),
+});
+
 /** find 工具定义（Unix 短名为主，fs_find 等为语义别名）。 */
 export const fsFindTool: Tool = {
-  name: 'find',
+  name: "find",
   description:
-    '按文件名模式递归搜索文件（≈ Unix find，支持 * 通配）。可指定起始目录、maxDepth、verbose（含 type/size）。',
+    "按文件名模式递归搜索文件（≈ Unix find，支持 * 通配）。可指定起始目录、maxDepth、verbose（含 type/size）。",
   inputSchema: fsFindInputSchema,
+  outputSchema: fsFindOutputSchema,
+  // 仅递归读取目录树，不改变文件系统，readOnlyHint: true
+  annotations: { readOnlyHint: true },
   handler: fsFindHandler,
-  aliases: ['fs_find', 'search_file', 'find_files'],
+  aliases: ["fs_find", "search_file", "find_files"],
 };
