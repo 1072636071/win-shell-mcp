@@ -9,7 +9,7 @@
  * （如工单 15 的 WIN_SHELL_TRUNCATE），禁止在 server/tools 层出现第二个读取点。
  */
 
-import { DEFAULT_TRUNCATE_LIMIT } from "../contract/output.js";
+import { DEFAULT_TRUNCATE_LIMIT } from "./truncate.js";
 
 /** `WIN_SHELL_TOOLS` —— 工具白名单环境变量名（逗号分隔工具正名）。 */
 export const ENV_WIN_SHELL_TOOLS = "WIN_SHELL_TOOLS";

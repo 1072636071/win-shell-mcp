@@ -15,10 +15,12 @@ import {
   createServer,
   listTools,
   callTool,
-  resolveListedTools,
-  composeLazyDispatchTable,
   type CreateServerOptions,
 } from '../../src/server.js';
+import {
+  resolveListedTools,
+  composeLazyDispatchTable,
+} from '../../src/deploy.js';
 import { builtinTools, getAllTools, findTool, type Tool } from '../../src/registry.js';
 import { isOk, isFail } from '../../src/contract/output.js';
 

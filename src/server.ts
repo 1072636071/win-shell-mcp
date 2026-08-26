@@ -7,6 +7,10 @@
  *
  * 工具列表作为依赖传入（默认 `builtinTools`）——无全局注册状态，
  * 测试可直接传入子集。工具结果（ToolResult）序列化为 MCP text content（JSON）。
+ *
+ * 部署/列出工具表的装配语义（白名单裁剪、懒 × 白名单组合、meta 三件套豁免、
+ * 列出面投影）收敛在 deploy 深模块；工具→条目投影收敛在 projectToolEntry 叶子
+ * ——本模块只做 MCP shell 与调用分发。
  * 工单 11-04 起支持列出面/分发面双表注入（懒模式基石），见 CreateServerOptions。
  */
 
@@ -16,7 +20,6 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
 import {
   fail,
   isFail,
@@ -31,12 +34,13 @@ import {
   ENV_WIN_SHELL_TRUNCATE,
   notExposedMessage,
   parseLazyMode,
-  parseToolsWhitelist,
   parseTruncateLimit,
 } from "./config/env.js";
-import { createScopedBatchRunTool } from "./tools/batch.js";
-import { createScopedToolGroupsTool } from "./tools/tool_groups.js";
-import { createScopedListDomainToolsTool } from "./tools/list_domain_tools.js";
+import { projectToolEntry, type ToolMcpEntry } from "./project.js";
+import {
+  scopeMetaToolsToDeployment,
+  assembleDeployment,
+} from "./deploy.js";
 
 /** Server 信息。 */
 const SERVER_INFO = {
@@ -51,42 +55,15 @@ const SERVER_INFO = {
  * 全部内置工具均由 guard-mutating.test.ts 强制声明 outputSchema 与
  * annotations.readOnlyHint，此处条件透传为防御性编程，不依赖回退默认值。
  *
+ * 与 list_domain_tools 共用 {@link projectToolEntry} 同一投影（断环：投影是
+ * 叶子模块，两个调用点通过它共用实现，彼此不互相依赖）。
+ *
  * 供 ListTools handler 与测试使用。
  *
  * @param tools 工具列表，默认内置全部工具
  */
-export function listTools(tools: readonly Tool[] = builtinTools): Array<{
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
-  annotations?: import("./registry.js").ToolAnnotations;
-}> {
-  return tools.map((tool) => {
-    const entry: {
-      name: string;
-      description: string;
-      inputSchema: Record<string, unknown>;
-      outputSchema?: Record<string, unknown>;
-      annotations?: import("./registry.js").ToolAnnotations;
-    } = {
-      name: tool.name,
-      description: tool.description,
-      inputSchema: toJsonSchemaCompat(tool.inputSchema as never) as Record<
-        string,
-        unknown
-      >,
-    };
-    if (tool.outputSchema) {
-      entry.outputSchema = toJsonSchemaCompat(
-        tool.outputSchema as never,
-      ) as Record<string, unknown>;
-    }
-    if (tool.annotations) {
-      entry.annotations = tool.annotations;
-    }
-    return entry;
-  });
+export function listTools(tools: readonly Tool[] = builtinTools): ToolMcpEntry[] {
+  return tools.map(projectToolEntry);
 }
 
 /**
@@ -163,87 +140,11 @@ function toMcpContent(result: AnyToolResult): {
 }
 
 /**
- * 将部署子表中的 meta 三件套替换为口径限于该子表的副本（工单 11-05 扩展）。
- *
- * - batch_run（12-02）：步骤引用被裁工具即该步失败并归因"未在当前部署暴露"。
- * - tool_groups / list_domain_tools（11-05）：域概览与明细只反映裁剪后仍可见
- *   的集合，被裁空的域不出现。子表不含对应工具时跳过该工具；全量注入不经
- *   过本函数，零破坏。副本仅替换 handler，listTools 输出不变。
- */
-function scopeMetaToolsToDeployment(tools: readonly Tool[]): readonly Tool[] {
-  const metaNames = new Set<string>(LAZY_LISTED_TOOL_NAMES);
-  if (!tools.some((t) => metaNames.has(t.name))) return tools;
-  return tools.map((t) => {
-    if (t.name === "batch_run") return createScopedBatchRunTool(tools);
-    if (t.name === "tool_groups") return createScopedToolGroupsTool(tools);
-    if (t.name === "list_domain_tools") {
-      return createScopedListDomainToolsTool(tools);
-    }
-    return t;
-  });
-}
-
-/**
- * 懒模式列出面固定三件套（工单 11-04）：两个域导航 meta 工具 + batch_run。
- * batch_run 恒在列出面，保证多步编排不被加载流程挡住（PRD 用户故事 4）；
- * 加载只是信息获取不是授权，未列出的工具照常可调用（调用不设门禁）。
- */
-export const LAZY_LISTED_TOOL_NAMES = [
-  "tool_groups",
-  "list_domain_tools",
-  "batch_run",
-] as const;
-
-/**
- * 解析列出工具表（工单 11-04）。
- *
- * 纯函数、无全局态：lazy 取值由调用方决定（stdio 入口经配置模块
- * parseLazyMode 解析 env 后传入），本函数不做任何环境读取。
- *
- * - 全量模式（lazy=false）：原样返回分发表——ListTools 返回集与历史逐字节一致。
- * - 懒模式（lazy=true）：取三件套与分发表的交集、保持注册顺序。组合模式
- *   （11-05）下分发表已经 {@link composeLazyDispatchTable} 豁免补齐三件套，
- *   本函数的交集是安全网而非豁免机制本体。
- *
- * @param lazy 是否懒模式
- * @param tools 分发工具表（默认内置全部工具）
- */
-export function resolveListedTools(
-  lazy: boolean,
-  tools: readonly Tool[] = builtinTools,
-): readonly Tool[] {
-  if (!lazy) return tools;
-  const wanted = new Set<string>(LAZY_LISTED_TOOL_NAMES);
-  return tools.filter((t) => wanted.has(t.name));
-}
-
-/**
- * 懒模式 × 白名单组合装配（工单 11-05）：meta 三件套豁免白名单。
- *
- * 裁决：懒模式下导航与编排入口不可被部署裁剪意外砍掉——三件套恒列入、
- * 恒可调用，无论是否被 `WIN_SHELL_TOOLS` 点名。本函数把被白名单裁掉的
- * 三件套按注册顺序补回分发表（已存在的保持原位）；纯懒模式（无白名单）
- * 下 deployed 即全量表，补集为空、结果等于全量注入（零破坏）。
- * 纯白名单模式（懒关闭）不经过本函数，meta 照常受白名单约束。
- *
- * @param deployed 白名单过滤后的部署工具表
- * @returns 组合模式的分发表（部署表 ∪ 三件套，注册序）
- */
-export function composeLazyDispatchTable(
-  deployed: readonly Tool[],
-): readonly Tool[] {
-  const wanted = new Set<string>(LAZY_LISTED_TOOL_NAMES);
-  const present = new Set(deployed.map((t) => t.name));
-  // 恒从 builtinTools 按注册序合成：deployed ⊆ builtinTools，补集自然插位。
-  return builtinTools.filter((t) => present.has(t.name) || wanted.has(t.name));
-}
-
-/**
- * createServer 的双表注入选项（工单 11-04：列出面与分发面分离）。
+ * createServer 的双表注入选项：列出面与分发面分离。
  *
  * listedTools 缺省 = tools，即历史单表行为（全量模式零破坏）；懒模式下
- * 调用方传 `resolveListedTools(true)` 作为列出表、全量表作为分发表，
- * 实现「ListTools 只见 3 个 meta、CallTool 针对全部已注册工具」。
+ * 调用方传 deploy 模块装配的列出表、全量表作为分发表，实现「ListTools 只见
+ * 3 个 meta、CallTool 针对全部已注册工具」。
  */
 export interface CreateServerOptions {
   /** 分发工具表：CallTool 分发针对这张表。缺省 builtinTools。 */
@@ -266,7 +167,7 @@ export interface CreateServerOptions {
  *   CallTool 用分发表。这是懒模式的基石：列出集 ⊂ 分发集时，未列出工具仍可
  *   正常调用（调用不设门禁），不会因裁剪列出表而得到 Unknown tool。
  *
- * @param toolsOrOptions 工具列表（兼容形态）或双表选项（工单 11-04）
+ * @param toolsOrOptions 工具列表（兼容形态）或双表选项
  */
 export function createServer(
   toolsOrOptions: readonly Tool[] | CreateServerOptions = builtinTools,
@@ -279,6 +180,7 @@ export function createServer(
   const dispatchTools = options.tools ?? builtinTools;
   // 分发面沿用既有白名单语义：非全量注入的部署子表，meta 三件套替换为
   // 口径受限副本（batch_run 步骤边界 / 导航工具统计口径，12-02 + 11-05）。
+  // 装配接缝在 deploy 深模块，此处仅消费其纯函数。
   const deployed =
     dispatchTools === builtinTools
       ? dispatchTools
@@ -306,50 +208,17 @@ export function createServer(
 }
 
 /**
- * 解析白名单原始字符串并装配部署工具表（启动校验的纯装配步骤）。
- *
- * fail-fast：白名单含未知工具名（含误写别名——别名不在正名集合内）时抛出，
- * 错误信息列出**全部**非法条目原文而非仅第一个；不做"忽略未知项"的宽容模式，
- * 存在未知项即启动失败，绝不静默降级为残缺白名单或全量。未设置/空串/纯空白
- * 返回内置表原引用（零破坏）。rawWhitelist 由 {@link startStdioServer} 从唯一
- * 的 env 读取点传入，测试注入伪造字符串即可覆盖失败路径，无需启动进程。
- *
- * @param rawWhitelist `WIN_SHELL_TOOLS` 原始字符串或 undefined
- * @param builtin 内置工具表，默认 `builtinTools`
- * @returns 部署工具表：全量原表引用或按正名过滤后的子表
- * @throws 白名单含未知工具条目时，消息含变量名与全部非法条目原文
- */
-export function resolveDeployedTools(
-  rawWhitelist: string | undefined,
-  builtin: readonly Tool[] = builtinTools,
-): readonly Tool[] {
-  const whitelist = parseToolsWhitelist(
-    rawWhitelist,
-    builtin.map((t) => t.name),
-  );
-  if (!whitelist.ok) {
-    throw new Error(
-      `${ENV_WIN_SHELL_TOOLS} 含未知工具条目: ${whitelist.unknown.join(", ")}`,
-    );
-  }
-  return whitelist.names.size === 0
-    ? builtin
-    : builtin.filter((t) => whitelist.names.has(t.name));
-}
-
-/**
  * 启动 stdio MCP Server（入口用）。
  *
  * env 原始读取点收敛于 stdio 入口链路：`WIN_SHELL_TOOLS`（白名单）与
- * `WIN_SHELL_LAZY`（懒模式，工单 11-04）均经配置模块纯函数解析，本函数是
- * server 层唯一的原始读取处；白名单校验与部署表装配在 {@link resolveDeployedTools}。
+ * `WIN_SHELL_LAZY`（懒模式）经配置模块纯函数解析后，交 deploy 深模块的
+ * {@link assembleDeployment} 一次产出分发表 + 列出表；本函数是 server 层
+ * 唯一的原始读取处。
  *
- * 组合语义（工单 11-05）：
- * - 纯懒模式（无白名单）：分发表 = 全量表，列出表 = 三件套（与 04 一致）。
- * - 纯白名单模式（懒关闭）：分发表 = 列出表 = 部署子表（与 12 一致，
- *   meta 作为普通工具照常受约束）。
- * - 组合模式：分发表经 {@link composeLazyDispatchTable} 豁免补齐三件套
- *   （恒列入恒可调），列出表 = 三件套；导航工具的统计口径限于部署子表。
+ * 组合语义见 deploy 模块：
+ * - 纯懒模式（无白名单）：分发表 = 全量表，列出表 = 三件套。
+ * - 纯白名单模式（懒关闭）：分发表 = 列出表 = 部署子表，meta 亦受约束。
+ * - 组合模式：分发表豁免补齐三件套，列出表 = 三件套，导航统计限于部署子表。
  * 运行期注册集不变，不发 listChanged 通知。
  *
  * @throws 白名单含未知工具条目时抛出并列出全部非法条目原文（入口 catch 打印退出）
@@ -364,12 +233,13 @@ export async function startStdioServer(): Promise<Server> {
   }
   setTruncateLimit(truncateResult.limit);
 
-  const lazy = parseLazyMode(process.env[ENV_WIN_SHELL_LAZY]);
-  const deployed = resolveDeployedTools(process.env[ENV_WIN_SHELL_TOOLS]);
-  const dispatchTable = lazy ? composeLazyDispatchTable(deployed) : deployed;
+  const tables = assembleDeployment({
+    rawWhitelist: process.env[ENV_WIN_SHELL_TOOLS],
+    lazy: parseLazyMode(process.env[ENV_WIN_SHELL_LAZY]),
+  });
   const server = createServer({
-    tools: dispatchTable,
-    listedTools: resolveListedTools(lazy, dispatchTable),
+    tools: tables.dispatchTable,
+    listedTools: tables.listedTools,
   });
   const transport = new StdioServerTransport();
   await server.connect(transport);

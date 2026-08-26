@@ -8,6 +8,12 @@
  * - verbose：需要完整数据时开启
  */
 
+import { getTruncateLimit } from "../config/truncate.js";
+
+// 截断阈值等运行期配置状态不在此持有，归 config 锥体（../config/truncate.js）；
+// 本模块为保持公共面仍 re-export 其访问器与常量，纯构造 ok/fail/withVerbose
+// 无任何隐藏可变状态，truncate 仅在调用期经 getTruncateLimit 读取策略。
+
 /** verbose 开关类型。 */
 export type Verbose = boolean;
 
@@ -34,34 +40,18 @@ export type ToolResult<T> = OkResult<T> | FailResult;
 /** 任意工具结果（handler 返回的宽松类型，数据为 Record）。 */
 export type AnyToolResult = ToolResult<Record<string, unknown>>;
 
-/** 默认截断长度（字符数）。 */
-export const DEFAULT_TRUNCATE_LIMIT = 2000;
-
 /** hint 字段最大长度（字符数，工单 15-01）。超长在构造层截断。 */
 export const HINT_MAX_LENGTH = 50;
 
-// ─── 截断阈值运行期配置（工单 15-02）─────────────────────────
-// 模块级可变状态：由 setTruncateLimit 在启动时从 WIN_SHELL_TRUNCATE 注入。
-// 未调用 setTruncateLimit 时保持 DEFAULT_TRUNCATE_LIMIT（零破坏）。
-// 测试需在 afterEach 调 resetTruncateLimit 复原，避免跨用例污染。
+// 截断阈值常量与运行期状态归 config 锥体（../config/truncate.js），此处
+// re-export 保持公共面零破坏；纯构造 ok/fail/withVerbose 不引用它们。
 
-/** 当前截断阈值（模块级，由 {@link setTruncateLimit} 设置）。 */
-let currentTruncateLimit = DEFAULT_TRUNCATE_LIMIT;
-
-/** 读取当前截断阈值（供 truncate 默认参数与各工具截断判定调用）。 */
-export function getTruncateLimit(): number {
-  return currentTruncateLimit;
-}
-
-/** 设置截断阈值（启动时由 server 入口从 WIN_SHELL_TRUNCATE 注入）。 */
-export function setTruncateLimit(limit: number): void {
-  currentTruncateLimit = limit;
-}
-
-/** 重置截断阈值为默认值（测试复原用）。 */
-export function resetTruncateLimit(): void {
-  currentTruncateLimit = DEFAULT_TRUNCATE_LIMIT;
-}
+export {
+  DEFAULT_TRUNCATE_LIMIT,
+  getTruncateLimit,
+  setTruncateLimit,
+  resetTruncateLimit,
+} from "../config/truncate.js";
 
 /**
  * 构造成功结果。data 字段展开到顶层。

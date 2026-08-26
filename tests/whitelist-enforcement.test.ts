@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { callTool, createServer, resolveDeployedTools } from "../src/server.js";
+import { callTool, createServer } from "../src/server.js";
+import { resolveDeployedTools } from "../src/deploy.js";
 import { builtinTools, type Tool } from "../src/registry.js";
 import { systemInfoTool } from "../src/tools/system.js";
 import { fsListTool } from "../src/tools/fs_read.js";

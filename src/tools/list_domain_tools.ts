@@ -11,19 +11,18 @@
  *   恒在列表面可见，无需经本工具取明细。
  * - 可见性口径（工单 11-05）：默认全量注册表；白名单部署时经 scoped 副本
  *   注入部署子表，只返回过滤后仍可见的工具。
- * - 输出投影与 server.listTools() 逐字段一致（toJsonSchemaCompat 转换 +
- *   outputSchema/annotations 条件透传），但不 import server.ts：registry →
- *   本模块 → server → registry 会成环（同 batch.ts 的循环安全裁决），改为
- *   在此按同一映射本地实现；meta-tools.test.ts 以「与 listTools() 深度
- *   相等」钉住同形性，漂移即测试失败。
+ * - 输出投影与 server.listTools() 共用 {@link projectToolEntry} 叶子（../project.js）
+ *   单一接口：断环关键——投影是零业务依赖的叶子，本模块与 server 经它共用实现，
+ *   互不 import 对方（registry → 本模块 → server → registry 回环被叶子切断），
+ *   同形性由共享实现天然保证，不再需要测试钉住。
  */
 
 import { z } from "zod";
-import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { COMMAND_DOMAINS } from "../domains.js";
 import { builtinTools, type Tool } from "../registry.js";
+import { projectToolEntry } from "../project.js";
 
 /** list_domain_tools 输入 schema。 */
 const listDomainToolsInputSchema = z.object({
@@ -46,33 +45,10 @@ const listDomainToolsOutputSchema = z.object({
 });
 
 /**
- * 单工具 → 列表条目投影（与 server.listTools() 的映射逐字段一致）。
- *
- * @param tool 工具定义
- */
-function projectEntry(tool: Tool): Record<string, unknown> {
-  const entry: Record<string, unknown> = {
-    name: tool.name,
-    description: tool.description,
-    inputSchema: toJsonSchemaCompat(tool.inputSchema as never) as Record<
-      string,
-      unknown
-    >,
-  };
-  if (tool.outputSchema) {
-    entry.outputSchema = toJsonSchemaCompat(
-      tool.outputSchema as never,
-    ) as Record<string, unknown>;
-  }
-  if (tool.annotations) {
-    entry.annotations = tool.annotations;
-  }
-  return entry;
-}
-
-/**
  * list_domain_tools handler 工厂。
  *
+ * 条目投影复用 {@link projectToolEntry} 叶子（与 server.listTools 同一接口，
+ * 见 ../project.js），同形性由共享实现天然保证。
  * @param pool 可见性口径工具表；省略时调用期回退全量注册表（默认行为）。
  *   注意缺省必须在闭包内惰性解析而非参数默认值：本模块由 registry 转载入，
  *   初始化期读取 builtinTools 会踩 ESM 循环 TDZ（同 batch.ts 裁决）。
@@ -96,7 +72,7 @@ export function createListDomainToolsHandler(
     }
     const tools = (pool ?? builtinTools)
       .filter((t) => t.domain === rawDomain)
-      .map(projectEntry);
+      .map(projectToolEntry);
     return ok({ domain: rawDomain, tools });
   };
 }
