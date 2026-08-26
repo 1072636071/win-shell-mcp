@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { callTool, listTools as listToolsFn } from "../../src/server.js";
 import { isOk, isFail, type ToolResult } from "../../src/contract/output.js";
 import { builtinTools } from "../../src/registry.js";
+import { batchRunHandler } from "../../src/tools/batch.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
@@ -733,6 +734,15 @@ describe("batch_run 边界情况", () => {
     expect(isFail(r)).toBe(true);
     if (isFail(r)) {
       expect(r.error.code).toBe("EINVAL");
+    }
+  });
+
+  it("绕过 schema 直接调 handler：空 steps 数组同样返回 EINVAL（纵深防御）", async () => {
+    const r = await batchRunHandler({ steps: [] });
+    expect(isFail(r)).toBe(true);
+    if (isFail(r)) {
+      expect(r.error.code).toBe("EINVAL");
+      expect(r.error.message).toContain("非空");
     }
   });
 

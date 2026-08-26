@@ -35,6 +35,7 @@
 
 （对话历史与补充追加于此，新内容置于最前。）
 
+- **后续跟进（2026-08-26，提交后）**：审查相邻项经用户裁决就地修复——① handler 增非空 steps 守卫（与 inputSchema .min(1) 对齐的纵深防御，绕过 schema 直接调 handler 也返回 EINVAL）+ 直接调用守卫测试；② CODEBUDDY.md 与 AGENTS.md 字节同步（此前仅行尾符差异）。"下游需 verbose:true 的破坏性变更"核查确认在库无遗漏调用方（CHANGELOG 旧列/ADR 历史/memorial 归档中的旧形态引用均属刻意保留），无需修复。
 - **已解决（2026-08-26）**：01/02/03 全部 resolved，随单 commit 落地。核心：`batchRunInputSchema` 增 `verbose`；handler 以 `withVerbose` 构造默认 `{ allOk, summary }` / 失败附 `failedStep`；outputSchema 超集 `{ allOk, summary, steps?, failedStep? }`；测试经 helper 统一迁移 verbose 模式 + 新增默认形态 7 例；CHANGELOG ⚠️ Changed 条目对齐 text_replace 体例。
 - **偏差**：既有用例迁移采用共享 helper 内显式合并 `verbose: true`（非逐调用点改写），断言原样保留——见工单 02 实施记录。
 - **联动**：元数据总量因 outputSchema 超集增长，护栏基线 49769→50516（与 10 号批次同批落地；基线放宽至实测值已经用户确认授权，对齐 08 号先例）。

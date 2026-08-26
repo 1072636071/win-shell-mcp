@@ -572,8 +572,10 @@ export async function batchRunHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
   const raw = args as { steps?: unknown; verbose?: unknown };
-  if (!raw.steps || !Array.isArray(raw.steps)) {
-    return fail(ErrorCode.EINVAL, "batch_run 需要 steps 数组");
+  // 非空校验与 inputSchema 的 .min(1) 对齐（纵深防御）：MCP 路径恒经 schema 拒绝
+  // 空数组，此守卫兜住绕过 schema 直接调用 handler 的场景。
+  if (!Array.isArray(raw.steps) || raw.steps.length === 0) {
+    return fail(ErrorCode.EINVAL, "batch_run 需要非空 steps 数组");
   }
   // 工单 09：仅显式 true 时返回每步完整结果；默认（含省略/false）走极简输出。
   const verbose = raw.verbose === true;
