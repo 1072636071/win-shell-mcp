@@ -381,18 +381,15 @@ function crc32(buf: Buffer): number {
 
 /** archive_create 输入 schema。 */
 export const archiveCreateInputSchema = z.object({
-  path: z.string().describe("输出归档文件路径"),
-  sources: z
-    .array(z.string().min(1))
-    .min(1)
-    .describe("要归档的文件/目录路径数组"),
+  path: z.string(),
+  sources: z.array(z.string().min(1)).min(1),
   format: z
     .enum(["tar", "tar.gz", "zip"])
     .optional()
     .describe(
-      "归档格式，默认按路径扩展名推断（.tar.gz/.tgz→tar.gz, .zip→zip, 其他→tar）",
+      "默认按扩展名推断（.tar.gz/.tgz→tar.gz, .zip→zip, 其他→tar）",
     ),
-  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
+  cwd: z.string().optional().describe("默认 process.cwd()"),
 });
 
 /** archive_create 输出。 */
@@ -476,17 +473,17 @@ export async function archiveCreateHandler(
  * 成功返回 `{ created, path, format, bytes }`。
  */
 export const archiveCreateOutputSchema = z.object({
-  created: z.boolean().describe("是否创建成功"),
-  path: z.string().describe("归档文件路径"),
-  format: z.string().describe("归档格式（tar/tar.gz/zip）"),
-  bytes: z.number().int().nonnegative().describe("归档字节数"),
+  created: z.boolean(),
+  path: z.string(),
+  format: z.string(),
+  bytes: z.number().int().nonnegative(),
 });
 
 /** archive_create 工具定义。 */
 export const archiveCreateTool: Tool = {
   name: "archive_create",
   description:
-    "创建归档（≈ tar -czf / zip）。纯 Node 实现，支持 tar/tar.gz/zip（STORE）。format 默认按扩展名推断。返回 { created, path, format, bytes }。",
+    "创建归档（≈ tar -czf/zip）。纯 Node，支持 tar/tar.gz/zip(STORE)。format 默认按扩展名推断。",
   inputSchema: archiveCreateInputSchema,
   outputSchema: archiveCreateOutputSchema,
   // 写归档文件到文件系统，readOnlyHint: false；不覆盖既有源（仅创建归档），destructiveHint 省略
@@ -501,9 +498,9 @@ export const archiveCreateTool: Tool = {
 
 /** archive_extract 输入 schema。 */
 export const archiveExtractInputSchema = z.object({
-  path: z.string().describe("归档文件路径"),
-  dest: z.string().optional().describe("目标目录，默认归档文件所在目录"),
-  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
+  path: z.string(),
+  dest: z.string().optional().describe("默认归档所在目录"),
+  cwd: z.string().optional().describe("默认 process.cwd()"),
 });
 
 /** archive_extract 输出。 */
@@ -555,15 +552,15 @@ export async function archiveExtractHandler(
  * 成功返回 `{ extracted, dest }`。
  */
 export const archiveExtractOutputSchema = z.object({
-  extracted: z.boolean().describe("是否解压成功"),
-  dest: z.string().describe("目标目录"),
+  extracted: z.boolean(),
+  dest: z.string(),
 });
 
 /** archive_extract 工具定义。 */
 export const archiveExtractTool: Tool = {
   name: "archive_extract",
   description:
-    "解压归档（≈ tar -x / unzip）。纯 Node 实现，支持 tar/tar.gz/zip。dest 默认归档所在目录。返回 { extracted, dest }。",
+    "解压归档（≈ tar -x/unzip）。纯 Node，支持 tar/tar.gz/zip。dest 默认归档所在目录。",
   inputSchema: archiveExtractInputSchema,
   outputSchema: archiveExtractOutputSchema,
   // 解压会向文件系统写入多个文件，可能覆盖既有内容，readOnlyHint: false；

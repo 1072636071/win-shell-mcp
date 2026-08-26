@@ -30,7 +30,7 @@ const SERVER_INFO = {
  * 列出所有工具的 MCP 描述（name、description、inputSchema JSON schema）。
  *
  * outputSchema 与 annotations 条件透传：工具声明了才附上。
- * 全部 58 个工具均由 guard-mutating.test.ts 强制声明 outputSchema 与
+ * 全部 59 个工具均由 guard-mutating.test.ts 强制声明 outputSchema 与
  * annotations.readOnlyHint，此处条件透传为防御性编程，不依赖回退默认值。
  *
  * 供 ListTools handler 与测试使用。

@@ -14,8 +14,8 @@ import type { Tool } from "../registry.js";
 
 /** json_get 输入 schema。 */
 export const jsonGetInputSchema = z.object({
-  path: z.string().optional().describe("JSON 文件路径（与 data 二选一）"),
-  data: z.string().optional().describe("JSON 字符串（与 path 二选一）"),
+  path: z.string().optional().describe("与 data 二选一"),
+  data: z.string().optional().describe("与 path 二选一"),
   expr: z.string().describe("路径表达式，如 .foo.bar[0]；. 表示根"),
 });
 
@@ -143,7 +143,7 @@ export const jsonGetOutputSchema = z.object({
 export const jsonGetTool: Tool = {
   name: "json_get",
   description:
-    "按路径表达式从 JSON 文件或字符串取值（jq-lite 子集）。支持 .foo.bar 与 [0] 索引。返回 { value }。",
+    "按路径表达式从 JSON 取值（≈ jq get，仅 .foo.bar 与 [0]）。返回 {value}。",
   inputSchema: jsonGetInputSchema,
   outputSchema: jsonGetOutputSchema,
   annotations: { readOnlyHint: true },

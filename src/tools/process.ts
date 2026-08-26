@@ -36,17 +36,9 @@ export const processListInputSchema = z.object({
   filter: z
     .string()
     .optional()
-    .describe("按进程名过滤（includes 匹配，大小写不敏感）"),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回每个进程的内存使用与命令行（尽力而为）"),
-  maxResults: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe("返回结果上限，超出则截断并标记 truncated"),
+    .describe("includes 匹配，大小写不敏感"),
+  verbose: z.boolean().optional().describe("尽力而为"),
+  maxResults: z.number().int().positive().optional(),
 });
 
 /** 进程条目（极简）。 */
@@ -374,7 +366,7 @@ export const processListOutputSchema = z.object({
 export const processListTool: Tool = {
   name: "process_list",
   description:
-    "列出运行中进程。返回 { processes: [{ pid, name }], truncated }。filter 按进程名过滤（大小写不敏感）；verbose 含内存与命令行（Windows 仅内存，不取 WMI/PowerShell）；maxResults 截断。",
+    "列出运行中进程（≈ ps）。返回 { processes: [{ pid, name }], truncated }。verbose 含内存与命令行（Windows 仅内存）。maxResults 截断。",
   inputSchema: processListInputSchema,
   outputSchema: processListOutputSchema,
   annotations: { readOnlyHint: true },
@@ -385,29 +377,11 @@ export const processListTool: Tool = {
 
 /** process_kill 输入 schema。 */
 export const processKillInputSchema = z.object({
-  pid: z
-    .number()
-    .int()
-    .optional()
-    .describe("进程 ID（pid 与 name 至少提供其一）"),
-  name: z
-    .string()
-    .optional()
-    .describe("进程名（pid 与 name 至少提供其一；按名称终止所有匹配进程）"),
-  signal: z
-    .string()
-    .optional()
-    .describe("信号名（unix），默认 SIGTERM；force 为 true 时覆盖为 SIGKILL"),
-  force: z
-    .boolean()
-    .optional()
-    .describe("若为 true，强制终止（unix 用 SIGKILL，Windows 加 /F）"),
-  tree: z
-    .boolean()
-    .optional()
-    .describe(
-      "若为 true，连同子进程一起终止（Windows 用 taskkill /T，unix 递归找子进程）",
-    ),
+  pid: z.number().int().optional().describe("pid 与 name 至少提供其一"),
+  name: z.string().optional().describe("按名称终止所有匹配"),
+  signal: z.string().optional().describe("unix 信号名"),
+  force: z.boolean().optional(),
+  tree: z.boolean().optional(),
 });
 
 /** process_kill 输出。 */
@@ -689,15 +663,15 @@ export async function processKillHandler(
  * 成功返回 `{ killed, pid }`：是否终止成功与首个匹配 pid。
  */
 export const processKillOutputSchema = z.object({
-  killed: z.boolean().describe("是否终止成功"),
-  pid: z.number().int().describe("首个匹配 pid（按名称终止时为首个匹配）"),
+  killed: z.boolean(),
+  pid: z.number().int().describe("按名称终止时为首个匹配"),
 });
 
 /** process_kill 工具定义。 */
 export const processKillTool: Tool = {
   name: "process_kill",
   description:
-    "按 PID 或进程名终止进程。pid 或 name 至少提供其一；提供 name 时按名称终止所有匹配进程。signal 默认 SIGTERM；force 为 true 时 unix 用 SIGKILL，Windows 加 /F；tree 为 true 时连同子进程一起终止（Windows /T，unix 递归）。返回 { killed, pid }。",
+    "按 PID 或进程名终止进程（≈ kill）。pid 或 name 至少提供其一。signal 默认 SIGTERM；force=true 时 unix SIGKILL/Windows /F；tree=true 时连子进程（Windows /T，unix 递归）。",
   inputSchema: processKillInputSchema,
   outputSchema: processKillOutputSchema,
   // 终止进程不可逆，destructiveHint: true

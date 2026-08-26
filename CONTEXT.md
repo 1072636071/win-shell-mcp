@@ -8,7 +8,7 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 
 ## 现状基线（2026-08-25）
 
-- **已实现**：MCP stdio 单入口；15 个命令域、58 个工具；统一输出契约；JX 模式（dsh preset，权威模板见 `docs/dsh/`）。
+- **已实现**：MCP stdio 单入口；15 个命令域、59 个工具；统一输出契约；JX 模式（dsh preset，权威模板见 `docs/dsh/`）。
 - **已决策未实施**：dsh 插件双入口交付（ADR-0010/0011/0012）；破坏性操作保护（ADR-0008/0009，PRD ready-for-agent）；**PTC/Code Mode 适配（ADR-0014，memorial 006）——适配壳定位、MCP 标准注解作并发分类单一事实源、outputSchema 纳入首版**；**batch_run 批量编排（ADR-0015，memorial 007）——单 meta 工具内串行执行 + 断言 + 步骤间引用，一轮解决问题**。
 
 ## 术语表

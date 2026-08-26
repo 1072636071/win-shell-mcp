@@ -19,11 +19,8 @@ const ALGORITHMS = ["sha256", "sha1", "md5", "sha512"] as const;
 
 /** hash_file 输入 schema。 */
 export const hashFileInputSchema = z.object({
-  path: z.string().describe("文件路径"),
-  algorithm: z
-    .enum(ALGORITHMS)
-    .optional()
-    .describe("哈希算法，默认 sha256；支持 sha256/sha1/md5/sha512"),
+  path: z.string(),
+  algorithm: z.enum(ALGORITHMS).optional().describe("默认 sha256"),
 });
 
 /** hash_file 输出。 */
@@ -89,7 +86,7 @@ export const hashFileOutputSchema = z.object({
 export const hashFileTool: Tool = {
   name: "hash_file",
   description:
-    "计算文件摘要（≈ shasum/md5sum）。默认 sha256，支持 sha256/sha1/md5/sha512。流式读取支持大文件。返回 { hash, algorithm, path }。",
+    "计算文件摘要（≈ shasum）。默认 sha256，支持 sha1/md5/sha512。流式读取支持大文件。",
   inputSchema: hashFileInputSchema,
   outputSchema: hashFileOutputSchema,
   annotations: { readOnlyHint: true },

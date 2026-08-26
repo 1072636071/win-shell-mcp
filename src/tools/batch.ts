@@ -97,25 +97,22 @@ function stringifyValue(v: unknown): string {
 
 /** 断言输入 schema。 */
 const batchAssertInputSchema = z.object({
-  path: z.string().describe("点路径，访问该步 OK 结果展开后的顶层字段"),
+  path: z.string().describe("该步 data 的点路径"),
   op: z.enum(ASSERT_OPS),
   value: z.unknown().optional(),
 });
 
 /** 单步输入 schema。 */
 const batchStepInputSchema = z.object({
-  id: z.string().optional().describe("步骤标识，缺省为 step<N>（1-indexed）"),
-  tool: z.string().describe("要调用的工具名"),
-  args: z.record(z.string(), z.unknown()).optional().default({}).describe("工具参数"),
-  assert: z.array(batchAssertInputSchema).optional().describe("断言列表"),
+  id: z.string().optional().describe("缺省 step<N>（1-indexed）"),
+  tool: z.string(),
+  args: z.record(z.string(), z.unknown()).optional().default({}),
+  assert: z.array(batchAssertInputSchema).optional(),
 });
 
 /** batch_run 输入 schema。 */
 export const batchRunInputSchema = z.object({
-  steps: z
-    .array(batchStepInputSchema)
-    .min(1)
-    .describe("要串行执行的步骤列表"),
+  steps: z.array(batchStepInputSchema).min(1),
 });
 
 /** 断言输出 schema。 */
@@ -142,7 +139,7 @@ const batchStepOutputSchema = z.object({
 
 /** batch_run 输出 schema。 */
 export const batchRunOutputSchema = z.object({
-  allOk: z.boolean().describe("整批是否全部成功（所有执行步骤成功且断言通过）"),
+  allOk: z.boolean().describe("整批成功（含断言通过）"),
   steps: z.array(batchStepOutputSchema),
   summary: z.string(),
 });
@@ -772,7 +769,7 @@ export async function batchRunHandler(
 export const batchRunTool: Tool = {
   name: "batch_run",
   description:
-    "一次调用串行执行多个工具步骤，支持断言校验与步骤间引用。steps 按数组顺序执行，任一步失败（工具不存在、参数非法、handler 失败、断言不满足）立即短路，后续步骤不执行。args 与 assert value 中支持 {{stepId.output.path}} 模板插值：整串单引用保原类型（bool/number/object），混合拼接转字符串。断言支持 10 种操作符（eq/neq/gt/gte/lt/lte/in/re/truthy/falsy），纯数据、无 eval，逐条失败归因。",
+    "多步操作优先用 batch_run 一次完成，避免多轮往返。如：读文件→grep→替换→写回、检查→提交。steps 串行短路；引用 {{stepId.output.path}}；assert 10 种操作符 eq/neq/gt/gte/lt/lte/in/re/truthy/falsy。返回 { allOk, steps, summary }。",
   inputSchema: batchRunInputSchema,
   outputSchema: batchRunOutputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true },

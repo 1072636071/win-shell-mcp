@@ -15,10 +15,10 @@
 
 ## 工单与阻塞
 
-| # | 工单 | 状态 | 阻塞于 |
-|---|------|------|--------|
-| 01 | metadata-budget-guard-and-fact-fixes | ready-for-agent | 无 |
-| 02 | slim-descriptions-and-field-describes | ready-for-agent | 01 |
-| 03 | confusable-pairs-discrimination-review | ready-for-agent | 02 |
+| #   | 工单                                   | 状态            | 阻塞于 |
+| --- | -------------------------------------- | --------------- | ------ |
+| 01  | metadata-budget-guard-and-fact-fixes   | completed       | 无     |
+| 02  | slim-descriptions-and-field-describes  | completed       | 01     |
+| 03  | confusable-pairs-discrimination-review | completed       | 02     |
 
-进度：待实现。
+进度：01 已完成（护栏落地 + 事实修正，测试绿），02 已完成（2026-08-26 08:58，59 工具精简 + 收尾整合，实测 49769 降幅 11.56%，基线放宽至实测值，测试绿），03 已完成（2026-08-26，三对易混工具 + batch_run 引导语评审，所有判别点充分，无修复）。

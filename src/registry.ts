@@ -2,7 +2,7 @@
  * 工具注册表。
  *
  * 维护所有已注册工具，提供查询接口供 server 层使用。
- * 工单 12：注册全部 58 个工具（含 02/03 新增的 pwd/echo/run_command 与各域新增 find/cat/ping）。
+ * 工单 12：注册全部 59 个工具（含 02/03 新增的 pwd/echo/run_command 与各域新增 find/cat/ping）。
  *
  * 别名机制（工单 02）：Tool 可声明 aliases，findTool 在精确名匹配失败后回退到别名匹配，
  * 因此 `ls` / `list_directory` 等短名/别名调用与正名返回一致结果。
@@ -99,7 +99,7 @@ export interface ToolAnnotations {
  * 类型检查。成功结果经 `ok()` 统一收窄为输出契约，调用点无需强转。
  *
  * outputSchema / annotations 类型上可选，但由 guard-mutating.test.ts
- * 运行时强制：全部 58 个工具均声明非空 outputSchema 与显式 readOnlyHint。
+ * 运行时强制：全部 59 个工具均声明非空 outputSchema 与显式 readOnlyHint。
  * 该 guard test 是防漂移护栏，保留可选类型以避免大量类型断言噪音。
  */
 export interface Tool {
@@ -161,7 +161,7 @@ export function resetRegistry(): void {
   tools.length = 0;
 }
 
-// 注册内置工具（共 58 个，按域分组）
+// 注册内置工具（共 59 个，按域分组）
 // system 域
 registerTool(systemInfoTool);
 registerTool(systemDiskTool);

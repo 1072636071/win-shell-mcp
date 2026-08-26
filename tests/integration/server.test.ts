@@ -1,6 +1,6 @@
 /**
  * 集成测试：用 Client + InMemoryTransport 连接 createServer()，
- * 验证全部 58 个工具已注册、可列出、代表性工具可调用、未知工具失败、工具名唯一。
+ * 验证全部 59 个工具已注册、可列出、代表性工具可调用、未知工具失败、工具名唯一。
  *
  * 不启动真实 stdio，仅内存传输。
  */
@@ -118,7 +118,7 @@ async function setupClient(): Promise<{
 }
 
 describe('集成测试 - 工具注册', () => {
-  it('builtinTools 含 58 个工具', () => {
+  it('builtinTools 含 59 个工具', () => {
     expect(builtinTools.length).toBe(EXPECTED_TOOL_COUNT);
   });
 
@@ -143,7 +143,7 @@ describe('集成测试 - 工具注册', () => {
 });
 
 describe('集成测试 - listTools 端到端', () => {
-  it('Client listTools 返回 40 个工具', async () => {
+  it('Client listTools 返回 59 个工具', async () => {
     const { client, close } = await setupClient();
     try {
       const result = await client.listTools();

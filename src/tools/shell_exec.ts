@@ -26,36 +26,19 @@ import type { Tool } from "../registry.js";
 
 /** 输入 schema。 */
 export const shellExecInputSchema = z.object({
-  command: z.string().min(1).describe("要执行的命令（非空字符串）"),
-  cwd: z.string().optional().describe("工作目录（绝对或相对路径）"),
+  command: z.string().min(1),
+  cwd: z.string().optional(),
   timeout: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe("超时毫秒，超时杀子进程并返回 EXEC_TIMEOUT"),
-  encoding: z
-    .string()
-    .optional()
-    .describe("显式指定输出编码（如 gbk、utf-8），不指定则自动检测"),
-  env: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe("额外环境变量，合并到子进程环境"),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回 pid、duration、truncated"),
-  shell: z
-    .enum(["auto", "cmd"])
-    .optional()
-    .describe(
-      "shell 选择：auto（默认，Windows cmd.exe / unix sh）、cmd（Windows cmd.exe）",
-    ),
-  stdin: z
-    .string()
-    .optional()
-    .describe("写入子进程标准输入的字符串，写完即关闭"),
+    .describe("毫秒，超时返回 EXEC_TIMEOUT"),
+  encoding: z.string().optional().describe("不指定则自动检测"),
+  env: z.record(z.string(), z.string()).optional(),
+  verbose: z.boolean().optional(),
+  shell: z.enum(["auto", "cmd"]).optional().describe("默认 auto"),
+  stdin: z.string().optional().describe("写完即关闭"),
 });
 
 /** shell_exec 输入类型。 */
@@ -182,24 +165,19 @@ export async function shellExecHandler(
  * 与 ShellExecMinimal/ShellExecFull 接口等价的 zod schema。
  */
 export const shellExecOutputSchema = z.object({
-  exitCode: z.number().int().describe("退出码（非零是正常结果，不是工具失败）"),
-  stdout: z.string().describe("标准输出（可能截断）"),
-  stderr: z.string().describe("标准错误（可能截断）"),
-  pid: z.number().int().optional().describe("子进程 pid（verbose 时返回）"),
-  duration: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("耗时毫秒（verbose 时返回）"),
-  truncated: z.boolean().optional().describe("输出是否截断（verbose 时返回）"),
+  exitCode: z.number().int().describe("非零是正常结果"),
+  stdout: z.string().describe("可能截断"),
+  stderr: z.string().describe("可能截断"),
+  pid: z.number().int().optional(),
+  duration: z.number().int().nonnegative().optional(),
+  truncated: z.boolean().optional(),
 });
 
 /** shell_exec 工具定义。 */
 export const shellExecTool: Tool = {
   name: "shell_exec",
   description:
-    "执行 shell 命令，返回 {exitCode, stdout, stderr}。shell 可选 auto/cmd；支持 stdin、cwd、timeout、env、encoding、verbose。非零退出码是正常结果。",
+    "执行 raw shell 命令字符串（≈ sh -c），管道/重定向/通配由 shell 解释。返回 {exitCode, stdout, stderr}。非零退出码是正常结果。",
   inputSchema: shellExecInputSchema,
   outputSchema: shellExecOutputSchema,
   // 黑盒执行任意 shell 命令，潜在破坏性（rm/format/git reset 等），destructiveHint: true

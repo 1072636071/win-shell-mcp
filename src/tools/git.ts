@@ -157,8 +157,8 @@ function parseDiffFiles(diff: string): string[] {
 
 /** git_status 输入 schema。 */
 export const gitStatusInputSchema = z.object({
-  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
-  verbose: z.boolean().optional().describe("若为 true，额外返回 files 列表"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
+  verbose: z.boolean().optional().describe("额外返回 files 列表"),
 });
 
 /** git_status 文件条目（verbose）。 */
@@ -269,7 +269,7 @@ export const gitStatusOutputSchema = z.object({
 export const gitStatusTool: Tool = {
   name: "git_status",
   description:
-    "获取 git 仓库状态。返回 { branch, changed, staged, untracked }。verbose 时额外返回 files 列表。",
+    "获取 git 仓库状态（≈ git status）。返回 { branch, changed, staged, untracked }，verbose 加 files 列表。",
   inputSchema: gitStatusInputSchema,
   outputSchema: gitStatusOutputSchema,
   annotations: { readOnlyHint: true },
@@ -280,17 +280,17 @@ export const gitStatusTool: Tool = {
 
 /** git_log 输入 schema。 */
 export const gitLogInputSchema = z.object({
-  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
   limit: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe("返回提交数上限，默认 10"),
+    .describe("提交数上限，默认 10"),
   verbose: z
     .boolean()
     .optional()
-    .describe("若为 true，返回完整 40 字符 hash（默认短 hash）"),
+    .describe("返回完整 40 字符 hash（默认短 hash）"),
 });
 
 /** git_log 提交条目。 */
@@ -392,7 +392,7 @@ export const gitLogOutputSchema = z.object({
 export const gitLogTool: Tool = {
   name: "git_log",
   description:
-    "获取 git 提交历史。返回 { commits: [{ hash, author, date, subject }], count }。limit 默认 10。",
+    "获取 git 提交历史（≈ git log）。返回 { commits, count }，limit 默认 10，verbose 返回完整 40 字符 hash。",
   inputSchema: gitLogInputSchema,
   outputSchema: gitLogOutputSchema,
   annotations: { readOnlyHint: true },
@@ -403,11 +403,11 @@ export const gitLogTool: Tool = {
 
 /** git_branch 输入 schema。 */
 export const gitBranchInputSchema = z.object({
-  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
   verbose: z
     .boolean()
     .optional()
-    .describe("若为 true，额外返回 all 列表（含 remote 上游）"),
+    .describe("额外返回 all 列表（含 remote 上游）"),
 });
 
 /** git_branch 分支条目（verbose）。 */
@@ -512,7 +512,7 @@ export const gitBranchOutputSchema = z.object({
 export const gitBranchTool: Tool = {
   name: "git_branch",
   description:
-    "获取 git 分支列表。返回 { branches, current }。verbose 时额外返回 all 列表（含 remote 上游）。",
+    "获取 git 分支列表（≈ git branch）。返回 { branches, current }，verbose 加 all（含 remote 上游）。",
   inputSchema: gitBranchInputSchema,
   outputSchema: gitBranchOutputSchema,
   annotations: { readOnlyHint: true },
@@ -523,17 +523,17 @@ export const gitBranchTool: Tool = {
 
 /** git_diff 输入 schema。 */
 export const gitDiffInputSchema = z.object({
-  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
   staged: z
     .boolean()
     .optional()
-    .describe("若为 true，显示暂存区差异（git diff --cached）"),
+    .describe("显示暂存区差异（--cached）"),
   against: z
     .string()
     .optional()
-    .describe("目标 ref（commit/分支/HEAD~1），比较工作区或暂存区与之的差异"),
-  path: z.string().optional().describe("限制差异范围的文件路径"),
-  verbose: z.boolean().optional().describe("若为 true，不截断 diff 输出"),
+    .describe("目标 ref（commit/分支/HEAD~1）"),
+  path: z.string().optional().describe("限制差异范围"),
+  verbose: z.boolean().optional().describe("不截断 diff 输出"),
 });
 
 /** git_diff 输出。 */
@@ -604,7 +604,7 @@ export const gitDiffOutputSchema = z.object({
 export const gitDiffTool: Tool = {
   name: "git_diff",
   description:
-    "获取 git 差异内容。返回 { diff, truncated, files }。staged 显示暂存区差异，against 指定目标 ref（如 HEAD~1、main），path 限制范围，输出默认截断。",
+    "获取 git 差异（≈ git diff）。返回 { diff, truncated, files }，默认截断；staged 显示暂存区，against 指定目标 ref，path 限范围。",
   inputSchema: gitDiffInputSchema,
   outputSchema: gitDiffOutputSchema,
   annotations: { readOnlyHint: true },
@@ -615,11 +615,10 @@ export const gitDiffTool: Tool = {
 
 /** git_add 输入 schema。 */
 export const gitAddInputSchema = z.object({
-  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
   paths: z
     .array(z.string())
-    .min(1)
-    .describe("要暂存的文件路径数组（至少一个）"),
+    .min(1),
 });
 
 /** git_add 输出。 */
@@ -667,14 +666,14 @@ export async function gitAddHandler(
  * 成功返回 `{ added: string[] }`：已暂存的文件路径数组。
  */
 export const gitAddOutputSchema = z.object({
-  added: z.array(z.string()).describe("已暂存的文件路径"),
+  added: z.array(z.string()),
 });
 
 /** git_add 工具定义。 */
 export const gitAddTool: Tool = {
   name: "git_add",
   description:
-    "暂存文件到 git 索引。返回 { added: string[] }。paths 指定文件路径数组。",
+    "暂存文件到 git 索引（≈ git add）。返回 { added }。",
   inputSchema: gitAddInputSchema,
   outputSchema: gitAddOutputSchema,
   // 修改 git 索引（暂存区），readOnlyHint: false
@@ -686,12 +685,12 @@ export const gitAddTool: Tool = {
 
 /** git_commit 输入 schema。 */
 export const gitCommitInputSchema = z.object({
-  cwd: z.string().optional().describe("git 仓库路径，默认当前工作目录"),
-  message: z.string().min(1).describe("提交信息"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
+  message: z.string().min(1),
   amend: z
     .boolean()
     .optional()
-    .describe("若为 true，修改上一个提交（--amend）"),
+    .describe("修改上一个提交（--amend）"),
 });
 
 /** git_commit 输出。 */
@@ -746,16 +745,16 @@ export async function gitCommitHandler(
  * 成功返回 `{ committed, hash, message }`。
  */
 export const gitCommitOutputSchema = z.object({
-  committed: z.boolean().describe("是否提交成功"),
-  hash: z.string().describe("新提交 hash"),
-  message: z.string().describe("提交信息"),
+  committed: z.boolean(),
+  hash: z.string(),
+  message: z.string(),
 });
 
 /** git_commit 工具定义。 */
 export const gitCommitTool: Tool = {
   name: "git_commit",
   description:
-    "提交暂存的变更。返回 { committed, hash, message }。amend 修改上一个提交。不推送。",
+    "提交暂存的变更（≈ git commit）。返回 { committed, hash, message }，amend 修改上一提交，不推送。",
   inputSchema: gitCommitInputSchema,
   outputSchema: gitCommitOutputSchema,
   // 创建新提交（或 amend 改写历史），readOnlyHint: false
@@ -771,18 +770,16 @@ export const gitCheckoutInputSchema = z.object({
     .string()
     .min(1)
     .optional()
-    .describe("分支名或提交 ref；与 paths 同时提供时作为还原源"),
+    .describe("分支名或 ref；与 paths 同时提供时作还原源"),
   create: z
     .boolean()
     .optional()
-    .describe("true 时创建新分支（git checkout -b），仅 branch 单独使用时有效"),
+    .describe("创建新分支（-b），仅 branch 单独使用时有效"),
   paths: z
     .array(z.string().min(1))
     .optional()
-    .describe(
-      "要还原的文件路径数组；提供时执行 git checkout [branch] -- paths",
-    ),
-  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
+    .describe("还原文件路径；提供时执行 checkout [branch] -- paths"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
 });
 
 /** git_checkout handler：切换/创建分支或还原文件。 */
@@ -838,16 +835,16 @@ export async function gitCheckoutHandler(
  * 成功返回 `{ checkedOut, branch?, paths? }`：branch 与 paths 至少返回其一。
  */
 export const gitCheckoutOutputSchema = z.object({
-  checkedOut: z.boolean().describe("是否操作成功"),
-  branch: z.string().optional().describe("切换/创建的分支名"),
-  paths: z.array(z.string()).optional().describe("还原的文件路径"),
+  checkedOut: z.boolean(),
+  branch: z.string().optional().describe("切换/创建的分支"),
+  paths: z.array(z.string()).optional().describe("还原的文件"),
 });
 
 /** git_checkout 工具定义。 */
 export const gitCheckoutTool: Tool = {
   name: "git_checkout",
   description:
-    "切换/创建分支或还原文件（≈ git checkout）。branch 单独提供时切换分支；create=true 创建分支；paths 提供时还原文件，可配合 branch 指定源 ref。返回 { checkedOut, branch?, paths? }。",
+    "切换/创建分支或还原文件（≈ git checkout）。branch 切换分支，create=true 创建分支，paths 还原文件（可配 branch 指定源 ref）。返回 { checkedOut, branch?, paths? }。",
   inputSchema: gitCheckoutInputSchema,
   outputSchema: gitCheckoutOutputSchema,
   // 切换分支/创建分支/还原文件均改变工作区或 HEAD，readOnlyHint: false
@@ -860,10 +857,10 @@ export const gitCheckoutTool: Tool = {
 
 /** git_push 输入 schema。 */
 export const gitPushInputSchema = z.object({
-  remote: z.string().optional().describe("远程名，默认 origin"),
-  branch: z.string().optional().describe("分支名，默认当前分支"),
-  force: z.boolean().optional().describe("true 时强制推送（--force）"),
-  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
+  remote: z.string().optional().describe("默认 origin"),
+  branch: z.string().optional().describe("默认当前分支"),
+  force: z.boolean().optional().describe("强制推送（--force）"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
 });
 
 /** git_push handler：推送提交到远程。 */
@@ -898,16 +895,16 @@ export async function gitPushHandler(
  * 成功返回 `{ pushed, remote, branch }`。
  */
 export const gitPushOutputSchema = z.object({
-  pushed: z.boolean().describe("是否推送成功"),
-  remote: z.string().describe("远程名"),
-  branch: z.string().describe("分支名（未指定时为空串）"),
+  pushed: z.boolean(),
+  remote: z.string(),
+  branch: z.string().describe("未指定时为空串"),
 });
 
 /** git_push 工具定义。 */
 export const gitPushTool: Tool = {
   name: "git_push",
   description:
-    "推送提交到远程（≈ git push）。remote 默认 origin；force 强制推送。返回 { pushed, remote, branch }。",
+    "推送提交到远程（≈ git push）。返回 { pushed, remote, branch }，remote 默认 origin，force 强制推送。",
   inputSchema: gitPushInputSchema,
   outputSchema: gitPushOutputSchema,
   // 改写远程分支引用（force 时更甚），readOnlyHint: false
@@ -920,9 +917,9 @@ export const gitPushTool: Tool = {
 
 /** git_pull 输入 schema。 */
 export const gitPullInputSchema = z.object({
-  remote: z.string().optional().describe("远程名，默认 origin"),
-  branch: z.string().optional().describe("分支名，默认当前分支"),
-  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
+  remote: z.string().optional().describe("默认 origin"),
+  branch: z.string().optional().describe("默认当前分支"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
 });
 
 /** git_pull handler：从远程拉取并合并。 */
@@ -954,16 +951,16 @@ export async function gitPullHandler(
  * 成功返回 `{ pulled, remote, branch }`。
  */
 export const gitPullOutputSchema = z.object({
-  pulled: z.boolean().describe("是否拉取成功"),
-  remote: z.string().describe("远程名"),
-  branch: z.string().describe("分支名（未指定时为空串）"),
+  pulled: z.boolean(),
+  remote: z.string(),
+  branch: z.string().describe("未指定时为空串"),
 });
 
 /** git_pull 工具定义。 */
 export const gitPullTool: Tool = {
   name: "git_pull",
   description:
-    "从远程拉取并合并（≈ git pull）。remote 默认 origin。返回 { pulled, remote, branch }。",
+    "从远程拉取并合并（≈ git pull）。返回 { pulled, remote, branch }，remote 默认 origin。",
   inputSchema: gitPullInputSchema,
   outputSchema: gitPullOutputSchema,
   // 拉取并合并改变工作区与本地分支引用，readOnlyHint: false
@@ -976,9 +973,9 @@ export const gitPullTool: Tool = {
 
 /** git_clone 输入 schema。 */
 export const gitCloneInputSchema = z.object({
-  url: z.string().min(1).describe("仓库 URL"),
-  path: z.string().optional().describe("目标目录"),
-  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
+  url: z.string().min(1),
+  path: z.string().optional(),
+  cwd: z.string().optional().describe("默认当前工作目录"),
 });
 
 /** git_clone handler：克隆仓库。 */
@@ -1014,8 +1011,8 @@ export async function gitCloneHandler(
  * 成功返回 `{ cloned, path }`。
  */
 export const gitCloneOutputSchema = z.object({
-  cloned: z.boolean().describe("是否克隆成功"),
-  path: z.string().describe("目标目录（未指定时为空串）"),
+  cloned: z.boolean(),
+  path: z.string().describe("未指定时为空串"),
 });
 
 /** git_clone 工具定义。 */
@@ -1037,8 +1034,8 @@ export const gitStashInputSchema = z.object({
   action: z
     .enum(["push", "pop", "list", "drop"])
     .optional()
-    .describe("操作，默认 push"),
-  cwd: z.string().optional().describe("工作目录，默认 process.cwd()"),
+    .describe("默认 push"),
+  cwd: z.string().optional().describe("默认当前工作目录"),
 });
 
 /** git_stash handler：暂存/恢复工作区变更。 */
@@ -1089,15 +1086,15 @@ export async function gitStashHandler(
  * 用 optional 字段表达两种形状的最通用集合。
  */
 export const gitStashOutputSchema = z.object({
-  action: z.string().describe("操作类型（push/pop/list/drop）"),
+  action: z.string().describe("push/pop/list/drop"),
   stashes: z
     .array(z.string())
     .optional()
-    .describe("stash 列表（仅 action=list 时返回）"),
+    .describe("仅 action=list 时返回"),
   success: z
     .boolean()
     .optional()
-    .describe("是否操作成功（仅 action≠list 时返回）"),
+    .describe("仅 action≠list 时返回"),
 });
 
 /**

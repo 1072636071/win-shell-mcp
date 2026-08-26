@@ -2,7 +2,7 @@
  * DSH 插件投影测试（工单 01/05）。
  *
  * 用 fake ctx 捕获 defineTool 调用，验证：
- * - apply 全量注册 58 个工具（工单 05 移除白名单后）
+ * - apply 全量注册 59 个工具（工单 05 移除白名单后）
  * - fs_read 投影含正确 output.schema + isConcurrencySafe()===true
  * - execute 解包：ok→return data，fail→throw ToolCallError
  * - config.exclude 过滤
@@ -20,7 +20,7 @@ import {
 } from "../src/plugin.js";
 import { builtinTools } from "../src/registry.js";
 
-/** 内置工具总数（工单 12 起 58 个）。 */
+/** 内置工具总数（工单 12 起 59 个）。 */
 const EXPECTED_TOOL_COUNT = builtinTools.length;
 
 /** 捕获 defineTool 调用的 fake ctx。 */

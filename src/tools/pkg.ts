@@ -39,9 +39,7 @@ export const pkgDetectInputSchema = z.object({
   managers: z
     .array(z.string().min(1))
     .optional()
-    .describe(
-      "要检测的包管理器列表，默认检测全部（npm/yarn/pnpm/bun/pip/pip3/cargo/go/python/python3）",
-    ),
+    .describe("默认检测全部"),
 });
 
 /** pkg_detect 输入类型。 */
@@ -109,7 +107,7 @@ export const pkgDetectOutputSchema = z.object({
 export const pkgDetectTool: Tool = {
   name: "pkg_detect",
   description:
-    "检测各包管理器（npm/yarn/pnpm/bun/pip/pip3/cargo/go/python/python3）可用性。返回 { available: Record<string, boolean>, checked: string[] }。managers 可指定要检测的子集。",
+    "检测包管理器可用性（npm/yarn/pnpm/pip/cargo 等）。返回 {available, checked}。",
   inputSchema: pkgDetectInputSchema,
   outputSchema: pkgDetectOutputSchema,
   annotations: { readOnlyHint: true },
@@ -120,19 +118,19 @@ export const pkgDetectTool: Tool = {
 
 /** pkg_run 输入 schema。 */
 export const pkgRunInputSchema = z.object({
-  manager: z.string().min(1).describe("包管理器名（如 npm、pnpm、pip）"),
+  manager: z.string().min(1).describe("如 npm/pnpm/pip"),
   args: z
     .array(z.string())
     .optional()
-    .describe('传给包管理器的参数（如 ["install", "lodash"]）'),
-  cwd: z.string().optional().describe("工作目录（绝对或相对路径）"),
+    .describe('如 ["install","lodash"]'),
+  cwd: z.string().optional(),
   timeout: z
     .number()
     .int()
     .positive()
     .optional()
     .describe("超时毫秒，超时杀子进程并返回 EXEC_TIMEOUT"),
-  verbose: z.boolean().optional().describe("若为 true，返回 pid 与 duration"),
+  verbose: z.boolean().optional().describe("额外返回 pid/duration"),
 });
 
 /** pkg_run 输入类型。 */
@@ -234,23 +232,18 @@ export async function pkgRunHandler(
  * 极简返回 `{ exitCode, stdout, stderr }`；verbose 额外返回 `{ pid, duration }`。
  */
 export const pkgRunOutputSchema = z.object({
-  exitCode: z.number().int().describe("退出码（非零是正常结果，不是工具失败）"),
-  stdout: z.string().describe("标准输出（可能截断）"),
-  stderr: z.string().describe("标准错误（可能截断）"),
-  pid: z.number().int().optional().describe("子进程 pid（verbose 时返回）"),
-  duration: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("耗时毫秒（verbose 时返回）"),
+  exitCode: z.number().int().describe("非零是正常结果，不是工具失败"),
+  stdout: z.string().describe("可能截断"),
+  stderr: z.string().describe("可能截断"),
+  pid: z.number().int().optional().describe("verbose 时返回"),
+  duration: z.number().int().nonnegative().optional().describe("verbose 时返回"),
 });
 
 /** pkg_run 工具定义。 */
 export const pkgRunTool: Tool = {
   name: "pkg_run",
   description:
-    '执行包管理器命令，返回 { exitCode, stdout, stderr }。manager 如 npm/pnpm/pip，args 如 ["install", "lodash"]。支持 cwd、timeout、verbose。非零退出码是正常结果。',
+    "执行包管理器命令（≈ npm run/pip install）。返回 {exitCode,stdout,stderr}。非零退出码是正常结果。",
   inputSchema: pkgRunInputSchema,
   outputSchema: pkgRunOutputSchema,
   // 执行任意包管理器命令（install/uninstall/run 等），副作用不可控且可能改变文件系统/依赖树，

@@ -16,10 +16,7 @@ import type { Tool } from "../registry.js";
 
 /** 输入 schema：verbose 可选布尔。 */
 export const systemInfoInputSchema = z.object({
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回完整系统信息（含 uptime、内存、CPU 等）"),
+  verbose: z.boolean().optional().describe("额外返回 uptime/内存/CPU"),
 });
 
 /** system_info 输入类型。 */
@@ -153,7 +150,7 @@ export const systemInfoOutputSchema = z.object({
 export const systemInfoTool: Tool = {
   name: "system_info",
   description:
-    "获取当前系统信息（os、arch、platform、hostname、cwd、node 版本、当前时间 ISO 8601）。开启 verbose 时返回完整信息（uptime、loadavg、cpus、内存）。",
+    "获取系统信息（os/arch/hostname/cwd/node）。verbose 时额外返回 uptime/cpus/内存。",
   inputSchema: systemInfoInputSchema,
   outputSchema: systemInfoOutputSchema,
   annotations: { readOnlyHint: true },
@@ -173,11 +170,8 @@ export const systemInfoTool: Tool = {
 
 /** 输入 schema：path 可选，默认 process.cwd()；all 可选，枚举所有磁盘。 */
 export const systemDiskInputSchema = z.object({
-  path: z.string().optional().describe("挂载点或目录路径，默认当前工作目录"),
-  all: z
-    .boolean()
-    .optional()
-    .describe("若为 true，枚举所有磁盘/挂载点（返回 { disks: [...] }）"),
+  path: z.string().optional().describe("默认当前工作目录"),
+  all: z.boolean().optional().describe("枚举所有盘，返回 {disks}"),
 });
 
 /** system_disk 输入类型。 */
@@ -398,7 +392,7 @@ export const systemDiskOutputSchema = z.object({
 export const systemDiskTool: Tool = {
   name: "system_disk",
   description:
-    "获取磁盘用量（total/free/used，字节）。path 指定挂载点或目录，默认当前工作目录；all=true 时枚举所有磁盘/挂载点并返回 { disks: [...] }。",
+    "获取磁盘用量（total/free/used，字节，≈ df）。all=true 枚举所有盘返回 {disks}。",
   inputSchema: systemDiskInputSchema,
   outputSchema: systemDiskOutputSchema,
   annotations: { readOnlyHint: true },
@@ -418,10 +412,7 @@ export const systemDiskTool: Tool = {
 
 /** 输入 schema：verbose 可选布尔。 */
 export const systemMemoryInputSchema = z.object({
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回完整内存信息（含 used、swap）"),
+  verbose: z.boolean().optional().describe("额外返回 used/swap"),
 });
 
 /** system_memory 输入类型。 */
@@ -511,7 +502,7 @@ export const systemMemoryOutputSchema = z.object({
 export const systemMemoryTool: Tool = {
   name: "system_memory",
   description:
-    "获取系统内存信息（total/free，字节）。开启 verbose 时返回 used 与 swap 信息。",
+    "获取内存信息（total/free，字节，≈ free）。verbose 时额外返回 used/swap。",
   inputSchema: systemMemoryInputSchema,
   outputSchema: systemMemoryOutputSchema,
   annotations: { readOnlyHint: true },
@@ -531,10 +522,7 @@ export const systemMemoryTool: Tool = {
 
 /** 输入 schema：verbose 可选布尔。 */
 export const systemPathInputSchema = z.object({
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回 count 与 existing 统计"),
+  verbose: z.boolean().optional().describe("额外返回 count/existing"),
 });
 
 /** system_path 输入类型。 */
@@ -602,7 +590,7 @@ export const systemPathOutputSchema = z.object({
 export const systemPathTool: Tool = {
   name: "system_path",
   description:
-    "获取 PATH 环境变量条目列表。开启 verbose 时返回 count 与 existing（实际存在的目录数）。",
+    "获取 PATH 条目列表。verbose 时额外返回 count 与 existing（实际存在的目录数）。",
   inputSchema: systemPathInputSchema,
   outputSchema: systemPathOutputSchema,
   annotations: { readOnlyHint: true },

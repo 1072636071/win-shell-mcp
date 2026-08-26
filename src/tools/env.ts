@@ -18,21 +18,17 @@ import type { Tool } from "../registry.js";
 
 /** env_get 输入 schema：name 可选，省略时返回全部。 */
 export const envGetInputSchema = z.object({
-  name: z.string().optional().describe("变量名，省略则返回全部环境变量"),
+  name: z.string().optional().describe("省略则返回全部"),
   filter: z
     .string()
     .optional()
-    .describe(
-      "按变量名过滤（includes 匹配，大小写不敏感），仅 name 省略时生效",
-    ),
+    .describe("按变量名过滤（includes 匹配，大小写不敏感），仅 name 省略时生效"),
   maxLen: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe(
-      "每个变量值截断到 N 字符（控制全量返回的 token 成本），仅 name 省略时生效",
-    ),
+    .describe("值截断到 N 字符，仅 name 省略时生效"),
 });
 
 /** env_get 输入类型。 */
@@ -109,7 +105,7 @@ export const envGetOutputSchema = z.object({
 export const envGetTool: Tool = {
   name: "env_get",
   description:
-    "读取环境变量。name 指定时返回 {name, value}（value 为 null 表示未设置）；省略时返回全部 {vars, count}，可用 filter 按名过滤、maxLen 截断每个值以控制 token 成本。",
+    "读取环境变量（≈ env/printenv）。name 指定返回 {name,value}；省略返回全部 {vars,count}。",
   inputSchema: envGetInputSchema,
   outputSchema: envGetOutputSchema,
   annotations: { readOnlyHint: true },
@@ -122,8 +118,8 @@ export const envGetTool: Tool = {
 
 /** env_set 输入 schema。 */
 export const envSetInputSchema = z.object({
-  name: z.string().min(1).describe("变量名（非空字符串）"),
-  value: z.string().describe("变量值"),
+  name: z.string().min(1),
+  value: z.string(),
 });
 
 /** env_set 输入类型。 */
@@ -167,15 +163,15 @@ export async function envSetHandler(
  * 成功返回 `{ set, name }`。
  */
 export const envSetOutputSchema = z.object({
-  set: z.boolean().describe("是否设置成功"),
-  name: z.string().describe("变量名"),
+  set: z.boolean(),
+  name: z.string(),
 });
 
 /** env_set 工具定义。 */
 export const envSetTool: Tool = {
   name: "env_set",
   description:
-    "设置环境变量，写入 process.env，对后续会话生效。返回 {set, name}。",
+    "设置环境变量（≈ export），写入 process.env 对后续会话生效。",
   inputSchema: envSetInputSchema,
   outputSchema: envSetOutputSchema,
   // 修改进程环境变量，destructiveHint: true（覆盖既有值）
@@ -189,7 +185,7 @@ export const envSetTool: Tool = {
 
 /** env_unset 输入 schema。 */
 export const envUnsetInputSchema = z.object({
-  name: z.string().min(1).describe("变量名（非空字符串）"),
+  name: z.string().min(1),
 });
 
 /** env_unset 输入类型。 */
@@ -229,14 +225,14 @@ export async function envUnsetHandler(
  * 成功返回 `{ unset, name }`。
  */
 export const envUnsetOutputSchema = z.object({
-  unset: z.boolean().describe("是否删除成功"),
-  name: z.string().describe("变量名"),
+  unset: z.boolean(),
+  name: z.string(),
 });
 
 /** env_unset 工具定义。 */
 export const envUnsetTool: Tool = {
   name: "env_unset",
-  description: "删除环境变量，从 process.env 移除。返回 {unset, name}。",
+  description: "删除环境变量（≈ unset），从 process.env 移除。",
   inputSchema: envUnsetInputSchema,
   outputSchema: envUnsetOutputSchema,
   // 删除环境变量不可逆，destructiveHint: true

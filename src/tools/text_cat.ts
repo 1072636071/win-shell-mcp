@@ -27,15 +27,15 @@ import type { Tool } from "../registry.js";
 
 /** text_cat 输入 schema。 */
 export const textCatInputSchema = z.object({
-  path: z.string().describe("文件路径"),
+  path: z.string(),
   encoding: z
     .enum(["utf8", "gbk", "auto"])
     .optional()
-    .describe("解码编码，默认 auto（自动识别 GBK/UTF-8）"),
-  startLine: z.number().int().optional().describe("起始行（1-based，含）"),
-  endLine: z.number().int().optional().describe("结束行（1-based，含）"),
-  startByte: z.number().int().optional().describe("起始字节（0-based，含）"),
-  endByte: z.number().int().optional().describe("结束字节（0-based，含）"),
+    .describe("默认 auto（自动识别 GBK/UTF-8）"),
+  startLine: z.number().int().optional().describe("1-based 含"),
+  endLine: z.number().int().optional().describe("1-based 含"),
+  startByte: z.number().int().optional().describe("0-based 含"),
+  endByte: z.number().int().optional().describe("0-based 含"),
 });
 
 export type TextCatInput = z.infer<typeof textCatInputSchema>;
@@ -140,16 +140,16 @@ export async function textCatHandler(
  * - truncated：是否触发了截断
  */
 export const textCatOutputSchema = z.object({
-  content: z.string().describe("文件内容（可能截断）"),
-  lines: z.number().int().nonnegative().describe("内容行数"),
-  truncated: z.boolean().describe("是否触发截断"),
+  content: z.string().describe("可能截断"),
+  lines: z.number().int().nonnegative(),
+  truncated: z.boolean().describe("触发截断"),
 });
 
 /** text_cat 工具定义。 */
 export const textCatTool: Tool = {
   name: "cat",
   description:
-    "读文件（Unix cat）。支持编码 auto 识别（GBK/UTF-8）、字节范围（startByte/endByte，0-based 含）、行范围（startLine/endLine，1-based 含）、长内容截断。",
+    "读文件整体（≈ cat）。支持编码 auto（GBK/UTF-8）、字节范围（0-based 含）、行范围（1-based 含）、截断。",
   inputSchema: textCatInputSchema,
   outputSchema: textCatOutputSchema,
   annotations: { readOnlyHint: true },

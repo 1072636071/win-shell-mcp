@@ -121,7 +121,7 @@ const MUTATING_TOOLS: readonly string[] = [
   "batch_run",
 ];
 
-describe("工单 04 最终 guard：全部 58 工具 outputSchema 与 readOnlyHint", () => {
+describe("工单 04 最终 guard：全部 59 工具 outputSchema 与 readOnlyHint", () => {
   it("builtinTools 总数为 59", () => {
     expect(builtinTools.length).toBe(59);
   });

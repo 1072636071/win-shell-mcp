@@ -16,18 +16,15 @@ import type { Tool } from "../registry.js";
 
 /** net_download 输入 schema。 */
 export const netDownloadInputSchema = z.object({
-  url: z.string().url().describe("要下载的 URL（http 或 https）"),
-  path: z.string().describe("本地目标文件路径"),
-  mkdirParents: z
-    .boolean()
-    .optional()
-    .describe("true 时自动创建不存在的父目录，默认 true"),
+  url: z.string().url(),
+  path: z.string(),
+  mkdirParents: z.boolean().optional().describe("默认 true"),
   timeout: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe("超时毫秒，超时返回 EXEC_TIMEOUT"),
+    .describe("毫秒，超时返回 EXEC_TIMEOUT"),
 });
 
 /** net_download 输出。 */
@@ -145,9 +142,9 @@ export async function netDownloadHandler(
  * 成功返回 `{ saved, bytes, path }`。
  */
 export const netDownloadOutputSchema = z.object({
-  saved: z.boolean().describe("是否保存成功"),
-  bytes: z.number().int().nonnegative().describe("下载字节数"),
-  path: z.string().describe("本地目标文件路径"),
+  saved: z.boolean(),
+  bytes: z.number().int().nonnegative(),
+  path: z.string(),
 });
 
 /** net_download 工具定义。 */

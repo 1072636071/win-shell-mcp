@@ -15,8 +15,8 @@ import type { Tool } from "../registry.js";
 
 /** fs_du 输入 schema。 */
 export const fsDuInputSchema = z.object({
-  path: z.string().describe("目录路径"),
-  verbose: z.boolean().optional().describe("若为 true，额外返回文件数与目录数"),
+  path: z.string().describe("目录"),
+  verbose: z.boolean().optional().describe("返回 files/dirs 计数"),
 });
 
 /** 极简输出。 */
@@ -108,25 +108,15 @@ export async function fsDuHandler(
 export const fsDuOutputSchema = z.object({
   size: z.number().int().nonnegative().describe("累计字节数"),
   path: z.string().describe("目录路径"),
-  files: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("文件数（verbose 模式）"),
-  dirs: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("子目录数（verbose 模式）"),
+  files: z.number().int().nonnegative().optional().describe("文件数（verbose）"),
+  dirs: z.number().int().nonnegative().optional().describe("子目录数（verbose）"),
 });
 
 /** fs_du 工具定义。 */
 export const fsDuTool: Tool = {
   name: "fs_du",
   description:
-    "递归累计目录大小（≈ Unix du）。极简返回 { size, path }；verbose 额外返回 files 与 dirs 计数。",
+    "递归累计目录大小（≈ du），返回 size/path，verbose 加 files/dirs。",
   inputSchema: fsDuInputSchema,
   outputSchema: fsDuOutputSchema,
   annotations: { readOnlyHint: true },

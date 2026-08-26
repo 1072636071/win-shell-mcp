@@ -55,26 +55,21 @@ async function readTextFile(path: string): Promise<string> {
 // ─── text_grep ──────────────────────────────────────────
 
 export const textGrepInputSchema = z.object({
-  path: z.string().min(1).describe("要搜索的文件路径"),
+  path: z.string().min(1),
   pattern: z
     .string()
     .min(1)
     .describe(
-      "搜索模式：默认字面量子串匹配（元字符原样，如 C:\\Users 免转义）；/正则/ 形式启用正则，尾部可选 flags i/m/s",
+      "默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s）",
     ),
-  ignoreCase: z.boolean().optional().describe("忽略大小写"),
+  ignoreCase: z.boolean().optional(),
   context: z
     .number()
     .int()
     .nonnegative()
     .optional()
-    .describe("上下文行数（匹配行前后各 N 行）"),
-  maxResults: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe("最大匹配数，超出则截断"),
+    .describe("匹配行前后各 N 行"),
+  maxResults: z.number().int().positive().optional().describe("超出则截断"),
 });
 
 export type TextGrepInput = z.infer<typeof textGrepInputSchema>;
@@ -188,21 +183,21 @@ export const textGrepOutputSchema = z.object({
   matches: z
     .array(
       z.object({
-        line: z.number().int().positive().describe("行号（1-indexed）"),
-        text: z.string().describe("行文本（可能截断）"),
+        line: z.number().int().positive().describe("1-indexed"),
+        text: z.string().describe("可能截断"),
       }),
     )
-    .describe("匹配行列表（含上下文）"),
+    .describe("含上下文"),
   count: z.number().int().nonnegative().describe("返回的匹配数"),
-  truncated: z.boolean().describe("是否触发 maxResults 截断"),
-  patternMode: z.enum(["literal", "regex"]).describe("pattern 解释模式"),
-  hint: z.string().optional().describe("可选双向提示文案"),
+  truncated: z.boolean().describe("触发 maxResults 截断"),
+  patternMode: z.enum(["literal", "regex"]),
+  hint: z.string().optional().describe("双向提示文案"),
 });
 
 export const textGrepTool: Tool = {
   name: "text_grep",
   description:
-    '在文件中搜索匹配行。pattern 默认按字面量子串匹配——元字符一律原样，含反斜杠的路径免转义直接可搜，如 C:\\Users\\alice 反斜杠原样参与匹配；写 "a|b" 只匹配 a|b 这三个字符本身，不按「或」展开。需要正则时用首尾斜杠包裹并附尾部可选 flags i/m/s，如 "/a|b/" 匹配 a 或 b、"/\\d{3}/" 匹配三位数字，体内斜杠须写作 \\/。判定永远向字面量收敛：不符合 /…/ 规范的写法整体按字面量处理（如 /usr/bin、/api/v1/）。已知残余洞：形如 /tmp/ 的恰好首尾斜杠短字面量会被判为正则 tmp——命中异常偏多时结果会附 hint 提示核对。返回匹配行（含上下文）、count 与 patternMode（literal/regex）。',
+    '单文件搜匹配行（≈ grep）。pattern 默认字面量子串（元字符原样，反斜杠路径免转义）；/正则/ 包裹启用正则（flags i/m/s，体内 \\/）。歧义向字面量收敛。残余洞:/tmp/ 类短串被判正则，异常偏多附 hint。返回匹配行±context、count、patternMode。',
   inputSchema: textGrepInputSchema,
   outputSchema: textGrepOutputSchema,
   annotations: { readOnlyHint: true },
@@ -212,13 +207,8 @@ export const textGrepTool: Tool = {
 // ─── text_head ──────────────────────────────────────────
 
 export const textHeadInputSchema = z.object({
-  path: z.string().min(1).describe("文件路径"),
-  lines: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("取头 N 行，默认 10"),
+  path: z.string().min(1),
+  lines: z.number().int().nonnegative().optional().describe("默认 10"),
 });
 
 export type TextHeadInput = z.infer<typeof textHeadInputSchema>;
@@ -248,13 +238,13 @@ export async function textHeadHandler(
  * 成功返回 `{ lines, total }`：lines 为头 N 行文本数组，total 为文件总行数。
  */
 export const textHeadOutputSchema = z.object({
-  lines: z.array(z.string()).describe("头 N 行文本"),
+  lines: z.array(z.string()),
   total: z.number().int().nonnegative().describe("文件总行数"),
 });
 
 export const textHeadTool: Tool = {
   name: "text_head",
-  description: "取文件头 N 行（默认 10）。返回行数组与文件总行数。",
+  description: "取文件头 N 行（≈ head，默认 10）。返回行数组与文件总行数。",
   inputSchema: textHeadInputSchema,
   outputSchema: textHeadOutputSchema,
   annotations: { readOnlyHint: true },
@@ -264,13 +254,8 @@ export const textHeadTool: Tool = {
 // ─── text_tail ──────────────────────────────────────────
 
 export const textTailInputSchema = z.object({
-  path: z.string().min(1).describe("文件路径"),
-  lines: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("取尾 N 行，默认 10"),
+  path: z.string().min(1),
+  lines: z.number().int().nonnegative().optional().describe("默认 10"),
 });
 
 export type TextTailInput = z.infer<typeof textTailInputSchema>;
@@ -301,13 +286,13 @@ export async function textTailHandler(
  * 成功返回 `{ lines, total }`：lines 为尾 N 行文本数组，total 为文件总行数。
  */
 export const textTailOutputSchema = z.object({
-  lines: z.array(z.string()).describe("尾 N 行文本"),
+  lines: z.array(z.string()),
   total: z.number().int().nonnegative().describe("文件总行数"),
 });
 
 export const textTailTool: Tool = {
   name: "text_tail",
-  description: "取文件尾 N 行（默认 10）。返回行数组与文件总行数。",
+  description: "取文件尾 N 行（≈ tail，默认 10）。返回行数组与文件总行数。",
   inputSchema: textTailInputSchema,
   outputSchema: textTailOutputSchema,
   annotations: { readOnlyHint: true },
@@ -317,7 +302,7 @@ export const textTailTool: Tool = {
 // ─── text_wc ────────────────────────────────────────────
 
 export const textWcInputSchema = z.object({
-  path: z.string().min(1).describe("文件路径"),
+  path: z.string().min(1),
 });
 
 export type TextWcInput = z.infer<typeof textWcInputSchema>;
@@ -353,15 +338,15 @@ export async function textWcHandler(
  * 成功返回 `{ lines, words, chars, bytes }`：行数、词数、字符数、字节数。
  */
 export const textWcOutputSchema = z.object({
-  lines: z.number().int().nonnegative().describe("行数"),
-  words: z.number().int().nonnegative().describe("词数"),
-  chars: z.number().int().nonnegative().describe("字符数"),
-  bytes: z.number().int().nonnegative().describe("字节数"),
+  lines: z.number().int().nonnegative(),
+  words: z.number().int().nonnegative(),
+  chars: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
 });
 
 export const textWcTool: Tool = {
   name: "text_wc",
-  description: "统计文件的行数、词数、字符数、字节数。",
+  description: "统计文件的行数、词数、字符数、字节数（≈ wc）。",
   inputSchema: textWcInputSchema,
   outputSchema: textWcOutputSchema,
   annotations: { readOnlyHint: true },
@@ -371,14 +356,9 @@ export const textWcTool: Tool = {
 // ─── text_diff ──────────────────────────────────────────
 
 export const textDiffInputSchema = z.object({
-  a: z.string().min(1).describe("文件 A 路径"),
-  b: z.string().min(1).describe("文件 B 路径"),
-  context: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("上下文行数，默认 3"),
+  a: z.string().min(1).describe("文件 A"),
+  b: z.string().min(1).describe("文件 B"),
+  context: z.number().int().nonnegative().optional().describe("默认 3"),
 });
 
 export type TextDiffInput = z.infer<typeof textDiffInputSchema>;
@@ -579,14 +559,14 @@ export async function textDiffHandler(
  * 成功返回 `{ diff, same }`：diff 为 unified diff 文本（可能截断），same 表示两文件是否完全相同。
  */
 export const textDiffOutputSchema = z.object({
-  diff: z.string().describe("unified diff 文本（可能截断）"),
+  diff: z.string().describe("可能截断"),
   same: z.boolean().describe("两文件是否完全相同"),
 });
 
 export const textDiffTool: Tool = {
   name: "text_diff",
   description:
-    "基于 LCS 的真行级 diff，生成 unified diff 文本。插入一行仅影响对应 hunk，不会其后行全被误报。same 表示是否完全相同。",
+    "生成 unified diff（≈ diff，基于 LCS 行级）。插入一行仅影响对应 hunk，不误报其后行。same 表示是否完全相同。",
   inputSchema: textDiffInputSchema,
   outputSchema: textDiffOutputSchema,
   annotations: { readOnlyHint: true },
@@ -596,33 +576,29 @@ export const textDiffTool: Tool = {
 // ─── text_replace ───────────────────────────────────────
 
 export const textReplaceInputSchema = z.object({
-  path: z.string().min(1).describe("文件路径"),
+  path: z.string().min(1),
   pattern: z
     .string()
     .min(1)
     .describe(
-      "查找模式：默认字面量子串匹配（元字符原样，如 C:\\Users\\alice 反斜杠免转义）；/正则/ 形式启用正则，尾部可选 flags i/m/s/g",
+      "默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s/g）",
     ),
   replacement: z
     .string()
     .describe(
-      "替换文本：字面量模式下按原样插入（$1/$&/$$ 记号不展开）；正则模式下支持 $1、$&、$$ 回引用",
+      "字面量模式原样插入（$1/$&/$$ 不展开）；正则模式支持 $1/$&/$$ 回引用",
     ),
-  write: z.boolean().optional().describe("为 true 时原地写回文件，默认 false"),
+  write: z.boolean().optional().describe("true 原地写回，默认 false"),
   all: z
     .boolean()
     .optional()
-    .describe(
-      "显式全量替换开关：true 时替换全部命中；与 maxReplace 同时提供时本参数优先。正则模式尾部 g 标志等价本开关",
-    ),
+    .describe("true 全量替换；与 maxReplace 同时提供时优先。正则尾部 g 等价"),
   maxReplace: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe(
-      "最大替换次数（多命中时的限量表态）。all 为 true 或正则尾部带 g 时忽略",
-    ),
+    .describe("限量替换次数。all:true 或正则 g 时忽略"),
 });
 
 export type TextReplaceInput = z.infer<typeof textReplaceInputSchema>;
@@ -1025,26 +1001,26 @@ export async function textReplaceHandler(
  * - hint：可选双向提示文案（异常偏多兜底）
  */
 export const textReplaceOutputSchema = z.object({
-  replaced: z.number().int().nonnegative().describe("实际替换次数"),
+  replaced: z.number().int().nonnegative(),
   totalMatches: z.number().int().nonnegative().describe("全文命中总数"),
-  content: z.string().describe("替换后内容（可能截断）"),
-  written: z.boolean().describe("是否写回文件"),
-  patternMode: z.enum(["literal", "regex"]).describe("pattern 解释模式"),
+  content: z.string().describe("可能截断"),
+  written: z.boolean(),
+  patternMode: z.enum(["literal", "regex"]),
   position: z
     .object({
-      line: z.number().int().positive().describe("行号（1-indexed）"),
-      col: z.number().int().positive().describe("列号（1-indexed）"),
+      line: z.number().int().positive().describe("1-indexed"),
+      col: z.number().int().positive().describe("1-indexed"),
     })
     .optional()
     .describe("恰 1 命中时的命中位置"),
-  context: z.string().optional().describe("恰 1 命中时的替换后上下文片段"),
-  hint: z.string().optional().describe("可选双向提示文案"),
+  context: z.string().optional().describe("恰 1 命中时"),
+  hint: z.string().optional().describe("双向提示文案"),
 });
 
 export const textReplaceTool: Tool = {
   name: "text_replace",
   description:
-    '在文件中查找并替换文本。pattern 默认按字面量子串匹配——元字符一律原样，含反斜杠的路径免转义直接可换，如把 C:\\Users\\alice 替换为 C:\\Users\\bob 时反斜杠原样参与匹配；写 "a|b" 只查找 a|b 字面量本身。此时 replacement 为纯字面插入，$1/$&/$$ 等回引用记号原样保留、不展开；正则 pattern（"/(\\w+)\\.ts/" 式）的 replacement 支持 JS 风格回引用 $1/$&/$$，尾部可选 flags i/m/s/g 中 g 表示全量替换。替换数量永不静默决定：0 命中报错；恰 1 命中自动替换并回显上下文供核验；多于 1 命中须提供 all:true 或 maxReplace:N 显式表态（正则尾部 g 等价全量表态），否则拒绝并列出命中位置清单。write 为 true 时原地写回（沿用源文件编码，GBK 不被静默改写为 UTF-8），否则只返回结果。残余洞同搜索工具：形如 /tmp/ 的首尾斜杠短字面量会被判为正则，命中异常偏多时的提示兜底提醒核对。返回 patternMode（literal/regex）。',
+    '在文件中查找替换（≈ sed）。pattern 默认字面量子串（元字符原样、反斜杠路径免转义），replacement 纯字面插入（回引用不展开）；/正则/ 启用正则（flags i/m/s/g，replacement 支持 $1/$&/$$，g 表全量）。替换数量永不静默：0 命中报错；1 命中自动替换；多命中须 all:true 或 maxReplace:N 表态否则拒绝。write:true 原地写回（沿用源编码）。残余洞同搜索工具。返回 patternMode。',
   inputSchema: textReplaceInputSchema,
   outputSchema: textReplaceOutputSchema,
   // write=true 时原地修改文件，destructiveHint: true

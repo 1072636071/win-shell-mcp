@@ -108,7 +108,7 @@ function projectConcurrencySafe(
  *   readOnlyHint===true 返回 `()=>true`，命中参数级覆盖表按参数判定，否则省略（fail-closed）
  * - execute：调用 callTool，ok→剥离 ok 标志返回纯 data，fail→throw ToolCallError
  *
- * outputSchema 由 guard-mutating.test.ts 强制非空（全部 58 工具），此处
+ * outputSchema 由 guard-mutating.test.ts 强制非空（全部 59 工具），此处
  * 用非空断言直接转换，不再回退到 `{ type: 'object' }` 默认值。
  */
 function projectTool(tool: Tool): DshToolDefinition {
@@ -135,7 +135,7 @@ function projectTool(tool: Tool): DshToolDefinition {
 /**
  * 插件 apply：遍历 builtinTools，全量注册到 ctx.tools。
  *
- * 工单 05 移除试点白名单后，默认注册全部 58 个工具。
+ * 工单 05 移除试点白名单后，默认注册全部 59 个工具。
  * `config.exclude` 按工具名排除，调用方可按需裁剪注册集合。
  *
  * @param ctx Cordis 插件上下文（由宿主注入）

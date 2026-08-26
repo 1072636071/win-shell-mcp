@@ -20,7 +20,7 @@ export const netListenInputSchema = z.object({
   filter: z
     .string()
     .optional()
-    .describe("按端口或进程名过滤（含子串匹配，大小写不敏感）"),
+    .describe("含子串，大小写不敏感"),
 });
 
 /** 监听端口条目。 */

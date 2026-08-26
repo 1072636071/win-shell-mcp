@@ -183,21 +183,15 @@ async function buildHttpResult(
 
 /** net_get 输入 schema。 */
 export const netGetInputSchema = z.object({
-  url: z.string().describe("请求 URL"),
-  headers: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe("自定义请求头（如 Authorization、API key）"),
+  url: z.string(),
+  headers: z.record(z.string(), z.string()).optional(),
   timeoutMs: z
     .number()
     .int()
     .positive()
     .optional()
     .describe("超时（毫秒），默认 30000"),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回响应头、ok、statusText、duration、truncated"),
+  verbose: z.boolean().optional(),
 });
 
 /** net_get 输入类型。 */
@@ -256,28 +250,20 @@ export async function netGetHandler(
  * 用 optional 字段表达最通用形状（与 net_post 输出形状一致）。
  */
 export const netGetOutputSchema = z.object({
-  status: z.number().int().describe("HTTP 状态码"),
-  body: z.string().describe("响应体（可能截断）"),
-  headers: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe("响应头（verbose 时返回）"),
-  ok: z.boolean().optional().describe("response.ok（verbose 时返回）"),
-  statusText: z.string().optional().describe("状态文本（verbose 时返回）"),
-  duration: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("耗时毫秒（verbose 时返回）"),
-  truncated: z.boolean().optional().describe("body 是否截断（verbose 时返回）"),
+  status: z.number().int(),
+  body: z.string().describe("可能截断"),
+  headers: z.record(z.string(), z.string()).optional(),
+  ok: z.boolean().optional(),
+  statusText: z.string().optional(),
+  duration: z.number().int().nonnegative().optional(),
+  truncated: z.boolean().optional(),
 });
 
 /** net_get 工具定义。 */
 export const netGetTool: Tool = {
   name: "net_get",
   description:
-    "发起 HTTP GET 请求。返回 { status, body }，body 截断至 2000 字符。headers 自定义请求头。timeoutMs 默认 30000。verbose 含 headers/ok/statusText/duration/truncated。",
+    "发起 HTTP GET 请求（≈ curl GET）。返回 { status, body }，body 截断至 2000 字符。",
   inputSchema: netGetInputSchema,
   outputSchema: netGetOutputSchema,
   // HTTP GET 语义为只读（不改变本地状态；服务端按 RFC 9110 应把 GET 实现为安全幂等），
@@ -290,28 +276,23 @@ export const netGetTool: Tool = {
 
 /** net_post 输入 schema。 */
 export const netPostInputSchema = z.object({
-  url: z.string().describe("请求 URL"),
-  body: z.string().optional().describe("请求体（文本）"),
+  url: z.string(),
+  body: z.string().optional(),
   json: z
     .boolean()
     .optional()
-    .describe("若为 true，设置 Content-Type: application/json"),
+    .describe("设 Content-Type: application/json"),
   headers: z
     .record(z.string(), z.string())
     .optional()
-    .describe(
-      "自定义请求头（如 Authorization、API key；覆盖 json 的 Content-Type）",
-    ),
+    .describe("覆盖 json 的 Content-Type"),
   timeoutMs: z
     .number()
     .int()
     .positive()
     .optional()
     .describe("超时（毫秒），默认 30000"),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回响应头、ok、statusText、duration、truncated"),
+  verbose: z.boolean().optional(),
 });
 
 /** net_post 输入类型。 */
@@ -383,28 +364,20 @@ export async function netPostHandler(
  * 与 net_get 输出形状一致，用 optional 字段表达最通用形状。
  */
 export const netPostOutputSchema = z.object({
-  status: z.number().int().describe("HTTP 状态码"),
-  body: z.string().describe("响应体（可能截断）"),
-  headers: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe("响应头（verbose 时返回）"),
-  ok: z.boolean().optional().describe("response.ok（verbose 时返回）"),
-  statusText: z.string().optional().describe("状态文本（verbose 时返回）"),
-  duration: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("耗时毫秒（verbose 时返回）"),
-  truncated: z.boolean().optional().describe("body 是否截断（verbose 时返回）"),
+  status: z.number().int(),
+  body: z.string().describe("可能截断"),
+  headers: z.record(z.string(), z.string()).optional(),
+  ok: z.boolean().optional(),
+  statusText: z.string().optional(),
+  duration: z.number().int().nonnegative().optional(),
+  truncated: z.boolean().optional(),
 });
 
 /** net_post 工具定义。 */
 export const netPostTool: Tool = {
   name: "net_post",
   description:
-    "发起 HTTP POST 请求。返回 { status, body }，body 截断至 2000 字符。json=true 时设 Content-Type: application/json。headers 自定义请求头（覆盖 json 的 Content-Type）。timeoutMs 默认 30000。verbose 含 headers/ok/statusText/duration/truncated。",
+    "发起 HTTP POST 请求（≈ curl POST）。返回 { status, body }，body 截断至 2000 字符。json=true 设 Content-Type: application/json，headers 覆盖之。",
   inputSchema: netPostInputSchema,
   outputSchema: netPostOutputSchema,
   // POST 语义对服务端有副作用（创建/更新资源、触发动作等），即使本工具不写本地文件系统，
@@ -421,11 +394,8 @@ type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
 
 /** net_dns 输入 schema。 */
 export const netDnsInputSchema = z.object({
-  hostname: z.string().describe("主机名"),
-  recordType: z
-    .enum(DNS_RECORD_TYPES)
-    .optional()
-    .describe("记录类型（A/AAAA/CNAME/MX/TXT），默认 A"),
+  hostname: z.string(),
+  recordType: z.enum(DNS_RECORD_TYPES).optional().describe("默认 A"),
 });
 
 /** net_dns 输入类型。 */
@@ -543,7 +513,7 @@ export const netDnsOutputSchema = z.object({
 export const netDnsTool: Tool = {
   name: "net_dns",
   description:
-    "DNS 解析。返回 { addresses, recordType }。recordType 默认 A，支持 A/AAAA/CNAME/MX/TXT。",
+    "DNS 解析（≈ nslookup）。返回 { addresses, recordType }。recordType 默认 A，支持 A/AAAA/CNAME/MX/TXT。",
   inputSchema: netDnsInputSchema,
   outputSchema: netDnsOutputSchema,
   annotations: { readOnlyHint: true },
@@ -554,8 +524,8 @@ export const netDnsTool: Tool = {
 
 /** net_tcp 输入 schema。 */
 export const netTcpInputSchema = z.object({
-  host: z.string().describe("主机"),
-  port: z.number().int().min(0).max(65535).describe("端口（0-65535）"),
+  host: z.string(),
+  port: z.number().int().min(0).max(65535),
   timeout: z
     .number()
     .int()
@@ -669,7 +639,7 @@ export const netTcpOutputSchema = z.object({
 export const netTcpTool: Tool = {
   name: "net_tcp",
   description:
-    "TCP 可达性探测。返回 { reachable, host, port, duration }。reachable 为 true/false，不是错误。timeout 默认 3000ms。",
+    "TCP 可达性探测（≈ nc -z）。返回 { reachable, host, port, duration }。reachable 为 true/false，不是错误。timeout 默认 3000ms。",
   inputSchema: netTcpInputSchema,
   outputSchema: netTcpOutputSchema,
   annotations: { readOnlyHint: true },

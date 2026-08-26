@@ -25,21 +25,10 @@ type EntryType = "file" | "dir" | "symlink";
 
 /** 文件名匹配模式 schema。 */
 export const fsFindInputSchema = z.object({
-  pattern: z.string().min(1).describe("文件名匹配模式，支持 * 通配"),
-  path: z
-    .string()
-    .optional()
-    .describe("起始目录，默认当前目录（经 pathNormalize 处理）"),
-  maxDepth: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe("最大递归深度（1 表示仅起始目录本身）"),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回含 type 与 size 的条目"),
+  pattern: z.string().min(1).describe("文件名模式（支持 *）"),
+  path: z.string().optional().describe("起始目录（默认 .）"),
+  maxDepth: z.number().int().positive().optional().describe("最大深度（1=仅起始目录）"),
+  verbose: z.boolean().optional().describe("返回 type/size"),
 });
 
 /** verbose 条目结构。 */
@@ -194,10 +183,10 @@ export const fsFindOutputSchema = z.object({
   entries: z
     .array(
       z.union([
-        z.string().describe("匹配的相对路径（极简）"),
+        z.string().describe("匹配的相对路径"),
         z.object({
           name: z.string().describe("匹配的相对路径"),
-          type: z.enum(["file", "dir", "symlink"]).describe("条目类型"),
+          type: z.enum(["file", "dir", "symlink"]),
           size: z.number().int().nonnegative().describe("字节数"),
         }),
       ]),
@@ -209,7 +198,7 @@ export const fsFindOutputSchema = z.object({
 export const fsFindTool: Tool = {
   name: "find",
   description:
-    "按文件名模式递归搜索文件（≈ Unix find，支持 * 通配）。可指定起始目录、maxDepth、verbose（含 type/size）。",
+    "按文件名模式递归找文件（≈ find，支持 * 通配，非内容搜索）。",
   inputSchema: fsFindInputSchema,
   outputSchema: fsFindOutputSchema,
   // 仅递归读取目录树，不改变文件系统，readOnlyHint: true

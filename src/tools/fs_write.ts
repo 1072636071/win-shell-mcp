@@ -23,59 +23,44 @@ import type { Tool } from "../registry.js";
 
 /** fs_write 输入 schema。 */
 export const fsWriteInputSchema = z.object({
-  path: z.string().describe("目标文件路径"),
-  content: z.string().describe("要写入的内容"),
-  encoding: z
-    .string()
-    .optional()
-    .describe("编码，默认 utf-8，支持 gbk 等其它 iconv-lite 编码"),
-  append: z.boolean().optional().describe("true 时追加写入，否则覆盖"),
-  mkdirParents: z
-    .boolean()
-    .optional()
-    .describe("true 时自动创建不存在的父目录，默认 true"),
+  path: z.string().describe("文件"),
+  content: z.string().describe("内容"),
+  encoding: z.string().optional().describe("编码（默认 utf-8，支持 gbk 等）"),
+  append: z.boolean().optional().describe("追加写入（默认覆盖）"),
+  mkdirParents: z.boolean().optional().describe("自动建父目录（默认 true）"),
 });
 
 /** fs_mkdir 输入 schema。 */
 export const fsMkdirInputSchema = z.object({
-  path: z.string().describe("目标目录路径"),
-  recursive: z
-    .boolean()
-    .optional()
-    .describe("true 时递归创建（默认 true，类似 mkdir -p）"),
+  path: z.string().describe("目录"),
+  recursive: z.boolean().optional().describe("递归创建（默认 true）"),
 });
 
 /** fs_rm 输入 schema。 */
 export const fsRmInputSchema = z.object({
-  path: z.string().describe("目标路径"),
-  recursive: z.boolean().optional().describe("true 时递归删除目录树"),
-  force: z.boolean().optional().describe("true 时忽略不存在的路径"),
+  path: z.string().describe("路径"),
+  recursive: z.boolean().optional().describe("递归删目录树"),
+  force: z.boolean().optional().describe("忽略不存在"),
 });
 
 /** fs_cp 输入 schema。 */
 export const fsCpInputSchema = z.object({
-  src: z.string().describe("源路径"),
-  dest: z.string().describe("目标路径"),
-  recursive: z.boolean().optional().describe("true 时递归复制目录"),
+  src: z.string().describe("源"),
+  dest: z.string().describe("目标"),
+  recursive: z.boolean().optional().describe("递归复制目录"),
 });
 
 /** fs_mv 输入 schema。 */
 export const fsMvInputSchema = z.object({
-  src: z.string().describe("源路径"),
-  dest: z.string().describe("目标路径（已存在则按 overwrite 处理）"),
-  overwrite: z
-    .boolean()
-    .optional()
-    .describe("true 时覆盖已存在的目标，默认 false"),
+  src: z.string().describe("源"),
+  dest: z.string().describe("目标"),
+  overwrite: z.boolean().optional().describe("覆盖已存在目标（默认 false）"),
 });
 
 /** fs_touch 输入 schema。 */
 export const fsTouchInputSchema = z.object({
-  path: z.string().describe("目标文件路径"),
-  update: z
-    .boolean()
-    .optional()
-    .describe("true 时若文件已存在则更新 mtime 为当前时间"),
+  path: z.string().describe("文件"),
+  update: z.boolean().optional().describe("已存在则更新 mtime"),
 });
 
 /**
@@ -495,7 +480,7 @@ export const fsWriteOutputSchema = z.object({
 export const fsWriteTool: Tool = {
   name: "fs_write",
   description:
-    "写文件（支持 utf-8/gbk 编码，可追加写入）。mkdirParents 默认 true 自动建父目录。返回写入字节数。",
+    "写文件，支持 utf-8/gbk 编码与追加；mkdirParents 默认 true 自动建父目录。",
   inputSchema: fsWriteInputSchema,
   outputSchema: fsWriteOutputSchema,
   // 覆盖写入会破坏既有内容，destructiveHint: true
@@ -509,13 +494,13 @@ export const fsWriteTool: Tool = {
  * 成功返回 `{ created }`：是否新建（已存在且是目录时为 false）。
  */
 export const fsMkdirOutputSchema = z.object({
-  created: z.boolean().describe("是否新建（已存在且是目录时为 false）"),
+  created: z.boolean().describe("是否新建"),
 });
 
 /** fs_mkdir 工具定义。 */
 export const fsMkdirTool: Tool = {
   name: "fs_mkdir",
-  description: "建目录（recursive 默认 true，类似 mkdir -p）。返回是否新建。",
+  description: "建目录（≈ mkdir -p，recursive 默认 true）。",
   inputSchema: fsMkdirInputSchema,
   outputSchema: fsMkdirOutputSchema,
   // 创建目录非破坏性操作（不覆盖既有内容），destructiveHint 省略
@@ -533,23 +518,15 @@ export const fsMkdirTool: Tool = {
  */
 export const fsRmOutputSchema = z.object({
   removed: z.boolean().describe("是否删除"),
-  targetType: z
-    .enum(["file", "dir", "symlink"])
-    .optional()
-    .describe("被删目标的类型（force=true 且路径不存在时无此字段）"),
-  recursiveCount: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("递归删除时删除的条目数（含目标目录自身；仅 recursive=true 且目标为目录时）"),
+  targetType: z.enum(["file", "dir", "symlink"]).optional().describe("目标类型（force 删不存在时无）"),
+  recursiveCount: z.number().int().nonnegative().optional().describe("递归删除条目数（含目录自身，仅 recursive+目录时）"),
 });
 
 /** fs_rm 工具定义。 */
 export const fsRmTool: Tool = {
   name: "fs_rm",
   description:
-    "删除文件/目录（recursive 删目录树，force 忽略不存在）。返回是否删除、目标类型（file/dir/symlink，仅删除时）与递归删除条目数（含目录自身）。",
+    "删除文件/目录（≈ rm），recursive 删目录树、force 忽略不存在；返回 removed/targetType/recursiveCount。",
   inputSchema: fsRmInputSchema,
   outputSchema: fsRmOutputSchema,
   // 删除不可逆，destructiveHint: true
@@ -566,17 +543,13 @@ export const fsRmTool: Tool = {
  */
 export const fsCpOutputSchema = z.object({
   copied: z.boolean().describe("是否复制成功"),
-  overwritten: z
-    .boolean()
-    .optional()
-    .describe("是否覆盖了已存在的目标"),
+  overwritten: z.boolean().optional().describe("是否覆盖已存在目标"),
 });
 
 /** fs_cp 工具定义。 */
 export const fsCpTool: Tool = {
   name: "fs_cp",
-  description:
-    "复制文件/目录（目录需 recursive）。返回是否复制成功与是否覆盖已存在目标。",
+  description: "复制文件/目录（≈ cp，目录需 recursive）。",
   inputSchema: fsCpInputSchema,
   outputSchema: fsCpOutputSchema,
   // 复制到已存在目标会覆盖，destructiveHint: true
@@ -595,17 +568,14 @@ export const fsCpTool: Tool = {
 export const fsMvOutputSchema = z.object({
   moved: z.boolean().describe("是否移动成功"),
   dest: z.string().describe("最终目标路径"),
-  overwritten: z
-    .boolean()
-    .optional()
-    .describe("是否覆盖了已存在的目标"),
+  overwritten: z.boolean().optional().describe("是否覆盖已存在目标"),
 });
 
 /** fs_mv 工具定义。 */
 export const fsMvTool: Tool = {
   name: "fs_mv",
   description:
-    "移动/重命名（≈ Unix mv）。dest 为目录时移入该目录；overwrite 为 true 时覆盖已存在目标。返回 { moved, dest, overwritten? }。",
+    "移动/重命名（≈ mv），dest 为目录时移入；overwrite 覆盖已存在目标。",
   inputSchema: fsMvInputSchema,
   outputSchema: fsMvOutputSchema,
   // overwrite=true 时覆盖既有目标，destructiveHint: true
@@ -619,13 +589,13 @@ export const fsMvTool: Tool = {
  * 成功返回 `{ created }`：是否新建（已存在时为 false）。
  */
 export const fsTouchOutputSchema = z.object({
-  created: z.boolean().describe("是否新建（已存在时为 false）"),
+  created: z.boolean().describe("是否新建"),
 });
 
 /** fs_touch 工具定义。 */
 export const fsTouchTool: Tool = {
   name: "fs_touch",
-  description: "创建空文件或更新 mtime。返回是否新建（false 表示已存在）。",
+  description: "创建空文件或更新 mtime（≈ touch）。",
   inputSchema: fsTouchInputSchema,
   outputSchema: fsTouchOutputSchema,
   // 创建空文件或仅更新 mtime，非破坏性（不删除既有内容），destructiveHint 省略

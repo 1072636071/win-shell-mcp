@@ -44,19 +44,13 @@ function toEntryType(stats: FileTypeChecker): EntryType {
 
 /** fs_list 输入 schema。 */
 export const fsListInputSchema = z.object({
-  path: z.string().describe('目录路径（绝对或相对）'),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe('若为 true，返回每个条目的类型、大小与修改时间'),
-  recursive: z.boolean().optional().describe('若为 true，递归列出子目录'),
-  sort: z.enum(['name', 'size', 'mtime']).optional().describe('排序字段，默认 name'),
-  sortOrder: z.enum(['asc', 'desc']).optional().describe('排序方向，默认 asc'),
-  type: z
-    .enum(['file', 'dir', 'symlink'])
-    .optional()
-    .describe('只返回该类型条目'),
-  glob: z.string().optional().describe('按 glob 模式过滤条目名称（支持 *、?、[]）'),
+  path: z.string().describe('目录'),
+  verbose: z.boolean().optional().describe('返回 type/size/mtime'),
+  recursive: z.boolean().optional().describe('递归子目录'),
+  sort: z.enum(['name', 'size', 'mtime']).optional().describe('排序字段（默认 name）'),
+  sortOrder: z.enum(['asc', 'desc']).optional().describe('排序方向（默认 asc）'),
+  type: z.enum(['file', 'dir', 'symlink']).optional().describe('按类型过滤'),
+  glob: z.string().optional().describe('glob 过滤名（支持 *、?、[]）'),
 });
 
 /** verbose 条目结构。 */
@@ -196,25 +190,25 @@ export const fsListOutputSchema = z.object({
   entries: z
     .array(
       z.union([
-        z.string().describe('相对路径名（极简模式）'),
+        z.string().describe('相对路径'),
         z
           .object({
-            name: z.string().describe('相对路径名'),
-            type: z.enum(['file', 'dir', 'symlink']).describe('条目类型'),
+            name: z.string().describe('相对路径'),
+            type: z.enum(['file', 'dir', 'symlink']),
             size: z.number().int().nonnegative().describe('字节数'),
             mtime: z.string().describe('修改时间（ISO 8601）'),
           })
           .describe('verbose 条目'),
       ]),
     )
-    .describe('条目列表：极简模式为相对路径字符串，verbose 模式为含 type/size/mtime 的对象'),
+    .describe('条目列表（极简为路径字符串，verbose 为含 type/size/mtime 对象）'),
 });
 
 /** fs_list 工具定义。 */
 export const fsListTool: Tool = {
   name: 'fs_list',
   description:
-    '列目录（≈ Unix ls）。极简返回相对路径列表；verbose 含类型、大小与修改时间；recursive 递归；sort/sortOrder 排序；type/glob 过滤。',
+    '列目录（≈ ls），返回相对路径列表；verbose 含 type/size/mtime，recursive 递归，sort/type/glob 过滤。',
   inputSchema: fsListInputSchema,
   outputSchema: fsListOutputSchema,
   annotations: { readOnlyHint: true },
@@ -226,14 +220,11 @@ export const fsListTool: Tool = {
 
 /** fs_read 输入 schema。 */
 export const fsReadInputSchema = z.object({
-  path: z.string().describe('文件路径'),
-  encoding: z
-    .string()
-    .optional()
-    .describe('显式指定编码（如 gbk、utf-8），不指定则自动检测'),
-  start: z.number().int().positive().optional().describe('起始行号（1-indexed，含）'),
-  end: z.number().int().positive().optional().describe('结束行号（1-indexed，含；与 cat 的 startLine/endLine 语义一致）'),
-  maxLen: z.number().int().positive().optional().describe('最大字符数，默认 2000'),
+  path: z.string().describe('文件'),
+  encoding: z.string().optional().describe('编码（不指定则自动检测）'),
+  start: z.number().int().positive().optional().describe('起始行（1-indexed 含）'),
+  end: z.number().int().positive().optional().describe('结束行（1-indexed 含）'),
+  maxLen: z.number().int().positive().optional().describe('最大字符数（默认 2000）'),
 });
 
 /**
@@ -310,7 +301,7 @@ export async function fsReadHandler(args: Record<string, unknown>): Promise<AnyT
 export const fsReadTool: Tool = {
   name: 'fs_read',
   description:
-    '读文件。支持行范围（start/end，1-indexed 闭区间含端点，与 cat 的 startLine/endLine 语义一致）、编码自动检测（GBK/UTF-8）、截断。',
+    '读文件，支持 start/end 行范围（1-indexed 闭区间，与 cat 语义一致）、编码自动检测、截断。',
   inputSchema: fsReadInputSchema,
   outputSchema: fsReadOutputSchema,
   annotations: { readOnlyHint: true },
@@ -321,7 +312,7 @@ export const fsReadTool: Tool = {
 
 /** fs_stat 输入 schema。 */
 export const fsStatInputSchema = z.object({
-  path: z.string().describe('文件/目录路径'),
+  path: z.string().describe('路径'),
 });
 
 /** fs_stat 返回结构。 */
@@ -371,7 +362,7 @@ export async function fsStatHandler(args: Record<string, unknown>): Promise<AnyT
  * - birthtime：创建时间（毫秒时间戳，接口标 optional 以兼容平台差异）
  */
 export const fsStatOutputSchema = z.object({
-  type: z.enum(['file', 'dir', 'symlink']).describe('条目类型'),
+  type: z.enum(['file', 'dir', 'symlink']),
   size: z.number().int().nonnegative().describe('字节数'),
   mtime: z.number().describe('修改时间（毫秒时间戳）'),
   birthtime: z.number().optional().describe('创建时间（毫秒时间戳）'),
@@ -381,7 +372,7 @@ export const fsStatOutputSchema = z.object({
 export const fsStatTool: Tool = {
   name: 'fs_stat',
   description:
-    '获取文件/目录信息。返回 type（file/dir/symlink）、size、mtime、birthtime。',
+    '获取文件/目录元信息（≈ stat），返回 type/size/mtime/birthtime。',
   inputSchema: fsStatInputSchema,
   outputSchema: fsStatOutputSchema,
   annotations: { readOnlyHint: true },

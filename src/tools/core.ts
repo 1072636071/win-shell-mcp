@@ -17,7 +17,7 @@ const pwdOutputSchema = z.object({
 
 const pwdTool: Tool = {
   name: "pwd",
-  description: "返回当前工作目录（cwd）的绝对路径。",
+  description: "返回当前工作目录绝对路径（≈ pwd）。",
   inputSchema: z.object({}),
   outputSchema: pwdOutputSchema,
   annotations: { readOnlyHint: true },
@@ -40,10 +40,10 @@ const echoOutputSchema = z.object({
 const echoTool: Tool = {
   name: "echo",
   description:
-    "原样回显传入的参数数组；format=text 返回空格拼接字符串，format=json 返回原始数组。",
+    "回显参数（≈ echo）。format=text 返回空格拼接，format=json 返回原始数组。",
   inputSchema: z.object({
-    args: z.array(z.string()).describe("要回显的字符串数组"),
-    format: z.enum(["text", "json"]).optional().describe("输出格式，默认 text"),
+    args: z.array(z.string()),
+    format: z.enum(["text", "json"]).optional().describe("默认 text"),
   }),
   outputSchema: echoOutputSchema,
   annotations: { readOnlyHint: true },

@@ -59,31 +59,16 @@ interface PingFull extends PingMinimal {
 
 /** net_ping 输入 schema。 */
 export const netPingInputSchema = z.object({
-  host: z.string().describe("目标主机名或 IP"),
-  count: z
-    .number()
-    .int()
-    .min(1)
-    .max(20)
-    .optional()
-    .describe("探测次数（1-20），默认 4"),
-  port: z
-    .number()
-    .int()
-    .min(1)
-    .max(65535)
-    .optional()
-    .describe("探测端口（1-65535），默认 80"),
+  host: z.string(),
+  count: z.number().int().min(1).max(20).optional().describe("默认 4"),
+  port: z.number().int().min(1).max(65535).optional().describe("默认 80"),
   timeoutMs: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe("单次探测超时（毫秒），默认 3000"),
-  verbose: z
-    .boolean()
-    .optional()
-    .describe("若为 true，返回每次探测的 rtt 明细"),
+    .describe("单次超时（毫秒），默认 3000"),
+  verbose: z.boolean().optional(),
 });
 
 /** net_ping 输入类型。 */
@@ -231,7 +216,7 @@ export const netPingOutputSchema = z.object({
 export const netPingTool: Tool = {
   name: "ping",
   description:
-    "对目标主机执行 ping 网络诊断（TCP 探测）。返回 { host, sent, received, loss, min, max, avg, alive }。时间单位毫秒。目标不可达返回 ok（received=0，alive=false）。count 默认 4，port 默认 80，timeoutMs 默认 3000。verbose 含每次探测 rtt。",
+    "TCP 探测 ping 诊断（≈ ping）。返回 { host, sent, received, loss, min/max/avg, alive }。时间单位毫秒。不可达返回 ok（received=0，alive=false）。",
   inputSchema: netPingInputSchema,
   outputSchema: netPingOutputSchema,
   annotations: { readOnlyHint: true },

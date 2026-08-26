@@ -134,32 +134,26 @@ async function spawnCommand(opts: {
  * 成功返回 `{ stdout, stderr, exitCode, signal, truncated }`。
  */
 const runCommandOutputSchema = z.object({
-  stdout: z.string().describe("标准输出（可能截断）"),
-  stderr: z.string().describe("标准错误（可能截断）"),
+  stdout: z.string().describe("可能截断"),
+  stderr: z.string().describe("可能截断"),
   exitCode: z
     .number()
     .int()
     .nullable()
-    .describe("退出码（null 表示被信号终止）"),
-  signal: z.string().nullable().describe("终止信号（null 表示正常退出）"),
-  truncated: z.boolean().describe("输出是否截断"),
+    .describe("null 表示被信号终止"),
+  signal: z.string().nullable().describe("null 表示正常退出"),
+  truncated: z.boolean(),
 });
 
 const runCommandTool: Tool = {
   name: "run_command",
   description:
-    "以参数数组直接执行命令（不经过 shell 解析），返回 stdout/stderr/退出码/是否截断。支持 stdin。适合调用带空格路径或需精确参数的程序。",
+    "结构化执行命令（args 数组，不经 shell 解析，无管道/通配/注入风险）。返回 {stdout, stderr, exitCode, signal, truncated}。适合带空格路径或精确参数。",
   inputSchema: z.object({
-    command: z.string().describe("可执行文件或命令名"),
-    args: z
-      .array(z.string())
-      .default([])
-      .describe("参数数组（不经由 shell 解析）"),
-    cwd: z.string().optional().describe("工作目录，默认当前目录"),
-    env: z
-      .record(z.string(), z.string())
-      .optional()
-      .describe("追加/覆盖的环境变量"),
+    command: z.string(),
+    args: z.array(z.string()).default([]).describe("不经 shell 解析"),
+    cwd: z.string().optional().describe("默认当前目录"),
+    env: z.record(z.string(), z.string()).optional(),
     timeoutMs: z
       .number()
       .int()
@@ -173,15 +167,12 @@ const runCommandTool: Tool = {
       .positive()
       .max(50 * 1024 * 1024)
       .optional()
-      .describe("输出截断阈值（字节），默认 5MiB"),
+      .describe("截断阈值（字节），默认 5MiB"),
     encoding: z
       .enum(["utf8", "gbk"])
       .optional()
-      .describe("输出解码编码；缺省自动识别 GBK/UTF-8"),
-    stdin: z
-      .string()
-      .optional()
-      .describe("写入子进程标准输入的字符串，写完即关闭"),
+      .describe("缺省自动识别 GBK/UTF-8"),
+    stdin: z.string().optional().describe("写完即关闭"),
   }),
   outputSchema: runCommandOutputSchema,
   // 黑盒执行任意命令，潜在破坏性（rm/format/git reset 等），destructiveHint: true

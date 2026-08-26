@@ -304,7 +304,7 @@ describe("listTools fs_read 投影", () => {
   });
 
   it("无 outputSchema 的工具不附 outputSchema 字段", () => {
-    // 工单 04 后全部 58 工具都已补 outputSchema/annotations，此处构造一个临时无元数据工具，
+    // 工单 04 后全部 59 工具都已补 outputSchema/annotations，此处构造一个临时无元数据工具，
     // 验证 listTools 条件透传（不附 outputSchema/annotations 字段）。
     const bareTool: Tool = {
       name: "bare_test_tool",
