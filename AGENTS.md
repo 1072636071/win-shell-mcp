@@ -30,3 +30,7 @@ Issue 以本地 markdown 文件形式存放在仓库 `.scratch/` 下。参见 `d
 ### 临时文件
 
 所有临时脚本统一放在仓库 `.temp/scripts/` 下；其他临时文件（脚本输出、日志等）也要分类，放在 `.temp/` 的子目录下（如 `.temp/output/`、`.temp/logs/`），保证仓库根目录干净。
+
+### AI 工具速查表
+
+agent 建立工具概览时优先读 `docs/ai-tool-cheatsheet.md`（按 15 命令域分节的四列表格：正名｜一句话用途｜关键参数｜别名）而非整个 README；结构与 registry 对账（`tests/tools/guard-cheatsheet.test.ts`），别名以 registry 为单一事实源。

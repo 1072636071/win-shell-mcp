@@ -542,6 +542,7 @@ export const fsRmTool: Tool = {
   outputSchema: fsRmOutputSchema,
   // 删除不可逆，destructiveHint: true
   annotations: { readOnlyHint: false, destructiveHint: true },
+  aliases: ["rm"],
   handler: fsRmHandler,
 };
 
@@ -566,6 +567,7 @@ export const fsCpTool: Tool = {
   outputSchema: fsCpOutputSchema,
   // 复制到已存在目标会覆盖，destructiveHint: true
   annotations: { readOnlyHint: false, destructiveHint: true },
+  aliases: ["cp"],
   handler: fsCpHandler,
 };
 
@@ -593,6 +595,7 @@ export const fsMvTool: Tool = {
   outputSchema: fsMvOutputSchema,
   // overwrite=true 时覆盖既有目标，destructiveHint: true
   annotations: { readOnlyHint: false, destructiveHint: true },
+  aliases: ["mv"],
   handler: fsMvHandler,
 };
 

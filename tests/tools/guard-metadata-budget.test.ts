@@ -25,8 +25,10 @@ import { builtinTools } from "../../src/registry.js";
  * 后续工单可继续收紧。
  * 工单 11-03（2026-08-26）：新增 tool_groups / list_domain_tools 两个 meta
  * 导航工具（各含非空 outputSchema，防漂移护栏强制项），重取基线实测 52607。
+ * 工单 15-01（2026-08-26）：batch_run outputSchema 的 error 对象增加可选
+ * hint 字段（错误可操作提示），重取基线实测 52657。
  */
-const METADATA_BUDGET = 52607;
+const METADATA_BUDGET = 52657;
 
 /** description 长度软上限（字符）。 */
 const DESCRIPTION_MAX = 150;
@@ -79,7 +81,9 @@ describe("工单 01 元数据预算护栏", () => {
 
   describe("batch_run 引导语义护栏（工单 10）", () => {
     // 经 listTools() 投影断言外部可观察形态（工单 10-02 指定 seam，与 AI 实际所见一致）
-    const description = listTools().find((t) => t.name === "batch_run")?.description;
+    const description = listTools().find(
+      (t) => t.name === "batch_run",
+    )?.description;
 
     it("batch_run 存在且 description 非空", () => {
       expect(description).toBeDefined();

@@ -329,3 +329,79 @@ describe("listTools fs_read 投影", () => {
     expect(item?.annotations?.readOnlyHint).toBe(true);
   });
 });
+
+// ===================== callTool 别名解析（工单 14-01） =====================
+//
+// 修复前 callTool 按正名精确匹配，别名只在 batch_run 内部步骤（findTool）生效；
+// 修复后 callTool 复用 findToolIn（正名优先、别名回退），与 batch_run 语义一致。
+// 此处断言既有代表别名（ls/text_cat/jq）经 callTool 调用到达正名工具，且结果
+// 与正名调用深度相等。新别名（rm/mv/cp/grep/wc/df/ps）的调用断言见 14-02。
+
+describe("callTool 别名解析（工单 14-01）", () => {
+  it("别名 ls 到达 fs_list，结果与正名调用一致", async () => {
+    const args = { path: process.cwd() };
+    const aliasResult = await callTool("ls", args);
+    const canonicalResult = await callTool("fs_list", args);
+    expect(isOk(aliasResult)).toBe(true);
+    expect(isOk(canonicalResult)).toBe(true);
+    expect(aliasResult).toEqual(canonicalResult);
+  });
+
+  it("别名 text_cat 到达 cat，结果与正名调用一致", async () => {
+    const args = { path: "README.md" };
+    const aliasResult = await callTool("text_cat", args);
+    const canonicalResult = await callTool("cat", args);
+    expect(isOk(aliasResult)).toBe(true);
+    expect(isOk(canonicalResult)).toBe(true);
+    expect(aliasResult).toEqual(canonicalResult);
+  });
+
+  it("别名 jq 到达 json_get，结果与正名调用一致", async () => {
+    const args = { path: "package.json", expr: "." };
+    const aliasResult = await callTool("jq", args);
+    const canonicalResult = await callTool("json_get", args);
+    expect(isOk(aliasResult)).toBe(true);
+    expect(isOk(canonicalResult)).toBe(true);
+    expect(aliasResult).toEqual(canonicalResult);
+  });
+
+  // ---- 14-02 新别名（只读类：结果与正名深度相等；变更类见 guard-aliases.test.ts） ----
+
+  it("别名 grep 到达 text_grep，结果与正名一致", async () => {
+    const args = { path: "README.md", pattern: "win-shell" };
+    const aliasResult = await callTool("grep", args);
+    const canonicalResult = await callTool("text_grep", args);
+    expect(isOk(aliasResult)).toBe(true);
+    expect(aliasResult).toEqual(canonicalResult);
+  });
+
+  it("别名 wc 到达 text_wc，结果与正名一致", async () => {
+    const args = { path: "README.md" };
+    const aliasResult = await callTool("wc", args);
+    const canonicalResult = await callTool("text_wc", args);
+    expect(isOk(aliasResult)).toBe(true);
+    expect(aliasResult).toEqual(canonicalResult);
+  });
+
+  it("别名 df 到达 system_disk，结果与正名一致", async () => {
+    const args = {};
+    const aliasResult = await callTool("df", args);
+    const canonicalResult = await callTool("system_disk", args);
+    expect(isOk(aliasResult)).toBe(true);
+    expect(aliasResult).toEqual(canonicalResult);
+  });
+
+  it("别名 ps 到达 process_list（进程列表动态，只断言 ok）", async () => {
+    const aliasResult = await callTool("ps", {});
+    expect(isOk(aliasResult)).toBe(true);
+  });
+
+  it("未知名仍返回 Unknown tool（行为不回归）", async () => {
+    const result = await callTool("no_such_alias_xyz", {});
+    expect(isFail(result)).toBe(true);
+    if (isFail(result)) {
+      expect(result.error.code).toBe("EINVAL");
+      expect(result.error.message).toContain("Unknown tool: no_such_alias_xyz");
+    }
+  });
+});

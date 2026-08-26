@@ -17,15 +17,22 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
-import { fail, isFail, type AnyToolResult } from "./contract/output.js";
+import {
+  fail,
+  isFail,
+  setTruncateLimit,
+  type AnyToolResult,
+} from "./contract/output.js";
 import { ErrorCode, toErrorCode, toErrorMessage } from "./contract/errors.js";
-import { builtinTools, findTool, type Tool } from "./registry.js";
+import { builtinTools, findTool, findToolIn, type Tool } from "./registry.js";
 import {
   ENV_WIN_SHELL_TOOLS,
   ENV_WIN_SHELL_LAZY,
+  ENV_WIN_SHELL_TRUNCATE,
   notExposedMessage,
   parseLazyMode,
   parseToolsWhitelist,
+  parseTruncateLimit,
 } from "./config/env.js";
 import { createScopedBatchRunTool } from "./tools/batch.js";
 import { createScopedToolGroupsTool } from "./tools/tool_groups.js";
@@ -98,14 +105,21 @@ export async function callTool(
   args: Record<string, unknown>,
   tools: readonly Tool[] = builtinTools,
 ): Promise<AnyToolResult> {
-  const tool = tools.find((t) => t.name === name);
+  // 工单 14-01：复用 findToolIn（正名优先、别名回退），消除 callTool 与
+  // batch_run 的双实现。别名经 MCP tools/call 直接可用，与 batch_run 步骤
+  // 解析语义一致（findToolIn 即 batch_run 受限步骤所用同一查找函数）。
+  const tool = findToolIn(tools, name);
   if (!tool) {
     // 错误区分（工单 12-02）：注入部署子表时，内置注册表仍能命中的
     // 正名/别名 = 被白名单裁剪，归因"未在当前部署暴露"；全量注入（含默认）
-    // 维持既有 Unknown tool 语义，行为零破坏。别名的正常解析由 14 号工单落地，
-    // 此处 findTool 命中仅用于归因，不改变调用语义。
+    // 维持既有 Unknown tool 语义，行为零破坏。findTool 在全量注册表中查找，
+    // 命中即说明该名字（正名或别名）存在但被裁，归因到未暴露。
     if (tools !== builtinTools && findTool(name)) {
-      return fail(ErrorCode.EINVAL, notExposedMessage(name));
+      return fail(
+        ErrorCode.EINVAL,
+        notExposedMessage(name),
+        "调 tool_groups 查看当前暴露工具",
+      );
     }
     return fail(ErrorCode.EINVAL, `Unknown tool: ${name}`);
   }
@@ -264,7 +278,7 @@ export function createServer(
     : (toolsOrOptions as CreateServerOptions);
   const dispatchTools = options.tools ?? builtinTools;
   // 分发面沿用既有白名单语义：非全量注入的部署子表，meta 三件套替换为
-// 口径受限副本（batch_run 步骤边界 / 导航工具统计口径，12-02 + 11-05）。
+  // 口径受限副本（batch_run 步骤边界 / 导航工具统计口径，12-02 + 11-05）。
   const deployed =
     dispatchTools === builtinTools
       ? dispatchTools
@@ -341,6 +355,15 @@ export function resolveDeployedTools(
  * @throws 白名单含未知工具条目时抛出并列出全部非法条目原文（入口 catch 打印退出）
  */
 export async function startStdioServer(): Promise<Server> {
+  // 工单 15-02：WIN_SHELL_TRUNCATE 解析与注入（fail-fast，非法值启动失败）。
+  const truncateResult = parseTruncateLimit(
+    process.env[ENV_WIN_SHELL_TRUNCATE],
+  );
+  if (!truncateResult.ok) {
+    throw new Error(truncateResult.reason);
+  }
+  setTruncateLimit(truncateResult.limit);
+
   const lazy = parseLazyMode(process.env[ENV_WIN_SHELL_LAZY]);
   const deployed = resolveDeployedTools(process.env[ENV_WIN_SHELL_TOOLS]);
   const dispatchTable = lazy ? composeLazyDispatchTable(deployed) : deployed;

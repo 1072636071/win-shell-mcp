@@ -22,6 +22,9 @@
 
 **评论：**
 
+- **2026-08-26 实施完成**：7 个别名声明已加（fs_write.ts: rm/cp/mv、text.ts: grep/wc、system.ts: df、process.ts: ps）。护栏测试 `tests/tools/guard-aliases.test.ts` 覆盖：别名全集 ∩ 正名全集 = ∅、别名内部无重复、ListTools 长度不变（61，别名不膨胀清单）、7 新别名 findTool 声明断言、callTool 7 新别名到达正名（只读类深度相等；ps 因进程列表动态只断言 ok；rm force 模式、mv/cp 临时文件 ok=true）、batch_run 步骤用新别名回归。server.test.ts 别名解析块补 4 只读新别名深度相等断言。CHANGELOG Unreleased/Added 追加条目。
+- **口径差异说明**：PRD 与 issue 验收标准说"名单长度仍为 59"，但实际 builtinTools.length === 61（guard-mutating.test.ts 断言，含 tool_groups/list_domain_tools/batch_run 三个 meta）。别名不出现在 ListTools 条目中，长度不变仍为 61。以实际 61 为准。
+
 - 只增别名声明与测试，不改任何工具输入/输出行为、不改 `findTool`/`callTool` 查找顺序本身。
 - 宣传面（速查表别名列、description 提及、README 补齐行）由 03 号工单负责，本工单仅保证别名真实可解析。
 - 本批 7 个之后不再扩张，后续新增需逐个论证频次（克制边界，见 map）。

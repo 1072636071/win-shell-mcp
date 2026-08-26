@@ -118,6 +118,9 @@ describe("callTool 错误区分（参数注入子表）", () => {
     if (isFail(result)) {
       expect(result.error.code).toBe("EINVAL");
       expect(result.error.message).toContain(NOT_EXPOSED);
+      // 工单 15-01：白名单裁剪错误附 hint 指明查看当前暴露范围
+      expect(result.error.hint).toBeDefined();
+      expect(result.error.hint).toContain("tool_groups");
     }
   });
 
@@ -146,23 +149,45 @@ describe("callTool 错误区分（参数注入子表）", () => {
   });
 
   it("全量注入零破坏：真实工具照常可用、缺失名仍 Unknown tool", async () => {
-    const okResult = await callTool("git_status", { cwd: process.cwd() }, builtinTools);
+    const okResult = await callTool(
+      "git_status",
+      { cwd: process.cwd() },
+      builtinTools,
+    );
     expect(okResult.ok).toBe(true);
 
     const unknownResult = await callTool("nonexistent", {}, builtinTools);
     expect(isFail(unknownResult)).toBe(true);
     if (isFail(unknownResult)) {
-      expect(unknownResult.error.message).toContain("Unknown tool: nonexistent");
+      expect(unknownResult.error.message).toContain(
+        "Unknown tool: nonexistent",
+      );
     }
   });
 
-  it("现状钉住（14 号工单前）：全量表下别名不经 callTool 解析，报 Unknown tool 而非误报未暴露", async () => {
-    const result = await callTool("ls", {}, builtinTools);
-    expect(isFail(result)).toBe(true);
-    if (isFail(result)) {
-      expect(result.error.message).toContain("Unknown tool: ls");
-      expect(result.error.message).not.toContain(NOT_EXPOSED);
-    }
+  it("全量表下别名经 callTool 解析成功（工单 14-01 修复）：ls 到达 fs_list", async () => {
+    const result = await callTool("ls", { path: process.cwd() }, builtinTools);
+    expect(result.ok).toBe(true);
+  });
+
+  it("全量表下别名经 callTool 解析成功（工单 14-01 修复）：cat 到达 cat 正名", async () => {
+    // cat 正名即 cat，text_cat 是别名；用别名 text_cat 调用应到达正名 cat
+    const result = await callTool(
+      "text_cat",
+      { path: "README.md" },
+      builtinTools,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("全量表下别名经 callTool 解析成功（工单 14-01 修复）：jq 到达 json_get", async () => {
+    // 用别名 jq 调用应到达正名 json_get；json_get 需要 path + expr 参数
+    const result = await callTool(
+      "jq",
+      { path: "package.json", expr: "." },
+      builtinTools,
+    );
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -199,7 +224,7 @@ describe("batch_run 受白名单约束（经 createServer 子表注入）", () =
   interface StepFailure {
     tool: string;
     ok: boolean;
-    error?: { code: string; message: string };
+    error?: { code: string; message: string; hint?: string };
   }
 
   async function runBatch(
@@ -226,6 +251,8 @@ describe("batch_run 受白名单约束（经 createServer 子表注入）", () =
     const steps = parsed.steps as StepFailure[];
     expect(steps.length).toBe(1);
     expect(steps[0]?.error?.message).toContain(NOT_EXPOSED);
+    // 工单 15-01：batch 内白名单裁剪同样附 hint
+    expect(steps[0]?.error?.hint).toBeDefined();
   });
 
   it("步骤引用被裁工具的别名同归因（共进退在 batch 内成立）", async () => {
@@ -265,9 +292,9 @@ describe("batch_run 受白名单约束（经 createServer 子表注入）", () =
 
 describe("resolveDeployedTools 启动校验（纯函数等价覆盖，不启动进程）", () => {
   it("含未知条目时抛错并列出全部非法条目原文（非仅第一个）", () => {
-    expect(() => resolveDeployedTools("git_status,bogus_one,bogus_two")).toThrow(
-      /WIN_SHELL_TOOLS 含未知工具条目.*bogus_one.*bogus_two/,
-    );
+    expect(() =>
+      resolveDeployedTools("git_status,bogus_one,bogus_two"),
+    ).toThrow(/WIN_SHELL_TOOLS 含未知工具条目.*bogus_one.*bogus_two/);
   });
 
   it("误写别名视为未知条目并点名（别名不在白名单语法内）", () => {
@@ -290,7 +317,9 @@ describe("resolveDeployedTools 启动校验（纯函数等价覆盖，不启动�
   );
 
   it("合法子集按正名过滤且保持注册顺序", () => {
-    const deployed = resolveDeployedTools("system_info, batch_run ,system_info");
+    const deployed = resolveDeployedTools(
+      "system_info, batch_run ,system_info",
+    );
     expect(deployed.map((t) => t.name)).toEqual(["system_info", "batch_run"]);
   });
 

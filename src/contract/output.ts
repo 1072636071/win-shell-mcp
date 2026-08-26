@@ -15,6 +15,8 @@ export type Verbose = boolean;
 export interface ToolError {
   code: string;
   message: string;
+  /** 可选可操作提示（工单 15-01）：仅当存在当前错误专属的下一步动作时出现。 */
+  hint?: string;
 }
 
 /** 成功结果：ok 为 true，data 字段展开到顶层。 */
@@ -34,6 +36,32 @@ export type AnyToolResult = ToolResult<Record<string, unknown>>;
 
 /** 默认截断长度（字符数）。 */
 export const DEFAULT_TRUNCATE_LIMIT = 2000;
+
+/** hint 字段最大长度（字符数，工单 15-01）。超长在构造层截断。 */
+export const HINT_MAX_LENGTH = 50;
+
+// ─── 截断阈值运行期配置（工单 15-02）─────────────────────────
+// 模块级可变状态：由 setTruncateLimit 在启动时从 WIN_SHELL_TRUNCATE 注入。
+// 未调用 setTruncateLimit 时保持 DEFAULT_TRUNCATE_LIMIT（零破坏）。
+// 测试需在 afterEach 调 resetTruncateLimit 复原，避免跨用例污染。
+
+/** 当前截断阈值（模块级，由 {@link setTruncateLimit} 设置）。 */
+let currentTruncateLimit = DEFAULT_TRUNCATE_LIMIT;
+
+/** 读取当前截断阈值（供 truncate 默认参数与各工具截断判定调用）。 */
+export function getTruncateLimit(): number {
+  return currentTruncateLimit;
+}
+
+/** 设置截断阈值（启动时由 server 入口从 WIN_SHELL_TRUNCATE 注入）。 */
+export function setTruncateLimit(limit: number): void {
+  currentTruncateLimit = limit;
+}
+
+/** 重置截断阈值为默认值（测试复原用）。 */
+export function resetTruncateLimit(): void {
+  currentTruncateLimit = DEFAULT_TRUNCATE_LIMIT;
+}
 
 /**
  * 构造成功结果。data 字段展开到顶层。
@@ -55,23 +83,38 @@ export function ok<T extends object>(data: T): OkResult<T> & AnyToolResult {
  *
  * @param code 标准错误码（见 errors.ts）
  * @param message 人类可读的错误信息
+ * @param hint 可选可操作提示（工单 15-01）：仅当存在当前错误专属的下一步动作时传入。
+ *   生成标准：(a) 仅当有可操作信息；(b) 不重复 message；(c) 不教通用常识；
+ *   (d) 长度 ≤ {@link HINT_MAX_LENGTH} 字符（超长在构造层截断）；(e) 无规则触发则不传。
+ *   不传或传空串时 error 对象不含 hint 字段，与不带 hint 的既有调用逐字节一致。
  */
-export function fail(code: string, message: string): FailResult {
-  return { ok: false, error: { code, message } };
+export function fail(code: string, message: string, hint?: string): FailResult {
+  if (hint === undefined || hint === "") {
+    return { ok: false, error: { code, message } };
+  }
+  const safeHint =
+    hint.length > HINT_MAX_LENGTH ? hint.slice(0, HINT_MAX_LENGTH) : hint;
+  return { ok: false, error: { code, message, hint: safeHint } };
 }
 
 /**
  * 截断长文本。超长时截断并附 `...[truncated, N more chars]` 标记。
  *
+ * 默认 maxLen 从运行期配置读取（工单 15-02：WIN_SHELL_TRUNCATE），
+ * 未设置环境变量时为 {@link DEFAULT_TRUNCATE_LIMIT}（2000），行为与历史一致。
+ *
  * @param text 原始文本
- * @param maxLen 最大长度（字符数），默认 2000
+ * @param maxLen 最大长度（字符数），缺省读 {@link getTruncateLimit}
  * @returns 截断后的文本；若未超长则原样返回
  *
  * @example
  * truncate('hello', 3) // 'hel...[truncated, 2 more chars]'
  * truncate('hi', 10)   // 'hi'
  */
-export function truncate(text: string, maxLen: number = DEFAULT_TRUNCATE_LIMIT): string {
+export function truncate(
+  text: string,
+  maxLen: number = getTruncateLimit(),
+): string {
   if (text.length <= maxLen) return text;
   const remaining = text.length - maxLen;
   return `${text.slice(0, maxLen)}...[truncated, ${remaining} more chars]`;
@@ -89,20 +132,28 @@ export function truncate(text: string, maxLen: number = DEFAULT_TRUNCATE_LIMIT):
  * withVerbose({ a: 1 }, { a: 1, b: 2 }, false) // { a: 1 }
  * withVerbose({ a: 1 }, { a: 1, b: 2 }, true)  // { a: 1, b: 2 }
  */
-export function withVerbose<T, U>(minimal: T, full: U, verbose: Verbose): T | U {
+export function withVerbose<T, U>(
+  minimal: T,
+  full: U,
+  verbose: Verbose,
+): T | U {
   return verbose ? full : minimal;
 }
 
 /**
  * 类型守卫：判断结果是否成功。
  */
-export function isOk<T extends object>(result: ToolResult<T>): result is OkResult<T> {
+export function isOk<T extends object>(
+  result: ToolResult<T>,
+): result is OkResult<T> {
   return result.ok === true;
 }
 
 /**
  * 类型守卫：判断结果是否失败。
  */
-export function isFail<T extends object>(result: ToolResult<T>): result is FailResult {
+export function isFail<T extends object>(
+  result: ToolResult<T>,
+): result is FailResult {
   return result.ok === false;
 }

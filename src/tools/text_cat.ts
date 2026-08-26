@@ -16,7 +16,7 @@ import {
   ok,
   fail,
   truncate,
-  DEFAULT_TRUNCATE_LIMIT,
+  getTruncateLimit,
   type AnyToolResult,
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
@@ -119,10 +119,11 @@ export async function textCatHandler(
 
     // 行数以返回内容中的逻辑行为准（结尾换行不计，空内容为 0）
     const totalLines = content === "" ? 0 : splitLines(content).length;
-    const truncated = content.length > DEFAULT_TRUNCATE_LIMIT;
+    const limit = getTruncateLimit();
+    const truncated = content.length > limit;
 
     return ok({
-      content: truncate(content),
+      content: truncate(content, limit),
       lines: totalLines,
       truncated,
     }) as unknown as AnyToolResult;

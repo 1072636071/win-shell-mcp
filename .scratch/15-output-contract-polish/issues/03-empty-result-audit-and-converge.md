@@ -18,4 +18,36 @@
 
 ## 评论
 
+### 审计结论（2026-08-26）
+
+**判定标准**：字段是否帮助 AI 判断"空"的性质（真没有 / 被截断 / 模式误解）——帮助则留（判别字段），不帮助则删（装饰字段）。
+
+**删除清单**：经逐一审计，**无字段需删除**。所有列表型工具的空结果形态均已达标，现有字段均为判别字段。以下为逐项结论：
+
+| 工具                    | 空结果形态                                                 | 判定                                              |
+| ----------------------- | ---------------------------------------------------------- | ------------------------------------------------- |
+| `fs_list`               | `{ entries: [] }`                                          | ✅ 达标（基线，不改）                             |
+| `fs_find`               | `{ entries: [] }`                                          | ✅ 达标                                           |
+| `search_glob`           | `{ files: [], count: 0, truncated: false }`                | ✅ count/truncated 判别                           |
+| `search_content`        | `{ matches: [], count: 0, truncated: false, patternMode }` | ✅ 基线，count/truncated/patternMode 判别         |
+| `text_grep`             | `{ matches: [], count: 0, truncated: false, patternMode }` | ✅ 基线（不改），count/truncated/patternMode 判别 |
+| `search_which`          | `{ found: false }`                                         | ✅ found 判别                                     |
+| `text_head`/`text_tail` | `{ lines: [], total: 0 }`                                  | ✅ total 判别（原文件行数）                       |
+| `git_log`               | `{ commits: [], count: 0 }`                                | ✅ count 判别                                     |
+| `git_branch`            | `{ branches: [], current: "" }`                            | ✅ current 判别                                   |
+| `git_status`            | `{ branch, changed: 0, staged: 0, untracked: 0 }`          | ✅ 全判别                                         |
+| `git_diff`              | `{ diff: "", truncated: false, files: [] }`                | ✅ truncated/files 判别                           |
+| `git_stash list`        | `{ action: "list", stashes: [] }`                          | ✅ action 判别                                    |
+| `process_list`          | `{ processes: [], truncated: false }`                      | ✅ truncated 判别                                 |
+| `system_path`           | `{ entries: [] }`                                          | ✅ 达标                                           |
+| `system_disk all`       | `{ disks: [] }`                                            | ✅ 达标                                           |
+| `env_get all`           | `{ vars: {}, count: 0 }`                                   | ✅ count 判别                                     |
+| `pkg_detect`            | `{ available: {}, checked: [] }`                           | ✅ checked 判别                                   |
+| `list_domain_tools`     | `{ domain, tools: [] }`                                    | ✅ domain 判别                                    |
+| `tool_groups`           | `{ groups: [] }`                                           | ✅ 达标                                           |
+| `net_dns`               | `{ addresses: [], recordType }`                            | ✅ recordType 判别                                |
+| `net_listen`            | `{ ports: [] }`                                            | ✅ 达标                                           |
+
+**结论**：无需代码改动，无破坏性变更，CHANGELOG 不记。所有工具的空结果形态已符合 memorial 007"主动充分返回判别信息"原则——字段帮助 AI 区分"真没有 / 被截断 / 模式误解"，无装饰字段需删除。既有空输入断言保持绿即为回归。
+
 （评论与对话历史追加于此，新内容置于最前。）

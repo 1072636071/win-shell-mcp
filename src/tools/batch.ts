@@ -17,7 +17,12 @@
  */
 
 import { z } from "zod";
-import { ok, fail, withVerbose, type AnyToolResult } from "../contract/output.js";
+import {
+  ok,
+  fail,
+  withVerbose,
+  type AnyToolResult,
+} from "../contract/output.js";
 import { ErrorCode, toErrorCode, toErrorMessage } from "../contract/errors.js";
 import { toFail, failFromError } from "../utils/errors.js";
 import { findTool, findToolIn, type Tool } from "../registry.js";
@@ -73,7 +78,7 @@ interface StepResult {
   tool: string;
   ok: boolean;
   data?: Record<string, unknown>;
-  error?: { code: string; message: string };
+  error?: { code: string; message: string; hint?: string };
   assert?: AssertResult[];
 }
 
@@ -116,7 +121,9 @@ export const batchRunInputSchema = z.object({
   verbose: z
     .boolean()
     .optional()
-    .describe("true 时返回每步完整结果 steps；默认仅返回聚合结论（失败附 failedStep）"),
+    .describe(
+      "true 时返回每步完整结果 steps；默认仅返回聚合结论（失败附 failedStep）",
+    ),
 });
 
 /** 断言输出 schema。 */
@@ -135,7 +142,13 @@ const batchStepOutputSchema = z.object({
   tool: z.string(),
   ok: z.boolean(),
   data: z.record(z.string(), z.unknown()).optional(),
-  error: z.object({ code: z.string(), message: z.string() }).optional(),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+      hint: z.string().optional(),
+    })
+    .optional(),
   assert: z.array(batchAssertOutputSchema).optional(),
 });
 
@@ -665,6 +678,9 @@ async function runBatchSteps(
           message: trimmedByWhitelist
             ? notExposedMessage(step.tool)
             : `未知工具: ${step.tool}`,
+          ...(trimmedByWhitelist
+            ? { hint: "调 tool_groups 查看当前暴露工具" }
+            : {}),
         },
       });
       // 短路：工具不存在或未在当前部署暴露，中止

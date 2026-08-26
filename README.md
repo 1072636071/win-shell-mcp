@@ -122,152 +122,160 @@ WIN_SHELL_LAZY=1 win-shell-mcp
 - **与白名单正交可组合**：两者同设时白名单先过滤工具集，域概览/明细只反映过滤后集合（被裁空的域不出现）；懒模式下 meta 三件套豁免白名单恒列入恒可调，纯白名单模式（不设本变量）下 meta 照常受约束；
 - 作用范围：MCP stdio 入口。dsh 插件面不读取本变量。
 
-## 工具清单（58 个）
+## 工具清单（59 个）
+
+> AI 建立工具概览优先读 [`docs/ai-tool-cheatsheet.md`](docs/ai-tool-cheatsheet.md)（按 15 命令域分节的四列表格：正名｜一句话用途｜关键参数｜别名）。
 
 按域分组。每个工具返回统一输出契约：成功 `{ ok: true, ...data }`，失败 `{ ok: false, error: { code, message } }`。
 
 ### system（4）
 
-| 工具 | 说明 |
-|------|------|
-| `system_info` | 系统信息（os、arch、platform、hostname、cwd、node）；`verbose` 含 uptime、内存、CPU |
-| `system_disk` | 磁盘用量（total/free/used，字节） |
-| `system_memory` | 内存信息（total/free）；`verbose` 含 used、swap |
-| `system_path` | PATH 环境变量条目列表；`verbose` 含 count、existing |
+| 工具            | 说明                                                                                |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `system_info`   | 系统信息（os、arch、platform、hostname、cwd、node）；`verbose` 含 uptime、内存、CPU |
+| `system_disk`   | 磁盘用量（total/free/used，字节；别名 `df`）                                        |
+| `system_memory` | 内存信息（total/free）；`verbose` 含 used、swap                                     |
+| `system_path`   | PATH 环境变量条目列表；`verbose` 含 count、existing                                 |
 
 ### fs 只读（4）
 
-| 工具 | 说明 |
-|------|------|
-| `fs_list` | 列目录；`verbose` 含类型与大小，`recursive` 递归 |
+| 工具      | 说明                                                |
+| --------- | --------------------------------------------------- |
+| `fs_list` | 列目录；`verbose` 含类型与大小，`recursive` 递归    |
 | `fs_read` | 读文件；支持行范围、编码自动检测（GBK/UTF-8）、截断 |
-| `fs_stat` | 文件/目录信息（type、size、mtime、birthtime） |
-| `fs_du` | 目录磁盘用量（类似 `du`） |
+| `fs_stat` | 文件/目录信息（type、size、mtime、birthtime）       |
+| `fs_du`   | 目录磁盘用量（类似 `du`）                           |
 
 ### fs 变更（6）
 
-| 工具 | 说明 |
-|------|------|
-| `fs_write` | 写文件（支持 utf-8/gbk 编码，可追加） |
-| `fs_mkdir` | 建目录（`recursive` 默认 true，类似 `mkdir -p`） |
-| `fs_rm` | 删除文件/目录（`recursive` 删目录树，`force` 忽略不存在） |
-| `fs_cp` | 复制文件/目录（目录需 `recursive`） |
-| `fs_mv` | 移动/重命名（dest 已存在则失败，不覆盖） |
-| `fs_touch` | 创建空文件或更新 mtime |
+| 工具       | 说明                                                                 |
+| ---------- | -------------------------------------------------------------------- |
+| `fs_write` | 写文件（支持 utf-8/gbk 编码，可追加）                                |
+| `fs_mkdir` | 建目录（`recursive` 默认 true，类似 `mkdir -p`）                     |
+| `fs_rm`    | 删除文件/目录（`recursive` 删目录树，`force` 忽略不存在；别名 `rm`） |
+| `fs_cp`    | 复制文件/目录（目录需 `recursive`；别名 `cp`）                       |
+| `fs_mv`    | 移动/重命名；`dest` 已存在则失败，`overwrite` 覆盖（别名 `mv`）      |
+| `fs_touch` | 创建空文件或更新 mtime                                               |
 
 ### find（1）
 
-| 工具 | 说明 |
-|------|------|
-| `find` | 按文件名模式递归搜索（Unix find 短名；别名 `fs_find`，支持 * 通配） |
+| 工具   | 说明                                                                 |
+| ------ | -------------------------------------------------------------------- |
+| `find` | 按文件名模式递归搜索（Unix find 短名；别名 `fs_find`，支持 \* 通配） |
 
 ### text（7）
 
-| 工具 | 说明 |
-|------|------|
-| `text_grep` | 文本搜索（默认字面量，/正则/ 形式启用正则） |
-| `text_head` | 取前 N 行 |
-| `text_tail` | 取后 N 行 |
-| `text_wc` | 统计行/词/字符数 |
-| `text_diff` | 两段文本差异 |
+| 工具           | 说明                                                                              |
+| -------------- | --------------------------------------------------------------------------------- |
+| `text_grep`    | 文本搜索（默认字面量，/正则/ 形式启用正则；别名 `grep`）                          |
+| `text_head`    | 取前 N 行                                                                         |
+| `text_tail`    | 取后 N 行                                                                         |
+| `text_wc`      | 统计行/词/字符数（别名 `wc`）                                                     |
+| `text_diff`    | 两段文本差异                                                                      |
 | `text_replace` | 文本替换（默认字面量，/正则/ 形式启用正则；多命中需 `all`/`maxReplace` 显式表态） |
-| `cat` | 连接/读取文件内容（类似 `cat`；别名 `text_cat`） |
+| `cat`          | 连接/读取文件内容（类似 `cat`；别名 `text_cat`）                                  |
 
 ### search（3）
 
-| 工具 | 说明 |
-|------|------|
-| `search_glob` | glob 模式匹配文件路径 |
+| 工具             | 说明                                              |
+| ---------------- | ------------------------------------------------- |
+| `search_glob`    | glob 模式匹配文件路径                             |
 | `search_content` | 跨文件内容搜索（默认字面量，/正则/ 形式启用正则） |
-| `search_which` | 查找可执行文件路径（类似 `which`/`where`） |
+| `search_which`   | 查找可执行文件路径（类似 `which`/`where`）        |
 
 ### process（2）
 
-| 工具 | 说明 |
-|------|------|
-| `process_list` | 列出进程 |
-| `process_kill` | 终止进程（按 PID） |
+| 工具           | 说明                  |
+| -------------- | --------------------- |
+| `process_list` | 列出进程（别名 `ps`） |
+| `process_kill` | 终止进程（按 PID）    |
 
 ### shell_exec（1）
 
-| 工具 | 说明 |
-|------|------|
+| 工具         | 说明                                |
+| ------------ | ----------------------------------- |
 | `shell_exec` | 执行 shell 命令（带超时与编码处理） |
 
 ### run_command（1）
 
-| 工具 | 说明 |
-|------|------|
+| 工具          | 说明                            |
+| ------------- | ------------------------------- |
 | `run_command` | 直接运行 shell 命令（精简门面） |
 
 ### env（3）
 
-| 工具 | 说明 |
-|------|------|
-| `env_get` | 读取环境变量 |
-| `env_set` | 设置环境变量 |
+| 工具        | 说明         |
+| ----------- | ------------ |
+| `env_get`   | 读取环境变量 |
+| `env_set`   | 设置环境变量 |
 | `env_unset` | 删除环境变量 |
 
 ### net（7）
 
-| 工具 | 说明 |
-|------|------|
-| `net_get` | HTTP GET 请求 |
-| `net_post` | HTTP POST 请求 |
-| `net_dns` | DNS 解析 |
-| `net_tcp` | TCP 连接探测 |
-| `net_listen` | TCP 监听 |
-| `net_download` | HTTP 下载文件 |
-| `ping` | TCP 连通性探测（类似 `ping`；别名 `net_ping`） |
+| 工具           | 说明                                           |
+| -------------- | ---------------------------------------------- |
+| `net_get`      | HTTP GET 请求                                  |
+| `net_post`     | HTTP POST 请求                                 |
+| `net_dns`      | DNS 解析                                       |
+| `net_tcp`      | TCP 连接探测                                   |
+| `net_listen`   | TCP 监听                                       |
+| `net_download` | HTTP 下载文件                                  |
+| `ping`         | TCP 连通性探测（类似 `ping`；别名 `net_ping`） |
 
 ### pkg（2）
 
-| 工具 | 说明 |
-|------|------|
+| 工具         | 说明                          |
+| ------------ | ----------------------------- |
 | `pkg_detect` | 检测包管理器（npm/pnpm/yarn） |
-| `pkg_run` | 运行包脚本 |
+| `pkg_run`    | 运行包脚本                    |
 
 ### git（11）
 
-| 工具 | 说明 |
-|------|------|
-| `git_status` | 工作区状态 |
-| `git_log` | 提交历史 |
-| `git_branch` | 分支列表与切换 |
-| `git_diff` | 差异 |
-| `git_add` | 暂存 |
-| `git_commit` | 提交 |
-| `git_checkout` | 切换分支/恢复文件 |
-| `git_push` | 推送 |
-| `git_pull` | 拉取 |
-| `git_clone` | 克隆仓库 |
-| `git_stash` | 暂存/恢复变更（`action:'list'` 只读可并发） |
+| 工具           | 说明                                        |
+| -------------- | ------------------------------------------- |
+| `git_status`   | 工作区状态                                  |
+| `git_log`      | 提交历史                                    |
+| `git_branch`   | 分支列表与切换                              |
+| `git_diff`     | 差异                                        |
+| `git_add`      | 暂存                                        |
+| `git_commit`   | 提交                                        |
+| `git_checkout` | 切换分支/恢复文件                           |
+| `git_push`     | 推送                                        |
+| `git_pull`     | 拉取                                        |
+| `git_clone`    | 克隆仓库                                    |
+| `git_stash`    | 暂存/恢复变更（`action:'list'` 只读可并发） |
 
 ### core（2）
 
-| 工具 | 说明 |
-|------|------|
-| `pwd` | 打印当前工作目录 |
-| `echo` | 输出文本 |
+| 工具   | 说明             |
+| ------ | ---------------- |
+| `pwd`  | 打印当前工作目录 |
+| `echo` | 输出文本         |
 
 ### hash（1）
 
-| 工具 | 说明 |
-|------|------|
+| 工具        | 说明                            |
+| ----------- | ------------------------------- |
 | `hash_file` | 计算文件哈希（md5/sha1/sha256） |
 
 ### json（1）
 
-| 工具 | 说明 |
-|------|------|
+| 工具       | 说明                         |
+| ---------- | ---------------------------- |
 | `json_get` | 从 JSON 内容取值（路径访问） |
 
 ### archive（2）
 
-| 工具 | 说明 |
-|------|------|
-| `archive_create` | 创建压缩包（zip） |
+| 工具              | 说明                 |
+| ----------------- | -------------------- |
+| `archive_create`  | 创建压缩包（zip）    |
 | `archive_extract` | 解压压缩包（zip 等） |
+
+### meta（1）
+
+| 工具        | 说明                                                                           |
+| ----------- | ------------------------------------------------------------------------------ |
+| `batch_run` | 批量编排（多步串行，`assert` 断言，`{{stepId.output.path}}` 模板引用前序输出） |
 
 ## ⚠️ 安全说明
 
@@ -310,6 +318,14 @@ npm run dev
 ```
 
 构建产物为多入口 ESM（tsup）：`dist/index.js`（MCP stdio，带 shebang）、`dist/core.js`、`dist/plugin.js`。
+
+### CHANGELOG 维护约定
+
+发版时 `CHANGELOG.md` 条目从 `git log` 的 commit message 汇总提炼，**不要求回顾全量 diff**：
+
+1. 基线：自上个版本标签起（仓库尚无标签时，以最近一次版本提交为基线）；
+2. 按 Keep a Changelog 的 Added / Changed / Fixed 分类，并为相关条目补 ADR / 工单交叉引用；
+3. 配套要求：commit message 须自带完整主题与 ADR/工单引用（本仓库现有 commit 风格已满足，本约定只是固化现状），使提炼有据可依。
 
 ## 项目结构
 

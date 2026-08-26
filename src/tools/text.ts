@@ -202,6 +202,7 @@ export const textGrepTool: Tool = {
   inputSchema: textGrepInputSchema,
   outputSchema: textGrepOutputSchema,
   annotations: { readOnlyHint: true },
+  aliases: ["grep"],
   handler: textGrepHandler,
 };
 
@@ -354,6 +355,7 @@ export const textWcTool: Tool = {
   inputSchema: textWcInputSchema,
   outputSchema: textWcOutputSchema,
   annotations: { readOnlyHint: true },
+  aliases: ["wc"],
   handler: textWcHandler,
 };
 

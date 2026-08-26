@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import {
   mkdtemp,
   writeFile,
@@ -22,7 +22,12 @@ import {
   fsStatTool,
   fsStatInputSchema,
 } from "../../src/tools/fs_read.js";
-import { isOk, isFail } from "../../src/contract/output.js";
+import {
+  isOk,
+  isFail,
+  setTruncateLimit,
+  resetTruncateLimit,
+} from "../../src/contract/output.js";
 
 /** 临时目录根。 */
 let root: string;
@@ -436,6 +441,54 @@ describe("fs_read 截断", () => {
     if (isOk(result)) {
       expect(result["truncated"]).toBe(false);
       expect(result["content"]).toBe("short");
+    }
+  });
+});
+
+describe("fs_read 截断优先级（工单 15-02：工具级 > 环境变量 > 常量）", () => {
+  // 每个用例后复原全局截断配置，避免跨 describe 污染
+  afterEach(() => resetTruncateLimit());
+
+  it("常量层：未设环境变量时默认截断 2000", async () => {
+    const file = join(root, "prio-default.txt");
+    await writeFile(file, "A".repeat(2500));
+    const result = await fsReadHandler({ path: file });
+    if (isOk(result)) {
+      expect(result["truncated"]).toBe(true);
+      // 截断后 content 含 2000 个 A + 标记
+      expect((result["content"] as string).startsWith("A".repeat(2000))).toBe(
+        true,
+      );
+    }
+  });
+
+  it("环境变量层：setTruncateLimit(800) 覆盖常量 2000", async () => {
+    setTruncateLimit(800);
+    const file = join(root, "prio-env.txt");
+    await writeFile(file, "B".repeat(1500));
+    const result = await fsReadHandler({ path: file });
+    if (isOk(result)) {
+      expect(result["truncated"]).toBe(true);
+      // 截断在 800，不是 2000
+      expect((result["content"] as string).startsWith("B".repeat(800))).toBe(
+        true,
+      );
+      expect(result["content"] as string).toContain("700 more chars");
+    }
+  });
+
+  it("工具级层：maxLen=300 优先于环境变量 800", async () => {
+    setTruncateLimit(800);
+    const file = join(root, "prio-tool.txt");
+    await writeFile(file, "C".repeat(1000));
+    const result = await fsReadHandler({ path: file, maxLen: 300 });
+    if (isOk(result)) {
+      expect(result["truncated"]).toBe(true);
+      // 截断在 300，不是 800 也不是 2000
+      expect((result["content"] as string).startsWith("C".repeat(300))).toBe(
+        true,
+      );
+      expect(result["content"] as string).toContain("700 more chars");
     }
   });
 });

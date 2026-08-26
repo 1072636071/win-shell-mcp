@@ -6,7 +6,9 @@
  * 工单 11-03 新增 tool_groups/list_domain_tools 两个 meta 导航工具（现共 61 个）。
  *
  * 别名机制（工单 02）：Tool 可声明 aliases，findTool 在精确名匹配失败后回退到别名匹配，
- * 因此 `ls` / `list_directory` 等短名/别名调用与正名返回一致结果。
+ * 因此 `ls` / `list_directory` 等短名/别名调用与正名返回一致结果。工单 14-01 起
+ * callTool 复用 findToolIn（findTool 的工具表参数化版本），MCP tools/call 与
+ * batch_run 步骤共用同一套别名解析语义，无双实现。
  */
 
 import type { z } from "zod";

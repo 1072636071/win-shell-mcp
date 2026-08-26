@@ -21,4 +21,25 @@
 
 ## 评论
 
+### 实施记录（2026-08-26）
+
+**改动文件**：
+
+- `src/contract/output.ts`：`ToolError` 增加 `hint?: string`；新增 `HINT_MAX_LENGTH = 50` 常量；`fail(code, message, hint?)` 增加可选第三参数，不传或空串时 error 不含 hint 字段（逐字节一致），超长截断到 50 字符。
+- `src/server.ts`：白名单裁剪错误（`callTool`）附 hint `"调 tool_groups 查看当前暴露工具"`。
+- `src/tools/git.ts`：`git_checkout` 三条互斥规则违反各附 hint（合法组合提示）。
+- `src/tools/batch.ts`：`StepResult.error` 类型与 `batchStepOutputSchema` 增加 `hint?`；白名单裁剪错误附同一 hint。
+- `tests/contract/output.test.ts`：新增 `fail hint` describe，锁存在性+长度+缺省行为+超长截断，不锁措辞。
+- `tests/whitelist-enforcement.test.ts`：在既有白名单裁剪用例中追加 hint 断言（合并 12 号工单用例，不产生重复测试）。
+- `tests/tools/new_commands.test.ts`：在既有 git_checkout EINVAL 用例中追加 hint 断言。
+- `tests/tools/guard-metadata-budget.test.ts`：预算常量 52607 → 52657（batch outputSchema 增加 hint 字段）。
+
+**设计决策**：
+
+- 超长 hint 选择截断方案（slice 到 50 字符，不加标记），测试钉死。
+- net port 越界（`port 必须是 0-65535 的整数`）不加 hint——message 已含合法范围，hint 会重复内容，违反规则 (b)。
+- 其余错误码（ENOENT/GIT_FAIL 等）默认不加 hint。
+
+**验收**：`pnpm test` 全绿（1897 passed）、`pnpm typecheck` 通过。
+
 （评论与对话历史追加于此，新内容置于最前。）

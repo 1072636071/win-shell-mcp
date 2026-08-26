@@ -15,7 +15,7 @@ import {
   fail,
   truncate,
   withVerbose,
-  DEFAULT_TRUNCATE_LIMIT,
+  getTruncateLimit,
   type AnyToolResult,
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
@@ -573,8 +573,9 @@ export async function gitDiffHandler(
   const files = parseDiffFiles(rawDiff);
 
   // verbose 时不截断 diff 输出；非 verbose 时截断并标记 truncated
-  const truncated = rawDiff.length > DEFAULT_TRUNCATE_LIMIT;
-  const diff = truncate(rawDiff);
+  const limit = getTruncateLimit();
+  const truncated = rawDiff.length > limit;
+  const diff = truncate(rawDiff, limit);
   const minimal: GitDiffResult = { diff, truncated, files };
   const full: GitDiffResult = { diff: rawDiff, truncated: false, files };
   const out = withVerbose(minimal, full, verbose);
@@ -784,15 +785,27 @@ export async function gitCheckoutHandler(
   const hasPaths = Array.isArray(paths) && paths.length > 0;
 
   if (!hasBranch && !hasPaths) {
-    return fail(ErrorCode.EINVAL, "branch 与 paths 至少提供其一");
+    return fail(
+      ErrorCode.EINVAL,
+      "branch 与 paths 至少提供其一",
+      "提供 branch 切分支，或 paths 还原文件",
+    );
   }
 
   if (create && !hasBranch) {
-    return fail(ErrorCode.EINVAL, "create=true 时必须提供 branch");
+    return fail(
+      ErrorCode.EINVAL,
+      "create=true 时必须提供 branch",
+      "create 仅用于新建分支，需 branch 指定名",
+    );
   }
 
   if (create && hasPaths) {
-    return fail(ErrorCode.EINVAL, "create=true 时不能同时提供 paths");
+    return fail(
+      ErrorCode.EINVAL,
+      "create=true 时不能同时提供 paths",
+      "新建分支与还原文件互斥，二选一",
+    );
   }
 
   const gitArgs = ["checkout"];

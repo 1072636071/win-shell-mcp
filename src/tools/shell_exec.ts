@@ -16,7 +16,7 @@ import {
   fail,
   truncate,
   withVerbose,
-  DEFAULT_TRUNCATE_LIMIT,
+  getTruncateLimit,
   type AnyToolResult,
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
@@ -136,11 +136,11 @@ export async function shellExecHandler(
     );
   }
 
-  const stdout = truncate(outcome.stdout);
-  const stderr = truncate(outcome.stderr);
+  const limit = getTruncateLimit();
+  const stdout = truncate(outcome.stdout, limit);
+  const stderr = truncate(outcome.stderr, limit);
   const truncated =
-    outcome.stdout.length > DEFAULT_TRUNCATE_LIMIT ||
-    outcome.stderr.length > DEFAULT_TRUNCATE_LIMIT;
+    outcome.stdout.length > limit || outcome.stderr.length > limit;
 
   const minimal: ShellExecMinimal = {
     exitCode: outcome.exitCode,

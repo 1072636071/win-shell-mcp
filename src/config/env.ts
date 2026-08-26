@@ -9,11 +9,16 @@
  * （如工单 15 的 WIN_SHELL_TRUNCATE），禁止在 server/tools 层出现第二个读取点。
  */
 
+import { DEFAULT_TRUNCATE_LIMIT } from "../contract/output.js";
+
 /** `WIN_SHELL_TOOLS` —— 工具白名单环境变量名（逗号分隔工具正名）。 */
-export const ENV_WIN_SHELL_TOOLS = 'WIN_SHELL_TOOLS';
+export const ENV_WIN_SHELL_TOOLS = "WIN_SHELL_TOOLS";
 
 /** `WIN_SHELL_LAZY` —— 懒加载开关环境变量名（工单 11）。 */
-export const ENV_WIN_SHELL_LAZY = 'WIN_SHELL_LAZY';
+export const ENV_WIN_SHELL_LAZY = "WIN_SHELL_LAZY";
+
+/** `WIN_SHELL_TRUNCATE` —— 内容截断阈值环境变量名（工单 15-02）。 */
+export const ENV_WIN_SHELL_TRUNCATE = "WIN_SHELL_TRUNCATE";
 
 /** 白名单解析成功结果：names 为去重后的正名集合；空集合表示未配置白名单（全量）。 */
 export interface ToolsWhitelistOk {
@@ -54,9 +59,9 @@ export function parseToolsWhitelist(
 ): ToolsWhitelistResult {
   const names = new Set<string>();
   if (raw !== undefined) {
-    for (const segment of raw.split(',')) {
+    for (const segment of raw.split(",")) {
       const name = segment.trim();
-      if (name !== '') names.add(name);
+      if (name !== "") names.add(name);
     }
   }
   if (names.size === 0) return { ok: true, names };
@@ -76,7 +81,7 @@ export function parseToolsWhitelist(
  * @returns true 表示懒模式，false 表示全量模式
  */
 export function parseLazyMode(raw: string | undefined): boolean {
-  return raw === '1';
+  return raw === "1";
 }
 
 /**
@@ -90,4 +95,50 @@ export function parseLazyMode(raw: string | undefined): boolean {
  */
 export function notExposedMessage(name: string): string {
   return `${name} 未在当前部署暴露（WIN_SHELL_TOOLS）`;
+}
+
+/** 截断阈值解析成功结果：limit 为正整数。 */
+export interface TruncateLimitOk {
+  ok: true;
+  /** 截断字符上限（正整数）。 */
+  limit: number;
+}
+
+/** 截断阈值解析失败结果：reason 携带非法值原文。 */
+export interface TruncateLimitError {
+  ok: false;
+  /** 人类可读的失败原因（含变量名与非法值原文）。 */
+  reason: string;
+}
+
+/** `parseTruncateLimit` 的解析结果：正整数或非法值错误。 */
+export type TruncateLimitResult = TruncateLimitOk | TruncateLimitError;
+
+/**
+ * 解析 `WIN_SHELL_TRUNCATE` 内容截断阈值。
+ *
+ * 语法：正整数（字符数）。
+ *
+ * - undefined / 空串 / 纯空白 → 成功且 `limit` 为 2000（与不设变量行为一致）。
+ * - 正整数（如 `"800"`）→ 成功且 `limit` 为 800。
+ * - 非法值（0、负数、非整数、非数字）→ 失败并点名变量与非法值原文，
+ *   fail-fast 与白名单严格风格一致，杜绝静默降级。
+ *
+ * @param raw 环境变量原始字符串或 undefined（非 process.env 本身）
+ * @returns 解析结果：正整数阈值或非法值错误
+ */
+export function parseTruncateLimit(
+  raw: string | undefined,
+): TruncateLimitResult {
+  if (raw === undefined || raw.trim() === "") {
+    return { ok: true, limit: DEFAULT_TRUNCATE_LIMIT };
+  }
+  const num = Number(raw);
+  if (!Number.isInteger(num) || num <= 0) {
+    return {
+      ok: false,
+      reason: `${ENV_WIN_SHELL_TRUNCATE} 必须是正整数，得到: ${raw}`,
+    };
+  }
+  return { ok: true, limit: num };
 }

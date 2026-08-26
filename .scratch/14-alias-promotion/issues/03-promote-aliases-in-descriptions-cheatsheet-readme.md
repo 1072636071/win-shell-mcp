@@ -19,5 +19,8 @@
 
 **评论：**
 
+- **2026-08-26 实施完成**：README 工具清单 7 行补 Unix 短别名内联标注（system_disk→df、fs_rm→rm、fs_cp→cp、fs_mv→mv、text_grep→grep、text_wc→wc、process_list→ps），沿用既有风格（如 `find`/`cat` 行的"别名 `xx`"标注）。7 个工具 description 已含"≈ rm/cp/mv/grep/wc/df/ps"提及（既有，保留），满足"对高频别名一笔带过"要求。PRD-07"cat→text_cat"口径在本目录产出中未复现（cat 是正名、text_cat 是别名，确认正确）。
+- **速查表别名列交接**：13 号工单尚未落地，速查表别名列待 13 号工单落地后由 13 负责对齐。14 已提供别名全集数据源（registry builtinTools 的 aliases 字段，含既有 16 组 + 7 新），13 的护栏测试可直接对账。
+
 - 本工单对 13（速查表）与 08（description 精简）有**跨目录依赖**：13 号工单的别名列数据源、08 号工单的"别名：xx"文案口径需与本 PRD 对齐；实施前应与 13/08 的负责 agent 协调确认。
 - 只改文档/描述/README，不改任何工具行为与注册表。

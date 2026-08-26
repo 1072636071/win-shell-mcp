@@ -9,7 +9,10 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      reporter: ["text", "html"],
+      // 工单 17-02：覆盖率 reporter 由 "text" 改为 "text-summary"——终端只留总表，
+      // 逐文件明细移到 coverage/index.html（本就生成）。关键失败信息不丢失：
+      // text-summary 在阈值未达标时仍会列出不足文件与指标。
+      reporter: ["text-summary", "html"],
       thresholds: {
         lines: 85,
         functions: 85,

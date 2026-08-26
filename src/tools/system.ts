@@ -398,6 +398,7 @@ export const systemDiskTool: Tool = {
   inputSchema: systemDiskInputSchema,
   outputSchema: systemDiskOutputSchema,
   annotations: { readOnlyHint: true },
+  aliases: ["df"],
   handler: systemDiskHandler,
 };
 

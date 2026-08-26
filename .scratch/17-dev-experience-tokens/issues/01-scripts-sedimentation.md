@@ -19,5 +19,9 @@
 
 （评论与对话历史追加于此，新内容置于最前。）
 
+- **2026-08-26 实施完成**：
+  - `.temp/scripts/metadata-length-report.mjs`：import `dist/core.js` 的 `listTools()`，输出 61 个工具的 description/inputSchema/outputSchema 长度降序排行（含合计）。实测跑通：batch_run 2432 字符最长、text_replace 1724 次之。产物 `.temp/output/metadata-length-report.txt`。
+  - `.temp/scripts/coverage-shortfalls.mjs`：不传参时自动跑 `vitest run --coverage --coverage.reporter=json-summary` 生成 `coverage-summary.json`（落到 `.temp/output/coverage-json/`），再解析 lines.pct/branches.pct，列出 lines<85% 或 branches<84% 的文件；或传参直接解析指定 json。实测跑通（42 文件 1897 passed，列出 16 个短板文件）。产物 `.temp/output/coverage-shortfalls.txt`。
+  - 两脚本头部注释均写明用途/运行方式/输出说明，遵循 `.temp/scripts/` 约定；冒烟产物入 `.temp/output/`，不入测试管线。
 - 冒烟验证：两脚本需在本仓库实际运行并记录输出，产物（如排行榜文本、短板清单）放入 `.temp/output/` 或 `.temp/logs/` 分类目录，不提交入库。
 - 范围边界：本工单只保证首批两个脚本落地；其他脚本按需后续另立工单（超出范围）。

@@ -19,4 +19,27 @@
 
 ## 评论
 
+### 实施记录（2026-08-26）
+
+**改动文件**：
+
+- `src/config/env.ts`：新增 `ENV_WIN_SHELL_TRUNCATE` 常量、`TruncateLimitResult` 类型、`parseTruncateLimit` 纯函数（缺省返回 2000，正整数返回该值，非法值返回 `{ ok: false, reason }`）。
+- `src/contract/output.ts`：新增模块级截断配置 `getTruncateLimit`/`setTruncateLimit`/`resetTruncateLimit`；`truncate` 默认参数从 `DEFAULT_TRUNCATE_LIMIT` 改为 `getTruncateLimit()`。
+- `src/server.ts`：`startStdioServer` 解析 `WIN_SHELL_TRUNCATE`，非法值 fail-fast 抛错，合法值 `setTruncateLimit` 注入。
+- `src/tools/fs_read.ts`：`maxLen` 缺省回退从 `2000` 改为 `getTruncateLimit()`。
+- `src/tools/text_cat.ts`：截断判定与 `truncate` 调用改用 `getTruncateLimit()`。
+- `src/tools/git.ts`：`git_diff` 截断判定与 `truncate` 调用改用 `getTruncateLimit()`。
+- `src/tools/shell_exec.ts`：stdout/stderr 截断判定与 `truncate` 调用改用 `getTruncateLimit()`。
+- `tests/config/env.test.ts`：新增 `parseTruncateLimit` 表驱动测试（合法/缺省/非法）。
+- `tests/tools/fs_read.test.ts`：新增截断优先级三层测试（常量 2000 > 环境变量 800 > 工具级 300），`afterEach` 复原配置。
+
+**设计决策**：
+
+- 配置模块 `parseTruncateLimit` 返回 result 类型（与 `parseToolsWhitelist` 风格一致），不抛异常；`startStdioServer` 负责 fail-fast。
+- 模块级可变状态 `currentTruncateLimit` 由 `setTruncateLimit` 在启动时注入，未调用时保持 `DEFAULT_TRUNCATE_LIMIT`（零破坏）。测试用 `resetTruncateLimit` 复原。
+- `env.ts` 内 `DEFAULT_TRUNCATE = 2000` 局部常量，避免 config→contract 循环依赖。
+- git stderr 500 字符截断不动（错误面降噪，不接入本变量）。
+
+**验收**：`pnpm test` 全绿（1897 passed）、`pnpm typecheck` 通过。
+
 （评论与对话历史追加于此，新内容置于最前。）

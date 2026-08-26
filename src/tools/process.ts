@@ -368,6 +368,7 @@ export const processListTool: Tool = {
   inputSchema: processListInputSchema,
   outputSchema: processListOutputSchema,
   annotations: { readOnlyHint: true },
+  aliases: ["ps"],
   handler: processListHandler,
 };
 
