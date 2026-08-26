@@ -207,6 +207,7 @@ export const fsListOutputSchema = z.object({
 /** fs_list 工具定义。 */
 export const fsListTool: Tool = {
   name: 'fs_list',
+  domain: "fs",
   description:
     '列目录（≈ ls），返回相对路径列表；verbose 含 type/size/mtime，recursive 递归，sort/type/glob 过滤。',
   inputSchema: fsListInputSchema,
@@ -300,6 +301,7 @@ export async function fsReadHandler(args: Record<string, unknown>): Promise<AnyT
 /** fs_read 工具定义。 */
 export const fsReadTool: Tool = {
   name: 'fs_read',
+  domain: "fs",
   description:
     '读文件，支持 start/end 行范围（1-indexed 闭区间，与 cat 语义一致）、编码自动检测、截断。',
   inputSchema: fsReadInputSchema,
@@ -371,6 +373,7 @@ export const fsStatOutputSchema = z.object({
 /** fs_stat 工具定义。 */
 export const fsStatTool: Tool = {
   name: 'fs_stat',
+  domain: "fs",
   description:
     '获取文件/目录元信息（≈ stat），返回 type/size/mtime/birthtime。',
   inputSchema: fsStatInputSchema,

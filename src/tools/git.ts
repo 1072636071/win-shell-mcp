@@ -268,6 +268,7 @@ export const gitStatusOutputSchema = z.object({
  */
 export const gitStatusTool: Tool = {
   name: "git_status",
+  domain: "git",
   description:
     "获取 git 仓库状态（≈ git status）。返回 { branch, changed, staged, untracked }，verbose 加 files 列表。",
   inputSchema: gitStatusInputSchema,
@@ -386,6 +387,7 @@ export const gitLogOutputSchema = z.object({
  */
 export const gitLogTool: Tool = {
   name: "git_log",
+  domain: "git",
   description:
     "获取 git 提交历史（≈ git log）。返回 { commits, count }，limit 默认 10，verbose 返回完整 40 字符 hash。",
   inputSchema: gitLogInputSchema,
@@ -506,6 +508,7 @@ export const gitBranchOutputSchema = z.object({
  */
 export const gitBranchTool: Tool = {
   name: "git_branch",
+  domain: "git",
   description:
     "获取 git 分支列表（≈ git branch）。返回 { branches, current }，verbose 加 all（含 remote 上游）。",
   inputSchema: gitBranchInputSchema,
@@ -592,6 +595,7 @@ export const gitDiffOutputSchema = z.object({
  */
 export const gitDiffTool: Tool = {
   name: "git_diff",
+  domain: "git",
   description:
     "获取 git 差异（≈ git diff）。返回 { diff, truncated, files }，默认截断；staged 显示暂存区，against 指定目标 ref，path 限范围。",
   inputSchema: gitDiffInputSchema,
@@ -659,6 +663,7 @@ export const gitAddOutputSchema = z.object({
 /** git_add 工具定义。 */
 export const gitAddTool: Tool = {
   name: "git_add",
+  domain: "git",
   description: "暂存文件到 git 索引（≈ git add）。返回 { added }。",
   inputSchema: gitAddInputSchema,
   outputSchema: gitAddOutputSchema,
@@ -736,6 +741,7 @@ export const gitCommitOutputSchema = z.object({
 /** git_commit 工具定义。 */
 export const gitCommitTool: Tool = {
   name: "git_commit",
+  domain: "git",
   description:
     "提交暂存的变更（≈ git commit）。返回 { committed, hash, message }，amend 修改上一提交，不推送。",
   inputSchema: gitCommitInputSchema,
@@ -826,6 +832,7 @@ export const gitCheckoutOutputSchema = z.object({
 /** git_checkout 工具定义。 */
 export const gitCheckoutTool: Tool = {
   name: "git_checkout",
+  domain: "git",
   description:
     "切换/创建分支或还原文件（≈ git checkout）。branch 切换分支，create=true 创建分支，paths 还原文件（可配 branch 指定源 ref）。返回 { checkedOut, branch?, paths? }。",
   inputSchema: gitCheckoutInputSchema,
@@ -886,6 +893,7 @@ export const gitPushOutputSchema = z.object({
 /** git_push 工具定义。 */
 export const gitPushTool: Tool = {
   name: "git_push",
+  domain: "git",
   description:
     "推送提交到远程（≈ git push）。返回 { pushed, remote, branch }，remote 默认 origin，force 强制推送。",
   inputSchema: gitPushInputSchema,
@@ -942,6 +950,7 @@ export const gitPullOutputSchema = z.object({
 /** git_pull 工具定义。 */
 export const gitPullTool: Tool = {
   name: "git_pull",
+  domain: "git",
   description:
     "从远程拉取并合并（≈ git pull）。返回 { pulled, remote, branch }，remote 默认 origin。",
   inputSchema: gitPullInputSchema,
@@ -1001,6 +1010,7 @@ export const gitCloneOutputSchema = z.object({
 /** git_clone 工具定义。 */
 export const gitCloneTool: Tool = {
   name: "git_clone",
+  domain: "git",
   description: "克隆仓库（≈ git clone）。返回 { cloned, path }。",
   inputSchema: gitCloneInputSchema,
   outputSchema: gitCloneOutputSchema,
@@ -1087,6 +1097,7 @@ export const gitStashOutputSchema = z.object({
  */
 export const gitStashTool: Tool = {
   name: "git_stash",
+  domain: "git",
   description:
     "暂存/恢复工作区变更（≈ git stash）。action 支持 push/pop/list/drop，默认 push。",
   inputSchema: gitStashInputSchema,

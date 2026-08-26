@@ -176,6 +176,7 @@ export const shellExecOutputSchema = z.object({
 /** shell_exec 工具定义。 */
 export const shellExecTool: Tool = {
   name: "shell_exec",
+  domain: "shell_exec",
   description:
     "执行 raw shell 命令字符串（≈ sh -c），管道/重定向/通配由 shell 解释。返回 {exitCode, stdout, stderr}。非零退出码是正常结果。",
   inputSchema: shellExecInputSchema,

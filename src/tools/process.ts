@@ -362,6 +362,7 @@ export const processListOutputSchema = z.object({
 /** process_list 工具定义。 */
 export const processListTool: Tool = {
   name: "process_list",
+  domain: "process",
   description:
     "列出运行中进程（≈ ps）。返回 { processes: [{ pid, name }], truncated }。verbose 含内存与命令行（Windows 仅内存）。maxResults 截断。",
   inputSchema: processListInputSchema,
@@ -667,6 +668,7 @@ export const processKillOutputSchema = z.object({
 /** process_kill 工具定义。 */
 export const processKillTool: Tool = {
   name: "process_kill",
+  domain: "process",
   description:
     "按 PID 或进程名终止进程（≈ kill）。pid 或 name 至少提供其一。signal 默认 SIGTERM；force=true 时 unix SIGKILL/Windows /F；tree=true 时连子进程（Windows /T，unix 递归）。",
   inputSchema: processKillInputSchema,

@@ -103,6 +103,7 @@ export const pkgDetectOutputSchema = z.object({
 /** pkg_detect 工具定义。 */
 export const pkgDetectTool: Tool = {
   name: "pkg_detect",
+  domain: "pkg",
   description:
     "检测包管理器可用性（npm/yarn/pnpm/pip/cargo 等）。返回 {available, checked}。",
   inputSchema: pkgDetectInputSchema,
@@ -241,6 +242,7 @@ export const pkgRunOutputSchema = z.object({
 /** pkg_run 工具定义。 */
 export const pkgRunTool: Tool = {
   name: "pkg_run",
+  domain: "pkg",
   description:
     "执行包管理器命令（≈ npm run/pip install）。返回 {exitCode,stdout,stderr}。非零退出码是正常结果。",
   inputSchema: pkgRunInputSchema,

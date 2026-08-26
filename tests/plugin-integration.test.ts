@@ -2,7 +2,7 @@
  * DSH 插件完整集成与冒烟测试（工单 05）。
  *
  * 三组测试：
- * 1. 全量注册验证（纯 mock，无 DSH 依赖）—— apply 注册 59 工具
+ * 1. 全量注册验证（纯 mock，无 DSH 依赖）—— apply 注册全部工具（61 个，工单 11-03 基线）
  * 2. Config exclude 验证（纯 mock）—— 排除单/多工具后注册数正确
  * 3. DSH 本地冒烟（需 DSH 环境，不存在则 skip）—— 加载插件 + 真实 ctx 注册 + 调用工具
  *
@@ -52,11 +52,11 @@ function makeFakeCtx(): {
 // ---------------------------------------------------------------------------
 
 describe("plugin 全量注册（mock ctx）", () => {
-  it("apply 注册全部 59 个工具", () => {
+  it("apply 注册全部 61 个工具", () => {
     const { ctx, defined } = makeFakeCtx();
     apply(ctx);
     expect(defined.size).toBe(EXPECTED_TOOL_COUNT);
-    expect(defined.size).toBe(59);
+    expect(defined.size).toBe(61);
   });
 
   it("注册工具名集合等于 builtinTools 工具名集合", () => {
@@ -87,7 +87,7 @@ describe("plugin 全量注册（mock ctx）", () => {
 // ---------------------------------------------------------------------------
 
 describe("plugin config.exclude 验证（mock ctx）", () => {
-  it("排除 shell_exec 后注册 57 个且不含 shell_exec", () => {
+  it("排除 shell_exec 后注册 60 个且不含 shell_exec", () => {
     const { ctx, defined } = makeFakeCtx();
     apply(ctx, { exclude: ["shell_exec"] });
     expect(defined.size).toBe(EXPECTED_TOOL_COUNT - 1);
@@ -102,7 +102,7 @@ describe("plugin config.exclude 验证（mock ctx）", () => {
     const { ctx, defined } = makeFakeCtx();
     apply(ctx, { exclude: excludeList });
     expect(defined.size).toBe(EXPECTED_TOOL_COUNT - excludeList.length);
-    expect(defined.size).toBe(56);
+    expect(defined.size).toBe(58);
     for (const name of excludeList) {
       expect(defined.has(name)).toBe(false);
     }
@@ -146,7 +146,7 @@ dshDescribe("DSH 本地冒烟", () => {
     // 用真实 plugin 模块（已 import）+ mock ctx 验证全量注册无异常
     const { ctx, defined } = makeFakeCtx();
     expect(() => apply(ctx)).not.toThrow();
-    expect(defined.size).toBe(59);
+    expect(defined.size).toBe(61);
   });
 
   it("Native 模式：并行调用两个 read-only 工具均成功返回", async () => {

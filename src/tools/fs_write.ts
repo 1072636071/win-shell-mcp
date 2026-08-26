@@ -479,6 +479,7 @@ export const fsWriteOutputSchema = z.object({
 /** fs_write 工具定义。 */
 export const fsWriteTool: Tool = {
   name: "fs_write",
+  domain: "fs",
   description:
     "写文件，支持 utf-8/gbk 编码与追加；mkdirParents 默认 true 自动建父目录。",
   inputSchema: fsWriteInputSchema,
@@ -500,6 +501,7 @@ export const fsMkdirOutputSchema = z.object({
 /** fs_mkdir 工具定义。 */
 export const fsMkdirTool: Tool = {
   name: "fs_mkdir",
+  domain: "fs",
   description: "建目录（≈ mkdir -p，recursive 默认 true）。",
   inputSchema: fsMkdirInputSchema,
   outputSchema: fsMkdirOutputSchema,
@@ -533,6 +535,7 @@ export const fsRmOutputSchema = z.object({
 /** fs_rm 工具定义。 */
 export const fsRmTool: Tool = {
   name: "fs_rm",
+  domain: "fs",
   description:
     "删除文件/目录（≈ rm），recursive 删目录树、force 忽略不存在；返回 removed/targetType/recursiveCount。",
   inputSchema: fsRmInputSchema,
@@ -557,6 +560,7 @@ export const fsCpOutputSchema = z.object({
 /** fs_cp 工具定义。 */
 export const fsCpTool: Tool = {
   name: "fs_cp",
+  domain: "fs",
   description: "复制文件/目录（≈ cp，目录需 recursive）。",
   inputSchema: fsCpInputSchema,
   outputSchema: fsCpOutputSchema,
@@ -582,6 +586,7 @@ export const fsMvOutputSchema = z.object({
 /** fs_mv 工具定义。 */
 export const fsMvTool: Tool = {
   name: "fs_mv",
+  domain: "fs",
   description:
     "移动/重命名（≈ mv），dest 为目录时移入；overwrite 覆盖已存在目标。",
   inputSchema: fsMvInputSchema,
@@ -603,6 +608,7 @@ export const fsTouchOutputSchema = z.object({
 /** fs_touch 工具定义。 */
 export const fsTouchTool: Tool = {
   name: "fs_touch",
+  domain: "fs",
   description: "创建空文件或更新 mtime（≈ touch）。",
   inputSchema: fsTouchInputSchema,
   outputSchema: fsTouchOutputSchema,

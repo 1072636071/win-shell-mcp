@@ -142,6 +142,7 @@ export const jsonGetOutputSchema = z.object({
 /** json_get 工具定义。 */
 export const jsonGetTool: Tool = {
   name: "json_get",
+  domain: "json",
   description:
     "按路径表达式从 JSON 取值（≈ jq get，仅 .foo.bar 与 [0]）。返回 {value}。",
   inputSchema: jsonGetInputSchema,

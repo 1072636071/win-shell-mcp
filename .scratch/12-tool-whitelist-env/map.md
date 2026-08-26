@@ -40,3 +40,5 @@ MCP server 面新增 `WIN_SHELL_TOOLS` 环境变量白名单（逗号分隔正�
 ## 评论
 
 （对话历史与补充追加于此，新内容置于最前。）
+
+- 收尾（captain）：本批 3 工单全部落地并通过 t9 终审。配置模块由 11 批 t2 合并交付（`src/config/env.ts`，一次并入两变量解析，协调竞态消除）；fail-fast 启动校验随 12-02 提前落地，12-03 聚焦 README「环境变量」共用小节 + CHANGELOG。工作树未 commit，待用户裁决提交。

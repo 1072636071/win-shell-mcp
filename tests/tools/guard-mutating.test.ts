@@ -1,19 +1,19 @@
 /**
- * Guard test（工单 04 最终防线）：覆盖全部 59 个工具。
+ * Guard test（工单 04 最终防线；基线经工单 11-03 抬至 61）：覆盖全部 61 个工具。
  *
  * 断言每个工具：
  * - outputSchema 非空（defined）
  * - annotations.readOnlyHint 为显式 true 或显式 false（不能是 undefined）
  *
  * 分两批断言：
- * - 只读工具（readOnlyHint === true）：34 个
+ * - 只读工具（readOnlyHint === true）：36 个
  * - 变更工具（readOnlyHint === false）：25 个
  *
- * 另断言 builtinTools 总数为 59，且两批工具名的并集与 builtinTools 完全一致，
+ * 另断言 builtinTools 总数为 61，且两批工具名的并集与 builtinTools 完全一致，
  * 防止新增工具时静默漏盖。
  *
  * 本文件与 guard-readonly-a/b.test.ts 互补：那两个文件分批覆盖只读工具的细节，
- * 本文件是工单 04 收尾的全量 guard，确保 01-04 全部工具都有元数据。
+ * 本文件是工单 04 收尾的全量 guard，确保全部工具都有元数据。
  */
 
 import { describe, it, expect } from "vitest";
@@ -26,6 +26,7 @@ import { builtinTools } from "../../src/registry.js";
  * - 工单 02 批次 A（13 个）：fs/text/search 域只读
  * - 工单 03 批次 B（19 个）：system/env/core/net/pkg/process/git/hash/json 域只读
  * - 工单 04 补全（1 个）：net_get（语义只读 HTTP GET，与 net_dns/net_tcp 同归只读）
+ * - 工单 11-03 新增（2 个）：tool_groups/list_domain_tools（域导航 meta，语义只读）
  */
 const READONLY_TOOLS: readonly string[] = [
   // 工单 02 批次 A
@@ -66,6 +67,9 @@ const READONLY_TOOLS: readonly string[] = [
   "net_get",
   // 工单 04 补全（find 递归搜索只读）
   "find",
+  // 工单 11-03 新增（域导航 meta 工具，语义只读）
+  "tool_groups",
+  "list_domain_tools",
 ];
 
 /**
@@ -121,13 +125,13 @@ const MUTATING_TOOLS: readonly string[] = [
   "batch_run",
 ];
 
-describe("工单 04 最终 guard：全部 59 工具 outputSchema 与 readOnlyHint", () => {
-  it("builtinTools 总数为 59", () => {
-    expect(builtinTools.length).toBe(59);
+describe("工单 04 最终 guard：全部 61 工具 outputSchema 与 readOnlyHint", () => {
+  it("builtinTools 总数为 61", () => {
+    expect(builtinTools.length).toBe(61);
   });
 
-  it("只读工具清单数为 34", () => {
-    expect(READONLY_TOOLS.length).toBe(34);
+  it("只读工具清单数为 36", () => {
+    expect(READONLY_TOOLS.length).toBe(36);
   });
 
   it("变更工具清单数为 25", () => {
@@ -151,7 +155,7 @@ describe("工单 04 最终 guard：全部 59 工具 outputSchema 与 readOnlyHin
     for (const name of registered) {
       expect(listed.has(name), `已注册的 ${name} 应在列表里`).toBe(true);
     }
-    expect(listed.size).toBe(59);
+    expect(listed.size).toBe(61);
   });
 
   // 只读工具：outputSchema 非空 + readOnlyHint === true

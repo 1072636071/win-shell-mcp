@@ -197,6 +197,7 @@ export const fsFindOutputSchema = z.object({
 /** find 工具定义（Unix 短名为主，fs_find 等为语义别名）。 */
 export const fsFindTool: Tool = {
   name: "find",
+  domain: "search",
   description:
     "按文件名模式递归找文件（≈ find，支持 * 通配，非内容搜索）。",
   inputSchema: fsFindInputSchema,

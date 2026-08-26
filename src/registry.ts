@@ -2,7 +2,8 @@
  * 工具注册表。
  *
  * 维护所有已注册工具，提供查询接口供 server 层使用。
- * 工单 12：注册全部 59 个工具（含 02/03 新增的 pwd/echo/run_command 与各域新增 find/cat/ping）。
+ * 工单 12：注册全部工具（时点 59 个）；工单 11-01 加 domain 必填字段并归域，
+ * 工单 11-03 新增 tool_groups/list_domain_tools 两个 meta 导航工具（现共 61 个）。
  *
  * 别名机制（工单 02）：Tool 可声明 aliases，findTool 在精确名匹配失败后回退到别名匹配，
  * 因此 `ls` / `list_directory` 等短名/别名调用与正名返回一致结果。
@@ -10,6 +11,7 @@
 
 import type { z } from "zod";
 import type { AnyToolResult } from "./contract/output.js";
+import type { ToolDomain } from "./domains.js";
 import {
   systemInfoTool,
   systemDiskTool,
@@ -73,6 +75,22 @@ import { netListenTool } from "./tools/net_listen.js";
 import { netDownloadTool } from "./tools/net_download.js";
 import { archiveCreateTool, archiveExtractTool } from "./tools/archive.js";
 import { batchRunTool } from "./tools/batch.js";
+import { toolGroupsTool } from "./tools/tool_groups.js";
+import { listDomainToolsTool } from "./tools/list_domain_tools.js";
+
+/**
+ * 15 命令域枚举值清单与域类型（工单 11-01 地基）。
+ *
+ * 实际声明在 `./domains.js`（零依赖叶子模块）：tool_groups / list_domain_tools
+ * 需要在模块初始化期消费 COMMAND_DOMAINS 构造 zod enum，从 registry 导入会
+ * 循环求值。此处原样再导出，保持「registry 是工具元数据公共入口」的稳定 API；
+ * 来源与维护规则见 domains.ts。
+ */
+export {
+  COMMAND_DOMAINS,
+  type CommandDomain,
+  type ToolDomain,
+} from "./domains.js";
 
 /**
  * 工具注解（对齐 MCP 标准 ToolAnnotations）。
@@ -99,12 +117,17 @@ export interface ToolAnnotations {
  * 类型检查。成功结果经 `ok()` 统一收窄为输出契约，调用点无需强转。
  *
  * outputSchema / annotations 类型上可选，但由 guard-mutating.test.ts
- * 运行时强制：全部 59 个工具均声明非空 outputSchema 与显式 readOnlyHint。
+ * 运行时强制：全部内置工具均声明非空 outputSchema 与显式 readOnlyHint。
  * 该 guard test 是防漂移护栏，保留可选类型以避免大量类型断言噪音。
+ *
+ * domain 为必填字段（工单 01）：遗漏即编译失败；归属正确性由
+ * guard-domain.test.ts 运行时护栏强制（15 域全覆盖 + 计数守恒算术）。
  */
 export interface Tool {
   /** 工具名（唯一标识，AI 调用时使用）。 */
   name: string;
+  /** 工具所属命令域（15 域之一；"meta" 为编排/导航类名额，不占域名额）。 */
+  domain: ToolDomain;
   /** 工具描述（供 AI 理解工具用途）。 */
   description: string;
   /** 输入参数的 zod schema（用于验证）。 */
@@ -141,15 +164,32 @@ export function getAllTools(): Tool[] {
 }
 
 /**
- * 按名称查找工具。优先精确匹配工具名，失败则回退到别名匹配。
+ * 在指定工具表内按名称查找工具。优先精确匹配工具名，失败则回退到别名匹配。
+ *
+ * 供白名单裁剪后的部署子表复用同一查找语义（server 层 callTool 归因、
+ * batch_run 受限步骤解析）；`findTool` 即本函数作用于全量注册表的特例。
+ *
+ * @param table 工具表（如白名单过滤后的部署表）
+ * @param name 工具名或别名
+ * @returns 工具定义或 undefined
+ */
+export function findToolIn(
+  table: readonly Tool[],
+  name: string,
+): Tool | undefined {
+  const exact = table.find((t) => t.name === name);
+  if (exact) return exact;
+  return table.find((t) => t.aliases?.includes(name));
+}
+
+/**
+ * 按名称在全量注册表中查找工具。优先精确匹配工具名，失败则回退到别名匹配。
  *
  * @param name 工具名或别名
  * @returns 工具定义或 undefined
  */
 export function findTool(name: string): Tool | undefined {
-  const exact = tools.find((t) => t.name === name);
-  if (exact) return exact;
-  return tools.find((t) => t.aliases?.includes(name));
+  return findToolIn(tools, name);
 }
 
 /**
@@ -161,17 +201,21 @@ export function resetRegistry(): void {
   tools.length = 0;
 }
 
-// 注册内置工具（共 59 个，按域分组）
+// 注册内置工具（共 61 个 = 58 域工具 + 3 meta；工单 01 起按 domain 字段归域，
+// 工单 11-03 新增 tool_groups/list_domain_tools 两个 meta 导航工具）。
+// 注册顺序保持现状基线不变——server 层 listTools() 输出顺序依赖注册顺序；
+// 注释仅作可读性分组，域归属以各工具的 domain 字段为单一事实源，
+// 护栏见 tests/tools/guard-domain.test.ts。
 // system 域
 registerTool(systemInfoTool);
 registerTool(systemDiskTool);
 registerTool(systemMemoryTool);
 registerTool(systemPathTool);
-// fs_read 域
+// fs 域（读）
 registerTool(fsListTool);
 registerTool(fsReadTool);
 registerTool(fsStatTool);
-// fs_write 域
+// fs 域（写；现状注释曾拆 fs_read/fs_write 两级，已收敛到 fs 域字段值）
 registerTool(fsWriteTool);
 registerTool(fsMkdirTool);
 registerTool(fsRmTool);
@@ -221,13 +265,15 @@ registerTool(gitStashTool);
 // core 域（工单 02）
 registerTool(pwdTool);
 registerTool(echoTool);
-// run_command（工单 03）
+// run_command 域（工单 03）
 registerTool(runCommandTool);
-// 各域新增工具（桩由对应 agent 完善）
+// 散列归域新增（工单 02/03）：find→search、cat→text、ping→net，归属以各自
+// domain 字段为准（find 归 search 的裁决理由见 issue 01 评论）
 registerTool(fsFindTool);
 registerTool(textCatTool);
 registerTool(netPingTool);
-// 工单 02 新增命令
+// 工单 02 新增命令：fs_du→fs、hash_file→hash、json_get→json、
+// net_listen/net_download→net、archive_*→archive
 registerTool(fsDuTool);
 registerTool(hashFileTool);
 registerTool(jsonGetTool);
@@ -235,8 +281,11 @@ registerTool(netListenTool);
 registerTool(netDownloadTool);
 registerTool(archiveCreateTool);
 registerTool(archiveExtractTool);
-// batch_run（工单 01-02-03-04）
+// meta（batch_run：编排类元工具，不占域名额）
 registerTool(batchRunTool);
+// meta（工单 11-03：域导航元工具，不占域名额）
+registerTool(toolGroupsTool);
+registerTool(listDomainToolsTool);
 
 /** server 层装载的不可变工具清单（快照自 registerTool 注册结果）。 */
 export const builtinTools: readonly Tool[] = [...tools];

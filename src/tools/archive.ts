@@ -478,6 +478,7 @@ export const archiveCreateOutputSchema = z.object({
 /** archive_create 工具定义。 */
 export const archiveCreateTool: Tool = {
   name: "archive_create",
+  domain: "archive",
   description:
     "创建归档（≈ tar -czf/zip）。纯 Node，支持 tar/tar.gz/zip(STORE)。format 默认按扩展名推断。",
   inputSchema: archiveCreateInputSchema,
@@ -555,6 +556,7 @@ export const archiveExtractOutputSchema = z.object({
 /** archive_extract 工具定义。 */
 export const archiveExtractTool: Tool = {
   name: "archive_extract",
+  domain: "archive",
   description:
     "解压归档（≈ tar -x/unzip）。纯 Node，支持 tar/tar.gz/zip。dest 默认归档所在目录。",
   inputSchema: archiveExtractInputSchema,

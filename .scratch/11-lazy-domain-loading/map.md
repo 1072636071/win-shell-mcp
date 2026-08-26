@@ -55,3 +55,7 @@ MCP server 面提供可选的懒加载模式：`ListTools` 只返回 3 个 meta 
 ## 评论
 
 （对话历史与补充追加于此，新内容置于最前。）
+
+- 收尾（captain）：本批 6 工单全部落地并通过 t9 终审（40 文件 / 1784 通过 / typecheck 零错误）；懒模式经 11-06 真实客户端门槛放行——**可作为默认可推荐特性**。门槛发现的 MCP 面 structuredContent 缺口立为衍生工单 18（`.scratch/18-structured-content-backfill/`）并已同批修复复验。已知偏差 2 项（非结构性）：tool_groups handler 内 env 过渡读取点未上收、METADATA_BUDGET 重锚 52607，均已在工单评论报备。工作树未 commit，待用户裁决提交。
+
+- 复核（审视）：审视结论已落各工单评论——04 需 `createServer` 列出/分发双表 API 扩展（现状单表「已支持」的说法不成立，且与不设门禁条款冲突）；01 护栏算术（+3 meta = 59）与 `domain` 枚举措辞需修正、「CONTEXT.md 写 58」的记载已过时；03 缺 59→61 基线更新验收项（guard-mutating 34/25/59 与 integration `EXPECTED_TOOL_COUNT`）；05 的 meta×白名单归属待裁决（联动 12-02，宜在其实施前定）。其余事实核验通过：59 工具、fs 注释拆分、git 域 11 个、`batch.ts` 走全局 `findTool`、InMemoryTransport harness、ADR 引用均属实。

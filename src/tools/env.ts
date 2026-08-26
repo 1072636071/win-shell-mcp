@@ -106,6 +106,7 @@ export const envGetOutputSchema = z.object({
 /** env_get 工具定义。 */
 export const envGetTool: Tool = {
   name: "env_get",
+  domain: "env",
   description:
     "读取环境变量（≈ env/printenv）。name 指定返回 {name,value}；省略返回全部 {vars,count}。",
   inputSchema: envGetInputSchema,
@@ -172,6 +173,7 @@ export const envSetOutputSchema = z.object({
 /** env_set 工具定义。 */
 export const envSetTool: Tool = {
   name: "env_set",
+  domain: "env",
   description: "设置环境变量（≈ export），写入 process.env 对后续会话生效。",
   inputSchema: envSetInputSchema,
   outputSchema: envSetOutputSchema,
@@ -233,6 +235,7 @@ export const envUnsetOutputSchema = z.object({
 /** env_unset 工具定义。 */
 export const envUnsetTool: Tool = {
   name: "env_unset",
+  domain: "env",
   description: "删除环境变量（≈ unset），从 process.env 移除。",
   inputSchema: envUnsetInputSchema,
   outputSchema: envUnsetOutputSchema,

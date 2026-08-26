@@ -143,6 +143,7 @@ const runCommandOutputSchema = z.object({
 
 const runCommandTool: Tool = {
   name: "run_command",
+  domain: "run_command",
   description:
     "结构化执行命令（args 数组，不经 shell 解析，无管道/通配/注入风险）。返回 {stdout, stderr, exitCode, signal, truncated}。适合带空格路径或精确参数。",
   inputSchema: z.object({

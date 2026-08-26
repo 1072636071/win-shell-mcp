@@ -176,6 +176,7 @@ export const searchGlobOutputSchema = z.object({
 
 export const searchGlobTool: Tool = {
   name: "search_glob",
+  domain: "search",
   description:
     "按 glob 模式匹配文件路径（≈ find -name），返回相对路径列表。支持 *、**、?、[]。",
   inputSchema: searchGlobInputSchema,
@@ -359,6 +360,7 @@ export const searchContentOutputSchema = z.object({
 
 export const searchContentTool: Tool = {
   name: "search_content",
+  domain: "search",
   description:
     "跨文件递归搜内容（≈ grep -r），返回[{file,line,text}]。pattern 默认字面量子串（元字符原样，反斜杠路径免转义）；/正则/ 启用正则（flags i/m/s，体内 \\/）。向字面量收敛。残余洞/tmp/类短串判正则，异常偏多附hint。区别text_grep：跨文件。",
   inputSchema: searchContentInputSchema,
@@ -457,6 +459,7 @@ export const searchWhichOutputSchema = z.object({
 
 export const searchWhichTool: Tool = {
   name: "search_which",
+  domain: "search",
   description:
     "在 PATH 中定位可执行文件（≈ which）。Windows 自动尝试 .exe/.cmd/.bat/.ps1 后缀。",
   inputSchema: searchWhichInputSchema,

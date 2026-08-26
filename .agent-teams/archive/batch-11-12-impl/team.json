@@ -1,0 +1,204 @@
+{
+  "name": "batch-11-12-impl",
+  "id": "batch-11-12-impl",
+  "description": "完成 win-shell-mcp 两批工单：11-lazy-domain-loading（懒加载机制 01-06）与 12-tool-whitelist-env（白名单 01-03）。施工规范 = 各 issue 文件验收标准（已含审视修正），依赖图与文件冲突规避由任务依赖表达。全部工作须通过 pnpm typecheck && pnpm test，dsh 插件面（src/plugin.ts）不得改动。",
+  "captainSessionId": "session-3e679fba-d41c-4082-bdf5-58ee2c01b507",
+  "createdAt": 1787713674713,
+  "members": [
+    {
+      "id": "9f9c8f32-8ae6-447c-961e-8655d28e6597",
+      "name": "eng-alpha",
+      "role": "engineer",
+      "provider": "opencodeai",
+      "model": "x-preview-f-free",
+      "joinedAt": 1787713678639,
+      "status": "removed"
+    },
+    {
+      "id": "54b7df67-f577-4f19-8b44-fad1d6a24865",
+      "name": "eng-beta",
+      "role": "engineer",
+      "provider": "opencodeai",
+      "model": "x-preview-f-free",
+      "joinedAt": 1787713678680,
+      "status": "removed"
+    },
+    {
+      "id": "cd91bf2d-64e8-4974-bb9f-263bf62ecd35",
+      "name": "rev-gamma",
+      "role": "reviewer",
+      "provider": "opencodeai",
+      "model": "x-preview-f-free",
+      "joinedAt": 1787713678779,
+      "status": "removed"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "11-01 域元数据地基：Tool.domain 字段 + 59 工具归域 + 护栏测试",
+      "description": "规范文件：`.scratch/11-lazy-domain-loading/issues/01-domain-metadata.md`（验收标准即完整规范，已含审视修正，以当前文件内容为准）。\n\n工作流：\n1. 先读仓库 `AGENTS.md`、`CONTEXT.md`（15 域术语表与 59 工具基线）、上述 issue 文件；涉及护栏先例读 `tests/tools/guard-mutating.test.ts`。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 按 issue 验收标准实现：Tool 接口加 `domain`（类型「15 域 | \"meta\"」联合）、全部 59 工具归域（`find` 归 search 的裁决理由记录到 issue 评论）、registry 注释分组与字段对齐、新增域护栏测试（算术按修正后公式：58 域 + 1 meta = 59）。\n4. 完成前运行 `pnpm typecheck && pnpm test` 必须全绿；然后 update_task status=completed 并写明改动文件清单与测试结果。\n5. 禁改 `src/plugin.ts`；不改 CHANGELOG（由后续工单统一追加）；不执行 git commit。\n\n后续 03/05/07 号任务依赖你本任务的产出质量，domain 枚举值是全链的地基。",
+      "status": "completed",
+      "assignee": "eng-alpha",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1787713711389,
+      "updatedAt": 1787714679204,
+      "attemptId": "ab841c44-d663-4973-bc7a-35adcbce369a",
+      "reassigning": false,
+      "output": "工单 01 域元数据地基完成，pnpm typecheck && pnpm test 全绿（38 文件 / 1695 通过 / 2 既有 skip）。\n\n改动清单：\n1. src/registry.ts：新增导出 COMMAND_DOMAINS（15 域枚举值常量）与 ToolDomain 类型（15 域 | \"meta\" 联合）；Tool 接口新增必填 domain 字段；注册区注释改写为与字段一致（fs_read/fs_write 两级注释退役、散落工具标注归属），注册顺序未动 → listTools() 输出顺序保持现状基线。\n2. 全部 59 个内置工具显式声明 domain（23 个 src/tools/*.ts 文件）：system 4、fs 10（含 fs_du）、text 7（含 cat）、search 4（find 按裁决归 search）、process 2、shell_exec 1、env 3、net 7（含 ping/net_listen/net_download）、pkg 2、git 11、core 2、run_command 1、archive 2、hash 1、json 1 = 58 域工具 + batch_run(meta) 1 = 59。\n3. 新增 tests/tools/guard-domain.test.ts（124 断言）：每工具 domain 非空且在「15 域|meta」枚举内、15 域每域 ≥1 工具、\"meta\" 不占域名额、域计数总和 + 现存 meta 数 = 总数守恒（58+1=59，03 号落地抬到 58+3=61）、batch_run=meta；锚点常量 EXPECTED_DOMAIN_COUNT=15 / EXPECTED_TOTAL_TOOLS=59 注明 CONTEXT.md 来源与抬升时机。\n4. 测试 stub 补必填域值：tests/registry.test.ts（stub 工厂）、tests/server.test.ts（throwing/coded/string_throw/bare_test_tool ×4）。\n5. 归属裁决已记入 .scratch/11-lazy-domain-loading/issues/01-domain-metadata.md 评论置顶：find→search 确认（语义为模式发现非单点路径操作、PRD 示例裁决、fs_find.ts 为历史命名遗留）；基线核对结论：CONTEXT.md 已是「15 域、59 工具」，无需修改。\n\n回归确认：guard-mutating（241 断言）、integration/server（EXPECTED_TOOL_COUNT=59）均通过；server.listTools() 仅投影 name/description/inputSchema(+可选)，domain 不外泄 MCP 面。禁改面遵守：未动 src/plugin.ts、未改 CHANGELOG、未 git commit。"
+    },
+    {
+      "id": "t2",
+      "subject": "配置模块 seam（12-01 + 11-02 合并）：src/config 纯函数解析 WIN_SHELL_TOOLS 与 WIN_SHELL_LAZY",
+      "description": "规范文件（两份合并为一个任务，确保只存在一个配置模块）：`.scratch/12-tool-whitelist-env/issues/01-tools-whitelist-config-module.md` 与 `.scratch/11-lazy-domain-loading/issues/02-config-module-seam.md`（验收标准已含审视修正，以当前文件内容为准）。两份 PRD 都指向\"只存在一个配置模块\"，本任务一次性创建并实现两个变量的解析，彻底消除协调竞态。\n\n工作流：\n1. 先读仓库 `AGENTS.md`、上述两份 issue 文件；表驱动纯函数测试先例读 `tests/contract/errors.test.ts`。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 实现：新建一个纯函数配置模块（模块内不读 process.env、入参原始字符串或 undefined、可注入伪造环境源），同时导出 `WIN_SHELL_TOOLS` 白名单解析（trim/忽略空段/去重/未知条目错误含全部原文/别名视为未知条目）与 `WIN_SHELL_LAZY` 解析（仅 \"1\" 为懒模式，缺省/空串/其他值全量）；两个变量名常量收敛于此模块。变量名常量与解析函数命名需便于 12-02 / 11-04 后续消费。\n4. 表驱动单测覆盖两函数的全部输入形态（正常名单/空串/纯空白/重复/未知项/含别名/undefined/\"1\"/\"0\"/\"true\"/缺省）。\n5. 完成前 `pnpm typecheck && pnpm test` 全绿；update_task completed 附改动文件清单与测试结果。暂不接线 stdio 入口（属 12-02），本任务只交付模块与测试。\n6. 禁改 `src/plugin.ts`；不改 CHANGELOG；不执行 git commit。",
+      "status": "completed",
+      "assignee": "eng-beta",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1787713711611,
+      "updatedAt": 1787714454272,
+      "attemptId": "b7f2ad0c-6174-46c3-910e-b68597142ae7",
+      "reassigning": false,
+      "output": "t2 完成。交付（只存在一个配置模块，12+11 两变量一次并入）：\n\n改动文件：\n- 新增 src/config/env.ts —— 纯函数配置 seam，零 import、零副作用、不读 process.env。导出：常量 ENV_WIN_SHELL_TOOLS='WIN_SHELL_TOOLS'、ENV_WIN_SHELL_LAZY='WIN_SHELL_LAZY'；parseToolsWhitelist(raw, canonicalToolNames) 返回可辨识联合 {ok:true,names:ReadonlySet} | {ok:false,unknown:string[]}（trim/忽略空段/去重/undefined与空串与纯空白→空集合=全量/未知条目报错携带全部原文且去重/别名与大写变体视为非法/整体失败不返回部分集合）；parseLazyMode(raw) 仅精确 \"1\" 为懒模式。\n- 新增 tests/config/env.test.ts —— 26 个表驱动用例（errors.test.ts 先例风格）：正常名单/空串/纯空白/空白混合/仅逗号/重复去重保序/未知多条/未知重复去重/已知未知混合整体失败/别名 ls 报错/大小写敏感/Set 注入；lazy 覆盖 undefined/''/'   '/'1'/'0'/'true'/'false'/'yes'/'01'/'2'/' 1 '。\n\n设计要点（便于 12-02/11-04 消费）：正名集合由调用方注入（Iterable<string>，如 builtinTools.map(t=>t.name)），registry 保持唯一事实源、模块零依赖不会拖入全部工具图；消费形如 const wl = parseToolsWhitelist(process.env[ENV_WIN_SHELL_TOOLS], builtinTools.map(t=>t.name))，错误分支打印 wl.unknown 后 fail-fast。\n\n验证：新测试 26/26 绿；pnpm test 全量 37 文件 / 1571 passed / 2 skipped 全绿。注意：当前工作区 pnpm typecheck 有 ~60 个 TS2741（Tool.domain 缺失）——均来自并行工单 11-01 对 src/registry.ts 与 src/tools/* 的未完成在途修改（HEAD 无 domain 字段），与本任务无关；错误清单零条指向 src/config/** 或 tests/config/**，本交付在同一 strict tsconfig 下类型干净。11-01 收尾后全树 typecheck 自然回绿。\n\n约束遵守：未接线 stdio 入口（留 12-02）、未改 src/plugin.ts、未改 CHANGELOG、未 commit、未动 .scratch issue 文件。"
+    },
+    {
+      "id": "t3",
+      "subject": "11-03 meta 工具：tool_groups 域概览 + list_domain_tools 域明细（含 59→61 基线更新）",
+      "description": "规范文件：`.scratch/11-lazy-domain-loading/issues/03-meta-tools.md`（验收标准即完整规范，已含审视修正，以当前文件内容为准）。\n\n工作流：\n1. 先读该 issue 文件、`CONTEXT.md`（15 域术语表是 `tool_groups` summary 文案源）、01 号工单落地的 `domain` 字段与护栏。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 实现 `src/tools/tool_groups.ts` 与 `src/tools/list_domain_tools.ts`（均只读、非空 outputSchema、readOnlyHint: true、domain 标 \"meta\"），在 registry 注册；注意基线更新验收项：guard-mutating.test.ts 断言 59→61 且两 meta 计入只读清单（34→36）、tests/integration/server.test.ts 的 EXPECTED_TOOL_COUNT 同步 61。\n4. 完成前 `pnpm typecheck && pnpm test` 全绿；update_task completed 附改动文件清单与测试结果。\n5. 禁改 `src/plugin.ts`；不改 CHANGELOG；不执行 git commit。",
+      "status": "completed",
+      "assignee": "eng-alpha",
+      "dependencies": [
+        "t1"
+      ],
+      "attempt": 1,
+      "createdAt": 1787713741115,
+      "updatedAt": 1787716477238,
+      "attemptId": "9d796970-56a2-4384-a486-4003fa3e701e",
+      "reassigning": false,
+      "output": "工单 11-03 两个 meta 导航工具完成，pnpm typecheck && pnpm test 全绿（40 文件 / 1748 通过 / 2 既有 skip）。\n\n新增：\n- src/tools/tool_groups.ts：15 域概览 { domain, summary, toolCount, examples }；summary 源自 CONTEXT.md（DOMAIN_BRIEFS 类型层强制 15 域全覆盖），toolCount 按 registry domain 字段实时统计，examples 由测试校验属域；懒模式（WIN_SHELL_LAZY=1 经 config/env.ts parseLazyMode）每域附 visible:false，全量模式省略字段。\n- src/tools/list_domain_tools.ts：入参 domain 为 15 域枚举（非法值 EINVAL，\"meta\" 不可入参）；输出与 listTools() 条目逐字段深度相等（测试以 server.listTools() 同域投影为期望钉死同形）。\n- src/domains.ts：COMMAND_DOMAINS/CommandDomain/ToolDomain 零依赖叶子模块——zod enum 初始化期消费需直连，registry 再导出保持 API 不变（修复循环求值）。\n- tests/tools/meta-tools.test.ts：19 断言覆盖全部验收第 7 条 + visible 双模语义。\n\n基线更新 59→61：guard-mutating（61 总数、READONLY 36 并入两 meta）、integration/server.test（EXPECTED_TOOL_COUNT=61+名单）、guard-domain（锚点 61、58+3 守恒）、plugin-integration（59→61、排除用例 56→58）、METADATA_BUDGET 重取实测 50516→52607（两新工具 schema 净增，沿 09/10 先例）。\n\n禁改面遵守：未动 src/plugin.ts（其两处\"59\"注释已过时留待后续）、未改 CHANGELOG、未 commit。实施裁决（domains.ts 循环规避、同形本地投影不 import server.ts、visible 过渡读取点待 04 上收）已记入 issue 03 评论置顶。"
+    },
+    {
+      "id": "t4",
+      "subject": "12-02 白名单生效 + 错误区分（listTools/callTool/batch_run 注入裁剪）",
+      "description": "规范文件：`.scratch/12-tool-whitelist-env/issues/02-whitelist-enforcement-and-error-distinction.md`（验收标准即完整规范，已含审视修正，以当前文件内容为准）。\n\n工作流：\n1. 先读该 issue 文件、`src/server.ts`（listTools/callTool/createServer 参数注入结构）、`src/tools/batch.ts`（当前用全局 findTool，需改为受注入工具表约束）。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 实现：stdio 入口（startStdioServer 或其调用点 index.ts）读取环境变量 → 经 t2 配置模块解析 → 过滤内置工具表后注入 createServer/callTool/batchRunHandler；错误区分「被裁（未在当前部署暴露 WIN_SHELL_TOOLS）」vs「Unknown tool」；batch_run 步骤引用被裁工具该步失败并短路。前瞻对齐条款照 issue 执行（过滤结构不得写死为无条件裁掉一切未点名条目）。注意：env 读取只允许出现在唯一调用点，server 层只消费解析结果。\n4. 完成前 `pnpm typecheck && pnpm test` 全绿；update_task completed 附改动文件清单与测试结果。\n5. 禁改 `src/plugin.ts`；不改 CHANGELOG（fail-fast/文档属下一任务）；不执行 git commit。",
+      "status": "completed",
+      "assignee": "eng-beta",
+      "dependencies": [
+        "t2"
+      ],
+      "attempt": 1,
+      "createdAt": 1787713741158,
+      "updatedAt": 1787716698809,
+      "attemptId": "5a20db53-0e90-425e-b86a-5ead2bd4c4de",
+      "reassigning": false,
+      "output": "t4（12-02 白名单生效+错误区分）完成。pnpm typecheck 全绿（exit 0）；pnpm test 全量 40 文件 / 1748 passed / 2 skipped 全绿（含并行 11-03 落地后的最终合流状态）。\n\n改动文件：\n1. src/server.ts —— ①startStdioServer 成为 WIN_SHELL_TOOLS 唯一 env 读取点：经配置模块解析→未设置/空串=全量注入（零破坏）→含未知条目时 throw（入口 catch 打印退出，fail-fast；此机制与 t6 的\"启动校验\"重合，t6 可聚焦 README/CHANGELOG）②createServer：注入子表时把 batch_run 替换为受限副本（scopeBatchRunToDeployment），全量注入原样透传 ③callTool 错误区分：注入子表下 miss 且内置注册表（正名或别名 findToolIn）仍命中 → EINVAL+\"未在当前部署暴露（WIN_SHELL_TOOLS）\"；全量注入维持 Unknown tool 零破坏；真未知名恒 Unknown tool。\n2. src/tools/batch.ts —— 步骤查找改经 createBatchRunHandler(allowedTools?) 工厂：受限模式用 findToolIn(allowedTools)（正名优先别名回退），未命中回查全量注册表归因（被裁 vs 未知工具）；短路语义不变。新增 createScopedBatchRunTool(allowedTools) 返回仅换 handler 的副本（schema/annotations 共享，listTools 无差别）。默认导出 batchRunHandler 行为不变（既有 batch 测试零改动全过）。\n3. src/registry.ts —— 提取 findToolIn(table,name)（findTool 委托之），白名单子表复用同一查找语义。\n4. src/config/env.ts —— 新增 notExposedMessage(name) 统一两处归因文案防漂移。\n5. tests/whitelist-enforcement.test.ts（新增 17 用例）——listTools 裁剪（子表恰含4工具/被裁正名与别名均不在列/全量数量守恒/受限 batch_run 列表形态不变）；callTool 区分（被裁正名/被裁别名 ls+list_directory 同归因/真未知维持 Unknown/白名单内正常执行/全量零破坏回归/\"ls 经全量表仍 Unknown tool\"现状钉住——14 号工单落地时随其更新）；协议面 Client↔InMemoryTransport 两用例；batch_run 受限（引用被裁工具该步失败含归因且短路 steps.length=1/被裁别名同归因/未知工具归因/白名单内含 ls 别名步骤正常执行/全量注入不受影响）。全部经 createServer(过滤表)/callTool(name,args,过滤表) 参数注入断言，不测进程级启动。\n\n验收对照：别名共进退双向断言✓；插件面未接（src/plugin.ts 未动）✓；CHANGELOG 未动（留 t6）✓；前瞻对齐 11-05：裁剪结构=纯列表组合注入，server 内部无\"无条件裁掉一切未点名条目\"的写死规则，meta 三件套豁免可在装配层叠加✓。\n\n过程备注：中途被 t3 在途循环 import（registry↔tool_groups，COMMAND_DOMAINS TDZ）短暂阻塞并已向 eng-alpha 精确定位，其已修复；metadata-budget 护栏红为其 t3 基线更新职责，现已回绿。"
+    },
+    {
+      "id": "t5",
+      "subject": "11-04 懒模式 ListTools（createServer 双表 API 扩展）+ 调用不设门禁",
+      "description": "规范文件：`.scratch/11-lazy-domain-loading/issues/04-lazy-list-tools.md`（验收标准即完整规范，已含审视修正，以当前文件内容为准）。核心：列出面与分发面分离是本工单显式交付物——现状 createServer(tools) 单表同时服务 ListTools 与 CallTool，直接裁剪会破坏「调用不设门禁」。\n\n工作流：\n1. 先读该 issue 文件、`src/server.ts`、t2 产出的配置模块（消费 WIN_SHELL_LAZY 解析结果，env 读取只留在唯一调用点）、tests/integration/server.test.ts 的 InMemoryTransport harness。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 实现：扩展 server 创建 API 分列分发表与列出表（如 createServer({ tools, listedTools }) 或等价机制）；懒模式 ListTools 恰返回 tool_groups/list_domain_tools/batch_run 三条；CallTool 分发仍针对全部注册工具；不发 listChanged；全量模式逐字节不变。\n4. 测试只测外部可观察行为（懒模式 listTools=3、未列出工具 callTool 成功、全量回归），复用 InMemoryTransport harness。\n5. 完成前 `pnpm typecheck && pnpm test` 全绿；update_task completed 附改动文件清单与测试结果。\n6. 禁改 `src/plugin.ts`；不改 CHANGELOG；不执行 git commit。",
+      "status": "completed",
+      "assignee": "eng-alpha",
+      "dependencies": [
+        "t2",
+        "t3"
+      ],
+      "attempt": 1,
+      "createdAt": 1787713760284,
+      "updatedAt": 1787717279915,
+      "attemptId": "0ac87d04-1ea0-40e5-a63c-eccb3436b167",
+      "reassigning": false,
+      "output": "工单 11-04 懒模式 ListTools 完成，pnpm typecheck && pnpm test 全绿（40 文件 / 1766 通过 / 2 既有 skip）。\n\n改动清单：\n1. src/server.ts：\n   - createServer 双表 API：兼容形态 createServer(tools)/createServer() 行为逐字节不变；新形态 createServer({ tools, listedTools })——ListTools 用列出表、CallTool 恒用分发表（调用不设门禁，未列出工具不会 Unknown tool）。分发面沿用 12-02 白名单语义（scopeBatchRunToDeployment），列出表缺省=分发表。\n   - 新增导出 resolveListedTools(lazy, tools) 纯函数与 LAZY_LISTED_TOOL_NAMES 三件套常量（与分发表求交保持注册顺序，为 05 号白名单组合预留）。\n   - startStdioServer 组合懒模式：WIN_SHELL_LAZY 经配置模块 parseLazyMode 在 stdio 入口链路解析（env 原始读取不新增读取点），分发表恒全部部署工具。\n   - 运行期注册集不变，无 listChanged 通知代码路径。\n2. tests/integration/server.test.ts：新增 10 断言（复用 InMemoryTransport harness，只测外部可观察行为）——懒模式列出恰 3 条 batch_run/tool_groups/list_domain_tools、未列出的 fs_stat 照常成功、meta 自身可调、未知工具仍 Unknown tool、listChanged 通知捕获为空、resolveListedTools 双模语义与部署子表求交、对象/数组形态一致性、listedTools 子集只收窄列出面。\n\n实施裁决（已记 issue 04 评论置顶）：①与 12-02 白名单改造共存零破坏；②tool_groups 的 visible 过渡 env 读取点保留（handler 无上下文注入通道，彻底上收留作 05 接口点）。\n\n禁改面遵守：未动 src/plugin.ts、未改 CHANGELOG、未 commit。"
+    },
+    {
+      "id": "t6",
+      "subject": "12-03 fail-fast 启动校验 + README 环境变量小节 + CHANGELOG",
+      "description": "规范文件：`.scratch/12-tool-whitelist-env/issues/03-fail-fast-and-docs.md`（验收标准即完整规范，已含审视修正——fail-fast 语义为「存在未知项时启动失败并列出全部非法条目」，以当前文件内容为准）。\n\n工作流：\n1. 先读该 issue 文件与 t2/t4 产出。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 实现：启动阶段 fail-fast 校验接线（白名单含未知工具名即抛错退出、列出全部非法条目原文；测试以纯函数错误返回值等价覆盖，不单测进程级退出码）；README 新增「环境变量」小节写入 WIN_SHELL_TOOLS 条目并注明本批共用槽位（11 号 WIN_SHELL_LAZY、15 号 WIN_SHELL_TRUNCATE 后续同节追加）；CHANGELOG Unreleased 段追加本特性条目（默认行为不变、纯新增开关）。\n4. 完成前 `pnpm typecheck && pnpm test` 全绿；update_task completed 附改动文件清单与测试结果。\n5. 禁改 `src/plugin.ts`；不执行 git commit。",
+      "status": "completed",
+      "assignee": "eng-beta",
+      "dependencies": [
+        "t4"
+      ],
+      "attempt": 1,
+      "createdAt": 1787713760302,
+      "updatedAt": 1787717289639,
+      "attemptId": "0dc5e8be-3b53-4a7a-828e-2ea53d6339df",
+      "reassigning": false,
+      "output": "t6（12-03 fail-fast 启动校验 + 文档）完成。pnpm typecheck exit 0；pnpm test 全量 40 文件 / 1766 passed / 2 skipped 全绿。\n\n改动文件：\n1. src/server.ts —— 从 startStdioServer 提取纯装配函数 resolveDeployedTools(rawWhitelist, builtin=builtinTools)：fail-fast 抛错含变量名与全部非法条目原文（误写别名同点名）；无忽略宽容、存在未知项绝不降级残缺白名单或全量；未设置/空串/纯空白返回内置表原引用（零破坏）。startStdioServer 收敛为「读 env（唯一读取点，含 t5 的 WIN_SHELL_LAZY 解析）→ resolveDeployedTools → createServer 双表注入」，行为不变。该提取让失败路径可注入伪造字符串直测，无需启动进程/测退出码。\n2. tests/whitelist-enforcement.test.ts —— 新增 8 用例（17→25）：抛错列出全部非法条目原文正则断言两条俱全/误写别名 ls 点名/存在未知项即失败不做宽容/undefined·空串·纯空白均返回 builtinTools 原引用（toBe 引用相等）/合法子集过滤保序去重/第二参数注入伪造工具表双向验证。\n3. README.md —— 「客户端配置」与「工具清单」之间新增「环境变量」小节：共用槽位注明（11 号 WIN_SHELL_LAZY、15 号 WIN_SHELL_TRUNCATE 同节追加）；WIN_SHELL_TOOLS 条目覆盖验收全语义——逗号分隔正名+示例、trim/忽略空段/去重、未设置或空串=全量默认行为不变、别名随正名共进退且别名不可写入、fail-fast 列出全部非法条目、「未在当前部署暴露」vs Unknown tool 区分、batch_run 步骤受约束、作用范围仅 stdio 入口（dsh 面沿用 config.exclude）。\n4. CHANGELOG.md —— [Unreleased] 的 Added 段追加 WIN_SHELL_TOOLS 条目：默认行为不变、纯新增开关、解析收敛 src/config/env.ts 共用 seam、插件面不受影响。\n\n验收对照：fail-fast 两条款✓（含审视修正后的「存在未知项时启动失败并列出全部」语义）；纯函数等价覆盖不测进程退出码✓；README 小节✓；AI 速查表未承担（13 号落地后仅需确认同步一行，本工单不动）✓。约束：src/plugin.ts 未动、未 git commit。注：README 工具总数文案（58）归 t3/t5 的文档同步范围，本工单未越界改动。"
+    },
+    {
+      "id": "t7",
+      "subject": "11-05 白名单 × 懒加载组合语义（meta 三件套豁免 + 正交退化）",
+      "description": "规范文件：`.scratch/11-lazy-domain-loading/issues/05-compose-with-whitelist.md`（验收标准即完整规范，已含审视修正，以当前文件内容为准）。关键裁决（已写入验收标准）：meta 三件套在懒模式下豁免白名单——组合模式恒列入恒可调；纯白名单模式下 meta 照常受约束。\n\n工作流：\n1. 先读该 issue 文件、t4 的白名单过滤实现、t5 的双表懒模式实现。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 实现：白名单先过滤，tool_groups 概览与 list_domain_tools 输出基于过滤后集合统计；空域不出现；被裁工具调用走 12-02 的「未在当前部署暴露」文案而非歧义文案；组合模式 ListTools 仍恰 3 个 meta 且三 meta 豁免白名单；两开关正交可组合（各自单独关闭时退化为纯另一机制）。\n4. 测试覆盖：叠加下 tool_groups 域集合/toolCount 反映过滤后集合、空域不出现、被裁工具错误文案正确、meta 豁免生效、单开关退化路径。\n5. 完成前 `pnpm typecheck && pnpm test` 全绿；update_task completed 附改动文件清单与测试结果；在 issue 文件评论区追加落地记录。\n6. 禁改 `src/plugin.ts`；CHANGELOG 可追加一行懒加载特性条目（若 t5 尚未写）；不执行 git commit。",
+      "status": "completed",
+      "assignee": "eng-alpha",
+      "dependencies": [
+        "t4",
+        "t5"
+      ],
+      "attempt": 1,
+      "createdAt": 1787713780850,
+      "updatedAt": 1787718724909,
+      "attemptId": "44f73434-45d1-40ff-a1ab-20760da3c73f",
+      "reassigning": false,
+      "output": "工单 11-05 白名单 × 懒加载组合语义完成，pnpm typecheck && pnpm test 全绿（40 文件 / 1781 通过 / 2 既有 skip）。\n\n核心实现：\n1. src/server.ts：新增 composeLazyDispatchTable(deployed)——懒模式被裁三件套按注册序补回分发表（豁免裁决 a）；startStdioServer 组合「白名单先过滤 → 懒补集 → 列出面=三件套∩分发表」；scopeBatchRunToDeployment 泛化为 scopeMetaToolsToDeployment（batch_run + 两个导航工具统一 scoped 替换）。\n2. src/tools/tool_groups.ts / list_domain_tools.ts：新增 createScoped*Tool(pool) 工厂（沿 batch_run 先例，副本仅换 handler、listTools 投影无差别）；域概览基于过滤后集合——空域不出现、计数为子表口径、精选示例被裁时回退域内现存前 2 个；list_domain_tools 只返回可见工具，整域被裁返回空数组。实现坑已记录：工厂缺省 pool 必须闭包内惰性解析（参数默认值会在模块初始化期读 builtinTools 踩 ESM 循环 TDZ），已修复并有全量回归钉住。\n3. 被裁工具调用文案不变走 12-02「未在当前部署暴露」。\n4. 规格外小项（captain 授权）：README 环境变量小节新增 WIN_SHELL_LAZY 条目；CHANGELOG [Unreleased] Added 追加懒加载特性一条。\n\n测试 +15 断言：meta-tools 单测 6 条（scoped 口径/示例回退/零破坏深度相等/EINVAL/投影无差别）+ integration 组合端到端 9 条（豁免装配注册序、列出恒 3 meta、概览反映过滤集合且空域不出现、明细可见性、被裁文案、batch_run 编排可用、单开退化×2）。\n\n禁改面遵守：未动 src/plugin.ts、未 commit。落地记录已置 issue 05 评论置顶。"
+    },
+    {
+      "id": "t8",
+      "subject": "11-06 发布门槛：stdio + SDK Client 三点真实验证",
+      "description": "规范文件：`.scratch/11-lazy-domain-loading/issues/06-client-validation-gate.md`（验收标准即完整规范，以当前文件内容为准）。实施环境无第三方 GUI MCP 客户端，「真实客户端」以实际可用者为准：用官方 @modelcontextprotocol/sdk Client 经 **stdio transport 子进程**连接构建产物验证（比 InMemoryTransport 更接近真实部署路径）。\n\n工作流：\n1. 先读该 issue 文件、t5 产出、package.json（bin 入口 dist/index.js）。\n2. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n3. 执行三项验证（临时脚本放 `.temp/scripts/`）：① WIN_SHELL_LAZY=1 启动 dist 产物，SDK Client 经 stdio 连接，listTools 恰 3 个 meta；② 对未列出工具（如 git_status）直接 tools/call 成功；③ list_domain_tools(domain) 结果可正常消费（结构完整、能据此构造后续调用）。\n4. 结论记录到该 issue 文件评论区（含客户端=SDK Client+版本、transport=stdio、步骤与结果）；若发现禁止调用未列出工具等否决性结论，update_task 改 status=failed 并在 output 写明降级建议，由 captain 裁决；验证通过则 completed。\n5. 验证中发现的产品缺陷不在本任务修码，记录评论区即可。不改 CHANGELOG；不执行 git commit。",
+      "status": "completed",
+      "assignee": "eng-beta",
+      "dependencies": [
+        "t5"
+      ],
+      "attempt": 2,
+      "createdAt": 1787713780866,
+      "updatedAt": 1787719403826,
+      "reassigning": false,
+      "attemptId": "c69e78d8-7c91-4d1f-98d7-91dc16fe58cd",
+      "output": "t8 重跑（attempt 2）通过：三点验证全绿，门槛放行——懒模式可作为默认可推荐特性，无降级路径需求。\n\n验证设置：重建 dist 后实跑同一组脚本（.temp/scripts/lazy-client-validation.mjs + fullmode-probe.mjs）；客户端=官方 @modelcontextprotocol/sdk Client v1.30.0（Node v22.22.2）；transport=stdio 子进程连接 dist/index.js（WIN_SHELL_LAZY=1）。\n\n三点结果：\n① ✅ 懒模式连接可用、ListTools 恰 [batch_run, list_domain_tools, tool_groups]；\n② ✅ 未列出工具 git_status 直接 tools/call 成功（ok=true），否决情形确认不存在；\n③ ✅ list_domain_tools('git') 可正常消费：11 条与 ListTools 同形的完整明细，并据此成功构造后续调用 git_log(limit=2)（修复前同路径 -32600，工单 18 回填后通过）。全量对照探针亦 PASS（61 工具列出后调用 git_status 成功），修复覆盖两种模式无回归。\n\n结论已按规范记入 issue 06 评论区（重跑条目置于首条失败结论之上）。未修产品代码、未改 CHANGELOG、未 commit。"
+    },
+    {
+      "id": "t9",
+      "subject": "终审：11/12 全量 diff 对照两批验收标准 + 测试全绿确认",
+      "description": "对 11/12 两批工单的全部实现做终审（git diff 工作区 vs HEAD b87715a）。\n\n工作流：\n1. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n2. spec 审查：逐条对照 `.scratch/11-lazy-domain-loading/issues/01..06` 与 `.scratch/12-tool-whitelist-env/issues/01..03` 的验收标准（含审视修正后的条款），确认每条有对应实现或测试，缺漏逐条列出。\n3. 标准审查：仓库编码规范一致性（AGENTS.md/CONTEXT.md 词汇、ADR-0016 链取舍不越界、输出契约、测试只测外部行为的原则）；重点复核四类风险——createServer 双表 API 的全量模式逐字节回归、懒模式调用无门禁、白名单错误区分文案、meta 豁免仅在懒模式生效。\n4. 运行 `pnpm typecheck && pnpm test` 确认全绿；检查 src/plugin.ts 未被改动。\n5. 发现问题：小问题（文案/注释/测试命名）直接修复并说明；结构性问题不自行返工，update_task status=failed 列出问题清单交 captain 裁决。通过则 completed 附终审报告摘要（含每张 issue 的验收勾选结论）。不执行 git commit。",
+      "status": "completed",
+      "assignee": "rev-gamma",
+      "dependencies": [
+        "t1",
+        "t2",
+        "t3",
+        "t4",
+        "t5",
+        "t6",
+        "t7",
+        "t8"
+      ],
+      "attempt": 1,
+      "createdAt": 1787713792722,
+      "updatedAt": 1787719922645,
+      "attemptId": "ffce707a-d49e-48f4-a205-97d4cd83bcbd",
+      "reassigning": false,
+      "output": "终审通过。工作区 vs b87715a 全量 diff（33 文件 +902/-56，另 7 个新 src/tests 文件）逐条对照两批 9 张工单验收标准，全部有对应实现或测试；`pnpm typecheck` 零错误、`pnpm test` 全绿（40 文件 / 1784 通过 / 2 既有 skip）；src/plugin.ts、AGENTS.md、CODEBUDDY.md、CONTEXT.md 均未改动；未 commit。\n\n四类风险复核全部通过：①createServer 全量模式零破坏（默认/数组形态走 builtinTools 原引用，callTool 归因分支被 `tools !== builtinTools` 守卫，resolveListedTools(false) 返回同引用）；②懒模式调用无门禁（CallTool 恒用分发表，listedTools 仅进 ListTools handler，集成测试钉住未列出工具照常成功）；③白名单错误区分（notExposedMessage 单一来源，callTool/batch_run 两路文案逐字一致，Unknown tool 语义保留，别名归因边界有现状钉住测试）；④meta 豁免仅在懒模式生效（composeLazyDispatchTable 仅被 startStdioServer 在 lazy=true 时调用，纯白名单退化测试断言 meta 被拒）。\n\n每张工单结论：11-01✓（domain 必填+61 工具归域+guard-domain 护栏 15 域守恒）、11-02✓（src/config/env.ts 纯函数、不读 process.env、表驱动测试全覆盖）、11-03✓（两 meta 工具+同形深等断言+基线 59→61 全套更新）、11-04✓（双表 API+恰 3 meta+无 listChanged+只测外部行为）、11-05✓（豁免装配+空域不出现+正交双向退化测试）、11-06✓（真实客户端 v1.30.0 stdio 三点验证通过、门槛放行，缺陷经工单 18 修复后重跑）、12-01✓（解析函数全验收项落地）、12-02✓（过滤注入+两类错误区分+batch 约束+别名共进退）、12-03✓（fail-fast 列全部非法条目+README 共用小节+CHANGELOG 条目）。\n\n已知偏差 2 项（非结构性，已在工单评论报备）：①tool_groups handler 内 env 过渡读取点未上收（11-03/04 评论记录的阶段性例外，与 stdio 入口同源同值）；②guard-metadata-budget 基线重取 50516→52607（两新工具 schema 净增，沿 09/10 先例）。移交 captain：11-02 与 12-01 工单评论区缺「实施完成」记载（实现已实际落地并验证），建议归档时补记补勾选。"
+    },
+    {
+      "id": "t10",
+      "subject": "18 号缺陷修复：CallTool 成功响应回填 structuredContent + 先列后调回归",
+      "description": "规范文件：`.scratch/18-structured-content-backfill/PRD.md` 与 `.scratch/18-structured-content-backfill/issues/01-backfill-structured-content.md`（你自己在 t8 定界探针发现的缺陷，立单依据与验收标准都在里面，以当前文件内容为准）。\n\n工作流：\n1. agent_teams_claim_task 领取本任务获取 attempt_id，此后所有 agent_teams_update_task 必须携带该 attempt_id。\n2. 按验收标准实现：src/server.ts MCP content 构造处成功结果回填 structuredContent（与 text JSON 深度相等）、失败结果不含；新增「先列后调」协议级回归（InMemoryTransport 先 listTools 再 callTool，覆盖只读工具与复杂 schema 工具各一）；失败路径回归；复核既有 CallToolResult 精确形状断言并补期望（可改不可删）。CHANGELOG 追加行为变化条目（MCP 面加法字段）。\n3. 你对 t7 的两条前瞻备注（batch_run 克隆按分发表键控、纯白名单断言不受豁免翻转影响）已核对，与本任务无耦合。\n4. 完成前 `pnpm typecheck && pnpm test` 全绿（预期用例数会因新增回归上升）；update_task completed 附改动文件清单与测试结果。\n5. 禁改 `src/plugin.ts`；不执行 git commit。完成后 captain 将重跑 11-06 门槛（t8 重试）再放行推荐。",
+      "status": "completed",
+      "assignee": "eng-beta",
+      "dependencies": [
+        "t7"
+      ],
+      "attempt": 1,
+      "createdAt": 1787717936765,
+      "updatedAt": 1787719162404,
+      "attemptId": "150321e5-93cd-41b5-802b-58562d9d14ad",
+      "reassigning": false,
+      "output": "t10（工单 18 structuredContent 回填）完成。pnpm typecheck exit 0；pnpm test 全量 40 文件 / 1784 passed / 2 skipped 全绿；门槛脚本预检双绿（见下）。\n\n改动文件：\n1. src/server.ts —— toMcpContent 单一回填点：成功响应 structuredContent = {...result}（统一输出契约整体，与 text JSON 深度相等，测试钉死）；失败响应不含该字段。未动工具定义、未加服务端 schema 校验、plugin.ts 未动。\n2. tests/integration/server.test.ts —— 新增「工单 18：先列后调」3 用例（缺陷漏网形态：Client 先 listTools 缓存 schema 再 callTool）：①只读 system_info 无 -32600 且 structuredContent 与 text JSON 深度相等；②复杂嵌套 schema 工具 batch_run 回填 + allOk 形状断言；③失败路径 fs_stat ENOENT → isError=true、structuredContent undefined、text 仍为错误 JSON。复核既有 CallToolResult 断言：全为字段访问式非整对象 toEqual，加法零破坏，无需改、覆盖未删。\n3. CHANGELOG.md —— Unreleased/Added 追加 structuredContent 条目（纯加法/向后兼容/dsh 面零变化）。\n\n门槛脚本预检（重建 dist 后实跑，captain 重跑 t8 可直接复用）：\n- .temp/scripts/lazy-client-validation.mjs 全 5 步 PASS：①懒模式恰 3 meta；②未列出 git_status 直接调用 ok；③a list_domain_tools('git') 返回 11 条同形明细；③b 据明细构造 git_log(limit=2) 成功。\n- .temp/scripts/fullmode-probe.mjs PASS：全量 61 工具列出后调用 git_status 成功（修复前同路径 -32600）。\n\n结论已记入 issue 01 评论区。约束：plugin.ts 未动、未 commit、未动 t8 脚本本身。t8 重跑条件已就绪。"
+    }
+  ],
+  "taskSeq": 10
+}

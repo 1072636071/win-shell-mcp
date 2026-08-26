@@ -85,6 +85,7 @@ export const hashFileOutputSchema = z.object({
 /** hash_file 工具定义。 */
 export const hashFileTool: Tool = {
   name: "hash_file",
+  domain: "hash",
   description:
     "计算文件摘要（≈ shasum）。默认 sha256，支持 sha1/md5/sha512。流式读取支持大文件。",
   inputSchema: hashFileInputSchema,

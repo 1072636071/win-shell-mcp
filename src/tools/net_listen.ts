@@ -275,6 +275,7 @@ export const netListenOutputSchema = z.object({
 /** net_listen 工具定义。 */
 export const netListenTool: Tool = {
   name: "net_listen",
+  domain: "net",
   description:
     "列出本机监听端口及占用进程（≈ lsof -i / netstat）。返回 { ports: [{ port, protocol, address, pid, name? }] }。filter 按端口/协议/地址/进程名过滤。",
   inputSchema: netListenInputSchema,

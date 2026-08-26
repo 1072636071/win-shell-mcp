@@ -20,7 +20,8 @@ import { z } from "zod";
 import { ok, fail, withVerbose, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode, toErrorCode, toErrorMessage } from "../contract/errors.js";
 import { toFail, failFromError } from "../utils/errors.js";
-import { findTool, type Tool } from "../registry.js";
+import { findTool, findToolIn, type Tool } from "../registry.js";
+import { notExposedMessage } from "../config/env.js";
 
 // ─── 类型定义 ───────────────────────────────────────────────
 
@@ -564,12 +565,16 @@ function runAsserts(
 // ─── Handler ────────────────────────────────────────────────
 
 /**
- * batch_run handler。
+ * batch_run handler 核心：串行执行步骤，任一步失败立即短路。
  *
- * 串行执行步骤，任一步失败立即短路。
+ * @param args 已由调用方粗校的原始参数
+ * @param allowedTools 步骤解析边界工具表；省略时查全量注册表（既有行为）。
+ *   注入部署子表时，被裁工具的失败归因为"未在当前部署暴露（WIN_SHELL_TOOLS）"，
+ *   与真未知工具的「未知工具」归因区分。
  */
-export async function batchRunHandler(
+async function runBatchSteps(
   args: Record<string, unknown>,
+  allowedTools?: readonly Tool[],
 ): Promise<AnyToolResult> {
   const raw = args as { steps?: unknown; verbose?: unknown };
   // 非空校验与 inputSchema 的 .min(1) 对齐（纵深防御）：MCP 路径恒经 schema 拒绝
@@ -643,18 +648,26 @@ export async function batchRunHandler(
     const resolvedArgs = argsRefResult.resolved;
 
     // ── 2. 查找工具 ──
-    const tool = findTool(step.tool);
+    // 受限模式（注入部署子表）下按子表解析（正名优先、别名回退，语义与全量一致）；
+    // 未命中时回查全量注册表做归因区分：内置仍存在 = 被白名单裁剪，否则真未知。
+    const tool = allowedTools
+      ? findToolIn(allowedTools, step.tool)
+      : findTool(step.tool);
     if (!tool) {
+      const trimmedByWhitelist =
+        allowedTools !== undefined && findTool(step.tool) !== undefined;
       executed.push({
         id: stepId,
         tool: step.tool,
         ok: false,
         error: {
           code: ErrorCode.EINVAL,
-          message: `未知工具: ${step.tool}`,
+          message: trimmedByWhitelist
+            ? notExposedMessage(step.tool)
+            : `未知工具: ${step.tool}`,
         },
       });
-      // 短路：工具不存在，中止
+      // 短路：工具不存在或未在当前部署暴露，中止
       break;
     }
 
@@ -768,8 +781,25 @@ export async function batchRunHandler(
 
 // ─── 工具定义 ───────────────────────────────────────────────
 
+/**
+ * batch_run handler 工厂。
+ *
+ * @param allowedTools 步骤解析边界工具表；省略时查全量注册表（默认行为）。
+ *   stdio 入口按白名单装配部署子表时，经 {@link createScopedBatchRunTool}
+ *   注入；测试亦可直接传伪造子表。
+ */
+export function createBatchRunHandler(
+  allowedTools?: readonly Tool[],
+): (args: Record<string, unknown>) => Promise<AnyToolResult> {
+  return (args) => runBatchSteps(args, allowedTools);
+}
+
+/** 默认 handler：步骤查全量注册表（既有行为，向后兼容）。 */
+export const batchRunHandler = createBatchRunHandler();
+
 export const batchRunTool: Tool = {
   name: "batch_run",
+  domain: "meta",
   // 四段式引导（工单 10，与 08 号精简同一次成型、压进 150 软上限）：
   // 引导 → 场景 → 机制要点（steps/assert/引用语法）→ 输出预期（默认极简 + verbose，
   // 与工单 09 落地形态一致）+ 预设文档指针（docs/batch-presets/，16 号工单落地后生效）。
@@ -780,3 +810,18 @@ export const batchRunTool: Tool = {
   annotations: { readOnlyHint: false, destructiveHint: true },
   handler: batchRunHandler,
 };
+
+/**
+ * 创建步骤解析受限于 allowedTools 的 batch_run 工具副本（白名单部署用）。
+ *
+ * server 层以过滤后的部署子表注入 `createServer` 时，用本副本替换原
+ * batch_run：步骤引用被裁工具即该步失败并归因"未在当前部署暴露
+ * （WIN_SHELL_TOOLS）"，短路语义不变。副本共享 schema/annotations，
+ * 仅替换 handler，listTools 输出与原工具无差别。
+ *
+ * @param allowedTools 部署子表（含本副本自身）
+ * @returns 行为受限的 batch_run 工具副本
+ */
+export function createScopedBatchRunTool(allowedTools: readonly Tool[]): Tool {
+  return { ...batchRunTool, handler: createBatchRunHandler(allowedTools) };
+}

@@ -154,3 +154,24 @@
 - `batch_run` 新增可选布尔参数 `verbose`（显式要求每步完整结果，见上方 ⚠️ Changed 条目）。
 - 共享基础设施（工单 01/02 产物）：`src/utils/pattern.ts`（双模严格判定解析器）、
   `src/utils/hints.ts`(双向 hint 引擎)，`text_grep` 同批获得 `patternMode` 输出与 hint 字段。
+- **工具白名单环境变量 `WIN_SHELL_TOOLS`**（MCP stdio 入口，纯新增开关，默认行为不变）：
+  逗号分隔工具**正名**，仅暴露列出的工具；逐项 trim、忽略空段、重复去重，未设置或空串 = 全量。
+  别名随正名共进退（别名不可写入白名单）；含未知条目时启动即失败并列出全部非法条目原文
+  （fail-fast，无忽略宽容）。调用被裁工具与 `batch_run` 步骤引用被裁工具均归因
+  「未在当前部署暴露（WIN_SHELL_TOOLS）」，与 `Unknown tool: X` 区分。解析收敛于纯函数
+  配置模块 `src/config/env.ts`（本批优化共用 seam，后续 `WIN_SHELL_LAZY`/`WIN_SHELL_TRUNCATE`
+  同模块并入），dsh 插件面不受影响（沿用 `config.exclude`）。
+- **懒加载开关 `WIN_SHELL_LAZY`**（MCP stdio 入口，纯新增开关，默认行为不变）：仅精确 `"1"` 启用。
+  懒模式 `ListTools` 恰返回 `tool_groups` / `list_domain_tools` / `batch_run` 三个导航 meta
+  （先看域概览、再按需取域明细），**调用不设门禁**——未在列出面的工具照常可调用；运行期注册集
+  不变，不发 listChanged。与 `WIN_SHELL_TOOLS` 正交可组合：白名单先过滤工具集，域概览与域明细只
+  反映过滤后集合（被裁空的域不出现）；懒模式下 meta 三件套豁免白名单恒列入恒可调，纯白名单模式
+  （不设本变量）下 meta 照常受约束。server 创建 API 相应扩展为列出面/分发面双表注入
+  （`createServer({ tools, listedTools })`，兼容单参形态行为不变）；解析收敛于
+  `src/config/env.ts` 共用 seam，dsh 插件面不受影响。
+- **MCP 面 `tools/call` 成功响应新增 `structuredContent` 字段**（工单 18，纯加法）：
+  取统一输出契约整体，与 text content 的 JSON 字符串深度相等；失败响应（isError=true）
+  不含该字段。修复规范客户端（@modelcontextprotocol/sdk ≥1.x「先 listTools 缓存 outputSchema
+  后调用」路径）以 -32600 整包拒绝全部工具调用的缺口（11-06 发布门槛验证发现，影响全量与懒
+  两种模式）。忽略该字段的旧客户端不受影响，text content 照常承载完整 JSON；dsh 插件面
+  不经 MCP 序列化、行为零变化。

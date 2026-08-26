@@ -215,6 +215,7 @@ export const netPingOutputSchema = z.object({
 /** net_ping 工具定义。 */
 export const netPingTool: Tool = {
   name: "ping",
+  domain: "net",
   description:
     "TCP 探测 ping 诊断（≈ ping）。返回 { host, sent, received, loss, min/max/avg, alive }。时间单位毫秒。不可达返回 ok（received=0，alive=false）。",
   inputSchema: netPingInputSchema,

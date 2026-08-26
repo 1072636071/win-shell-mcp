@@ -98,6 +98,7 @@ describe("callTool 错误路径", () => {
   it("handler 抛普通错误返回 EUNKNOWN", async () => {
     const throwingTool: Tool = {
       name: "throwing",
+      domain: "core",
       description: "test throwing",
       inputSchema: z.object({}),
       handler: () => {
@@ -117,6 +118,7 @@ describe("callTool 错误路径", () => {
     err.code = "ENOENT";
     const codedTool: Tool = {
       name: "coded",
+      domain: "core",
       description: "test coded error",
       inputSchema: z.object({}),
       handler: () => {
@@ -133,6 +135,7 @@ describe("callTool 错误路径", () => {
   it("handler 抛非 Error 值返回 EUNKNOWN", async () => {
     const stringThrowTool: Tool = {
       name: "string_throw",
+      domain: "core",
       description: "throws string",
       inputSchema: z.object({}),
       handler: () => {
@@ -304,10 +307,11 @@ describe("listTools fs_read 投影", () => {
   });
 
   it("无 outputSchema 的工具不附 outputSchema 字段", () => {
-    // 工单 04 后全部 59 工具都已补 outputSchema/annotations，此处构造一个临时无元数据工具，
+    // 工单 04 后全部内置工具都已补 outputSchema/annotations，此处构造一个临时无元数据工具，
     // 验证 listTools 条件透传（不附 outputSchema/annotations 字段）。
     const bareTool: Tool = {
       name: "bare_test_tool",
+      domain: "core",
       description: "临时无元数据工具",
       inputSchema: z.object({}),
       handler: async () => ({ ok: true as const }),

@@ -149,6 +149,7 @@ export const systemInfoOutputSchema = z.object({
 /** system_info 工具定义。 */
 export const systemInfoTool: Tool = {
   name: "system_info",
+  domain: "system",
   description:
     "获取系统信息（os/arch/hostname/cwd/node）。verbose 时额外返回 uptime/cpus/内存。",
   inputSchema: systemInfoInputSchema,
@@ -391,6 +392,7 @@ export const systemDiskOutputSchema = z.object({
 /** system_disk 工具定义。 */
 export const systemDiskTool: Tool = {
   name: "system_disk",
+  domain: "system",
   description:
     "获取磁盘用量（total/free/used，字节，≈ df）。all=true 枚举所有盘返回 {disks}。",
   inputSchema: systemDiskInputSchema,
@@ -501,6 +503,7 @@ export const systemMemoryOutputSchema = z.object({
 /** system_memory 工具定义。 */
 export const systemMemoryTool: Tool = {
   name: "system_memory",
+  domain: "system",
   description:
     "获取内存信息（total/free，字节，≈ free）。verbose 时额外返回 used/swap。",
   inputSchema: systemMemoryInputSchema,
@@ -589,6 +592,7 @@ export const systemPathOutputSchema = z.object({
 /** system_path 工具定义。 */
 export const systemPathTool: Tool = {
   name: "system_path",
+  domain: "system",
   description:
     "获取 PATH 条目列表。verbose 时额外返回 count 与 existing（实际存在的目录数）。",
   inputSchema: systemPathInputSchema,

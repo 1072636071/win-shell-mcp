@@ -115,6 +115,7 @@ export const fsDuOutputSchema = z.object({
 /** fs_du 工具定义。 */
 export const fsDuTool: Tool = {
   name: "fs_du",
+  domain: "fs",
   description:
     "递归累计目录大小（≈ du），返回 size/path，verbose 加 files/dirs。",
   inputSchema: fsDuInputSchema,

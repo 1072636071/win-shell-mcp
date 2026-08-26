@@ -17,6 +17,7 @@
 - [ ] server 行为只测外部可观察面（`listTools()` 结果集、`callTool()` 错误文案、`batch_run` 返回），经 `createServer(过滤表)` / `callTool(name, args, 过滤表)` 参数注入断言，不测进程级启动路径
 - [ ] 别名随正名共进退：写 `fs_list` 则 `ls`/`list_directory` 一起进退（断言裁剪语义）
 - [ ] dsh 插件面不接入本变量（既有 `config.exclude` 不变，两机制各管各面）
+- [ ] 前瞻对齐（11 号 05 工单裁决）：纯白名单模式下 meta 工具按普通工具参与过滤；仅当懒模式叠加时，meta 三件套（`tool_groups`/`list_domain_tools`/`batch_run`）才豁免过滤（恒列入恒可调），该豁免由 05 号工单实现。本工单不实现豁免，但过滤结构不得写死为"无条件裁掉一切未点名条目"以致后续无法叠加
 
 ## 评论
 

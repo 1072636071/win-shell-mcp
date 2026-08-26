@@ -148,6 +148,7 @@ export const textCatOutputSchema = z.object({
 /** text_cat 工具定义。 */
 export const textCatTool: Tool = {
   name: "cat",
+  domain: "text",
   description:
     "读文件整体（≈ cat）。支持编码 auto（GBK/UTF-8）、字节范围（0-based 含）、行范围（1-based 含）、截断。",
   inputSchema: textCatInputSchema,

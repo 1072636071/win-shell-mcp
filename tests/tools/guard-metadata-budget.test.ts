@@ -23,8 +23,10 @@ import { builtinTools } from "../../src/registry.js";
  * 输出超集（schema 增长），同时 description 四段式改写并移出豁免清单
  * （回到 ≤150 软上限），净增后重取基线实测 50516；放宽经用户确认授权，
  * 后续工单可继续收紧。
+ * 工单 11-03（2026-08-26）：新增 tool_groups / list_domain_tools 两个 meta
+ * 导航工具（各含非空 outputSchema，防漂移护栏强制项），重取基线实测 52607。
  */
-const METADATA_BUDGET = 50516;
+const METADATA_BUDGET = 52607;
 
 /** description 长度软上限（字符）。 */
 const DESCRIPTION_MAX = 150;

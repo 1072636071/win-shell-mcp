@@ -17,6 +17,7 @@ const pwdOutputSchema = z.object({
 
 const pwdTool: Tool = {
   name: "pwd",
+  domain: "core",
   description: "返回当前工作目录绝对路径（≈ pwd）。",
   inputSchema: z.object({}),
   outputSchema: pwdOutputSchema,
@@ -39,6 +40,7 @@ const echoOutputSchema = z.object({
 
 const echoTool: Tool = {
   name: "echo",
+  domain: "core",
   description:
     "回显参数（≈ echo）。format=text 返回空格拼接，format=json 返回原始数组。",
   inputSchema: z.object({

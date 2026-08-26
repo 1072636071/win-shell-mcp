@@ -87,6 +87,41 @@ npx win-shell-mcp
 
 并发分类以 MCP 标准 `ToolAnnotations.readOnlyHint` 为单一事实源（ADR-0014）：只读工具投影为 `isConcurrencySafe`；参数级例外（当前仅 `git_stash action:'list'`）走插件层小覆盖表放行并发，其余变更工具默认独占（fail-closed）。`@deepseek-ai/dsh-tools` / `@deepseek-ai/cordis` 为 optional peer dep，约定最小宿主契约类型，不硬依赖。
 
+## 环境变量
+
+> 本小节为部署面环境变量的共用小节：本批优化后续变量（懒加载开关 `WIN_SHELL_LAZY`、
+> 输出截断阈值 `WIN_SHELL_TRUNCATE`）将在同一小节追加。
+
+### `WIN_SHELL_TOOLS` —— 工具白名单（MCP stdio 入口）
+
+逗号分隔的工具**正名**，仅暴露列出的工具，其余不注册：
+
+```bash
+# 仅暴露 git 流水线所需工具（ListTools 固定开销随子集规模下降）
+WIN_SHELL_TOOLS=git_status,git_add,git_commit,git_push win-shell-mcp
+```
+
+- **默认行为不变**：未设置或空串 = 全量暴露全部工具；
+- 解析规则：逐项 trim、忽略空段、重复项去重；
+- **别名随正名共进退**：写 `fs_list` 则其别名 `ls`/`list_directory` 一起进退；别名本身不可写入白名单（误写别名按未知条目处理）;
+- **fail-fast**：含未知条目时启动即失败，错误信息列出**全部**非法条目原文；不做「忽略未知项」的宽容模式；
+- 调用被裁工具返回「未在当前部署暴露（WIN_SHELL_TOOLS）」，与拼错工具名的 `Unknown tool: X` 明确区分；`batch_run` 步骤引用被裁工具同样该步失败并短路；
+- 作用范围：MCP stdio 入口。dsh 插件面不读取本变量（沿用既有 `config.exclude`）。
+
+### `WIN_SHELL_LAZY` —— 懒加载开关（MCP stdio 入口）
+
+```bash
+# 首次 ListTools 只返回 3 个导航/编排 meta，按需取域明细后再照常调用
+WIN_SHELL_LAZY=1 win-shell-mcp
+```
+
+- **语义无歧义**：仅精确等于 `1` 启用；缺省、空串及一切其他值（`0`、`true`、带空白等）均为全量模式，不做宽容变体；
+- **懒模式列出面**：`ListTools` 恰返回 `tool_groups` / `list_domain_tools` / `batch_run` 三个 meta——先看域概览，再按需取目标域明细；
+- **调用不设门禁**：未在列出面的工具照常可调用（加载只是信息获取、不是授权），不会因裁剪列出而得到 `Unknown tool`；
+- **运行期稳定**：注册集不变，不发 listChanged 通知，模式切换无需调整提示词；
+- **与白名单正交可组合**：两者同设时白名单先过滤工具集，域概览/明细只反映过滤后集合（被裁空的域不出现）；懒模式下 meta 三件套豁免白名单恒列入恒可调，纯白名单模式（不设本变量）下 meta 照常受约束；
+- 作用范围：MCP stdio 入口。dsh 插件面不读取本变量。
+
 ## 工具清单（58 个）
 
 按域分组。每个工具返回统一输出契约：成功 `{ ok: true, ...data }`，失败 `{ ok: false, error: { code, message } }`。

@@ -10,6 +10,7 @@ beforeEach(() => resetRegistry());
 
 const stub = (name: string, aliases?: string[]): Tool => ({
   name,
+  domain: 'core', // 必填字段（工单 01）；别名机制测试与域无关，任取合法域值
   description: 'stub',
   inputSchema: z.object({}),
   handler: async () => ({ ok: true }) as never,

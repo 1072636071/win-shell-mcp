@@ -150,6 +150,7 @@ export const netDownloadOutputSchema = z.object({
 /** net_download 工具定义。 */
 export const netDownloadTool: Tool = {
   name: "net_download",
+  domain: "net",
   description:
     "下载 URL 内容到本地文件（≈ curl -o / wget）。流式写入，支持重定向。返回 { saved, bytes, path }。",
   inputSchema: netDownloadInputSchema,

@@ -262,6 +262,7 @@ export const netGetOutputSchema = z.object({
 /** net_get 工具定义。 */
 export const netGetTool: Tool = {
   name: "net_get",
+  domain: "net",
   description:
     "发起 HTTP GET 请求（≈ curl GET）。返回 { status, body }，body 截断至 2000 字符。",
   inputSchema: netGetInputSchema,
@@ -373,6 +374,7 @@ export const netPostOutputSchema = z.object({
 /** net_post 工具定义。 */
 export const netPostTool: Tool = {
   name: "net_post",
+  domain: "net",
   description:
     "发起 HTTP POST 请求（≈ curl POST）。返回 { status, body }，body 截断至 2000 字符。json=true 设 Content-Type: application/json，headers 覆盖之。",
   inputSchema: netPostInputSchema,
@@ -509,6 +511,7 @@ export const netDnsOutputSchema = z.object({
 /** net_dns 工具定义。 */
 export const netDnsTool: Tool = {
   name: "net_dns",
+  domain: "net",
   description:
     "DNS 解析（≈ nslookup）。返回 { addresses, recordType }。recordType 默认 A，支持 A/AAAA/CNAME/MX/TXT。",
   inputSchema: netDnsInputSchema,
@@ -635,6 +638,7 @@ export const netTcpOutputSchema = z.object({
 /** net_tcp 工具定义。 */
 export const netTcpTool: Tool = {
   name: "net_tcp",
+  domain: "net",
   description:
     "TCP 可达性探测（≈ nc -z）。返回 { reachable, host, port, duration }。reachable 为 true/false，不是错误。timeout 默认 3000ms。",
   inputSchema: netTcpInputSchema,
