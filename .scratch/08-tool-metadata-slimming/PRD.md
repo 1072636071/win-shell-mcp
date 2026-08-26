@@ -12,7 +12,7 @@ Status: ready-for-agent
 
 1. 个别工具描述严重超长：`text_grep` 的 description 约 400+ 字符，完整写入了 literal/regex 判定规则、反斜杠语义、`/…/flags` 包裹写法与"已知残余洞"——这些是使用细节，不是选工具所需的信息；`batch_run` 的 description 约 200 字符。
 2. 大量字段级 `.describe()` 重复字段名与类型已表达的信息（如 `path: z.string().describe('目录路径（绝对或相对）')`）。
-3. 描述中存在事实错误：`batch_run` 的 description 声称"断言支持 9 种操作符"，实际枚举为 10 种（eq/neq/gt/gte/lt/lte/in/re/truthy/falsy）；多处注释与集成测试仍停留在 58 工具的旧值（实际 59，含 `batch_run`）。
+3. 描述中存在事实错误：`batch_run` 的 description 曾声称"断言支持 9 种操作符"，实际枚举为 10 种（eq/neq/gt/gte/lt/lte/in/re/truthy/falsy）——**源码与文件头注释现已为 10 种，本工单确保 description 与之对齐**；多处注释与集成测试仍停留在 58 工具的旧值（实际 59，含 `batch_run`）。
 
 ## 解决方案
 

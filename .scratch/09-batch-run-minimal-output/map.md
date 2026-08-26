@@ -8,6 +8,7 @@
 
 ## 关键决策
 
+- **裁决依据**：ADR-0016——默认极简落实链第 3 项（输出 token 最少）；失败附加 `failedStep` 保链第 1 项（失败一轮可自纠），极简不丢判别字段。
 - **聚合字段命名保留 `allOk`**：PRD 草案字面写 `ok`，但契约层 ADR-0003 已占用 `ok`（表示"batch_run 调用本身成功"）；06 号 PRD 修订已明确聚合判定用 `allOk`，07 源点确认"外层 ok 即 allOk"。沿用 `allOk`，避免 isOk/isFail 误判。默认输出 `{ allOk, summary }`，失败附加 `failedStep`。
 - **字段结构**：`failedStep` 与现有 `steps` 条目同形 `{ id, tool, ok, data?, error?, assert? }`，复用同一套解析逻辑；短路下即 `executed` 最后一条。
 - **outputSchema 超集**：`{ allOk, summary, steps?, failedStep? }`，子结构复用 `batchStepOutputSchema`/`batchAssertOutputSchema`。

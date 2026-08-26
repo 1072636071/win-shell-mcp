@@ -31,7 +31,7 @@ Status: ready-for-agent
    - 引导：多步操作请优先用 `batch_run` 一次完成，避免多轮往返。
    - 场景：典型如"读文件→grep 定位→替换→写回"。
    - 机制要点：`steps: [{ id?, tool, args, assert? }]` 串行短路；断言 10 种操作符（eq/neq/gt/gte/lt/lte/in/re/truthy/falsy）；步骤间引用 `{{stepId.output.path}}`。
-   - 输出预期：默认只返回 `{ ok, summary }`（失败附 `failedStep`），详情传 `verbose: true`；更多场景模板见 `docs/batch-presets/`（16 号工单落地后生效的指针）。
+   - 输出预期：默认只返回 `{ allOk, summary }`（失败附 `failedStep`），详情传 `verbose: true`；更多场景模板见 `docs/batch-presets/`（16 号工单落地后生效的指针）。
 2. **合并实施**：本工单与 08 号工单对 `batch_run` description 的修改合并为一次编辑；实施顺序上本工单跟随 08，验收可并入 08 的护栏。
 3. **事实核对清单**（改写时逐项对照实现）：操作符恰为 10 种；引用模式为 `{{stepId.output.path}}`，整串单引用保原类型；短路覆盖四类失败（未知工具、参数非法、handler 失败、断言不满足）；默认输出形态以 09 号工单落地后的为准。
 4. **不改行为**：本工单只改 description 文本，不动 handler、schema、annotations。

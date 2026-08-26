@@ -8,15 +8,15 @@ Status: ready-for-agent
 
 ## 问题陈述
 
-`batch_run` 当前无论成败都返回全部步骤的完整输出：`{ ok, steps: [{ id, tool, ok, data?, error?, assert? }], summary }`，其中每个成功步骤的 `data` 是该工具完整输出、不做截断。批量操作的本意是省 token（一次调用替代多轮往返），但输出侧把每一步的完整数据又全数送回上下文——多步场景下输出体量甚至比逐次调用更大（还多了包装层），违背 ADR-0003 极简输出原则在批量层的延续。多数场景下，AI 只需要"成功与否 + 一句话结论"，失败时才需要失败那一步的诊断。
+`batch_run` 当前无论成败都返回全部步骤的完整输出：`{ allOk, steps: [{ id, tool, ok, data?, error?, assert? }], summary }`，其中每个成功步骤的 `data` 是该工具完整输出、不做截断。批量操作的本意是省 token（一次调用替代多轮往返），但输出侧把每一步的完整数据又全数送回上下文——多步场景下输出体量甚至比逐次调用更大（还多了包装层），违背 ADR-0003 极简输出原则在批量层的延续。多数场景下，AI 只需要"成功与否 + 一句话结论"，失败时才需要失败那一步的诊断。
 
 ## 解决方案
 
-`batch_run` 默认只返回 `{ ok, summary }`，失败时附 `failedStep`（失败步骤的诊断详情）；新增可选输入参数 `verbose: true`，显式要求时才返回现有的每步完整 `steps` 数组。`summary` 维持现有中文文案与语义。
+`batch_run` 默认只返回 `{ allOk, summary }`，失败时附 `failedStep`（失败步骤的诊断详情）；新增可选输入参数 `verbose: true`，显式要求时才返回现有的每步完整 `steps` 数组。`summary` 维持现有中文文案与语义。
 
 ## 用户故事
 
-1. 作为批量编排的 AI，我想要成功时只收到 `{ ok: true, summary: "全部 3 步成功" }`，以便多步操作的输出 token 与单步操作同量级。
+1. 作为批量编排的 AI，我想要成功时只收到 `{ allOk: true, summary: "全部 3 步成功" }`，以便多步操作的输出 token 与单步操作同量级。
 2. 作为 AI，我想要失败时收到失败步骤的诊断（步骤 id、工具名、错误码与消息，或断言失败的 path/op/expected/actual），以便直接决定补救动作，而不是重跑整个 batch 去猜哪步挂了。
 3. 作为 AI，我想要失败诊断里不再有成功步骤的完整 data，以便失败路径的上下文开销也保持极简。
 4. 作为调试复杂编排的 AI，我想要传 `verbose: true` 拿回每步完整 `steps` 数组（与现形态一致），以便逐步排查引用与断言问题。
@@ -31,13 +31,13 @@ Status: ready-for-agent
 
 1. **输入**：`batchRunInputSchema` 增加可选字段 `verbose: z.boolean().optional()`，语义"若为 true，返回每步完整结果"。`steps` 语义不变。
 2. **默认输出（`verbose` 非 true）**：
-   - 全部成功：`{ ok: true, summary: "全部 N 步成功" }`。
-   - 任一失败：`{ ok: false, summary: "第 N 步失败: …" | "第 N 步断言失败: …", failedStep: { id, tool, ok: false, error? | assert? } }`。`failedStep` 即现有 `executed` 数组中失败的那一条（短路语义下就是最后一条），断言失败时保留 `assert` 明细与既有逐条归因。
+   - 全部成功：`{ allOk: true, summary: "全部 N 步成功" }`。
+   - 任一失败：`{ allOk: false, summary: "第 N 步失败: …" | "第 N 步断言失败: …", failedStep: { id, tool, ok: false, error? | assert? } }`。`failedStep` 即现有 `executed` 数组中失败的那一条（短路语义下就是最后一条），断言失败时保留 `assert` 明细与既有逐条归因。
    - 默认形态不再输出 `steps` 字段。
-3. **`verbose: true` 输出**：维持现形态 `{ ok, steps: [...], summary }` 完全不变（含成功步骤的完整 `data`）。
-4. **外层 `ok` 语义不变**：仅当所有步骤成功为 true（现状即 `allOk`）。
+3. **`verbose: true` 输出**：维持现形态 `{ allOk, steps: [...], summary }` 完全不变（含成功步骤的完整 `data`）。
+4. **聚合 `allOk` 语义不变**：仅当所有步骤成功为 true（现状即 allOk）；`failedStep.ok` 表示该步骤是否成功，与聚合 `allOk` 是两层含义。
 5. **内部引用不受影响**：步骤输出缓存（`stepOutputs`）逻辑不动，引用解析照旧；默认极简只影响最终返回，不影响执行。
-6. **outputSchema**：改为超集——`{ ok, summary, steps?, failedStep? }`，`steps`/`failedStep` 均 optional，子结构与现有 `batchStepOutputSchema`/`batchAssertOutputSchema` 复用。
+6. **outputSchema**：改为超集——`{ allOk, summary, steps?, failedStep? }`，`steps`/`failedStep` 均 optional，子结构与现有 `batchStepOutputSchema`/`batchAssertOutputSchema` 复用。
 7. **CHANGELOG**：Unreleased 段新增 ⚠️ Changed（破坏性）条目，给出新旧输出对照与迁移方式（需要每步详情时加 `verbose: true`），体例对齐 `text_replace` 双模变更的既有写法。
 8. **描述协同**：`batch_run` 的 description 由 08/10 号工单统一改写，本工单不改描述，只在其落地时确认其中提到"默认极简、详情用 verbose"。
 
@@ -46,7 +46,7 @@ Status: ready-for-agent
 1. **好测试的标准**：只测外部行为——经 `callTool("batch_run", …)` 观察返回形态；不断言内部 `executed` 数组等实现细节。
 2. **seam**：`src/server.ts` 的 `callTool()`（既有最高层 seam）。
 3. **新增用例**（扩展既有 `tests/tools/batch.test.ts`）：
-   - 默认成功：返回体含 `ok: true` 与 `summary`，且**不含** `steps`、不含任何成功步骤的 `data`。
+   - 默认成功：返回体含 `allOk: true` 与 `summary`，且**不含** `steps`、不含任何成功步骤的 `data`。
    - 默认失败：返回体含 `failedStep`（id/tool 正确，失败归因与现有一致），不含 `steps`。
    - 断言失败的默认形态：`failedStep.assert` 含逐条归因。
    - `verbose: true`：成功与失败路径均返回完整 `steps`，与变更前行为一致（既有用例大量落在此模式，迁移为显式传 `verbose: true` 即可保住覆盖）。

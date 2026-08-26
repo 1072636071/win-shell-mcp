@@ -4,7 +4,7 @@ Status: ready-for-agent
 日期：2026-08-25
 来源：PRD-07（`.scratch/07-token-optimization/PRD.md`）优化点 P3-1
 优先级：P3
-关联：AGENTS.md 临时文件约定（`.temp/scripts/`）、ADR-0003（极简精神在开发流程的延伸）
+关联：AGENTS.md 临时文件约定（`.temp/scripts/`）、ADR-0003（极简精神在开发流程的延伸）、**ADR-0016（四层优先级链——本工单的取舍依据）**
 
 ## 问题陈述
 
@@ -36,10 +36,10 @@ Status: ready-for-agent
    - 元数据长度分析：读 `listTools()` 投影，输出各工具 description 长度与 `JSON.stringify` 后 inputSchema/outputSchema 长度的降序排行——08 号工单与其后续复查的直接工具；
    - 覆盖率短板：解析 `coverage/` 的 v8 产物，列出低于门槛（lines 85 / branches 84，与 vitest 配置一致）的文件清单；
    - 每个脚本为独立可运行的 Node 脚本，头部注释写用途、运行方式、输出说明；脚本随写随沉淀，本工单只保证首批两个落地。
-2. **vitest 输出降噪**：
-   - 覆盖率 reporter 由 `["text", "html"]` 改为 `["text-summary", "html"]`——终端只留总表，逐文件明细看 html（`coverage/index.html` 本就生成）；
+2. **vitest 输出降噪**（裁决依据 ADR-0016：落链第 3 项「输出 token 最少」，且不以损害链第 1/2 项「轮速/请求最少」为代价——门槛判定与关键失败信息不丢失）：
+   - 覆盖率 reporter 由 `["text", "html"]` 改为 `["text-summary", "html"]`——终端只留总表，逐文件明细看 html（`coverage/index.html` 本就生成）；此为可观测性降级的取舍：逐文件明细从终端移到 html，`text-summary` 在阈值未达标时仍会列出不足文件与指标，故关键失败信息不丢失；
    - 测试本体 reporter：在 default 的失败输出基础上，实测对比内置精简型 reporter（以实施时 vitest 版本实际提供的选项为准）在真实失败场景下的输出量，选择"保留断言差异、去掉装饰"的一款并在配置中注释选择理由；若无更低噪且不失信息的选项，则保持 default 并在评论区记录结论——不为了改动而改动。
-3. **CHANGELOG 约定**：在 README 开发章节增加一段流程约定——CHANGELOG 条目从 `git log`（自上个版本标签起）的 commit message 汇总、分类（Added/Changed/Fixed）、补 ADR 交叉引用；不要求回顾全量 diff；配套要求是 commit message 必须自带完整主题与引用（本仓库现有风格已满足，约定只是固化）。
+3. **CHANGELOG 约定**（裁决依据 ADR-0016：落链第 3 项「输出 token 最少」换取链 1/2 的省事——发版不再重读全量 diff）：在 README 开发章节增加一段流程约定——CHANGELOG 条目从 `git log`（自上个版本标签起，仓库尚无标签时以最近一次版本提交为基线）的 commit message 汇总、分类（Added/Changed/Fixed）、补 ADR 交叉引用；不要求回顾全量 diff；配套要求是 commit message 必须自带完整主题与引用（本仓库现有风格已满足，约定只是固化）。
 4. **边界**：三项改动均不触碰 `src/`、不改测试断言、不改覆盖率门槛。
 
 ## 测试决策
