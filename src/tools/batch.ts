@@ -1,5 +1,5 @@
 /**
- * batch_run 元工具（工单 01-02-03-04）。
+ * batch_run 元工具（工单 01-02-03-04；输出极简见工单 09）。
  *
  * 一次调用串行执行多个工具步骤，支持断言校验与步骤间引用。
  *
@@ -9,12 +9,15 @@
  *   整串单引用保原类型（bool/number/object），混合拼接转字符串。
  * - 断言引擎：10 种操作符（eq/neq/gt/gte/lt/lte/in/re/truthy/falsy），
  *   纯数据、无 eval，逐条失败归因。
+ * - 输出极简（工单 09，ADR-0003 批量层延续）：默认只返回 `{ allOk, summary }`
+ *   （失败附 `failedStep` 诊断），显式 `verbose: true` 才返回每步完整 `steps`；
+ *   极简只作用于最终返回，内部 stepOutputs 缓存与引用链不受影响。
  * - 循环安全：batch.ts 不导入 server.ts（避免 registry→batch→server→registry 循环），
  *   直接通过 findTool 查找工具并手动校验参数。
  */
 
 import { z } from "zod";
-import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import { ok, fail, withVerbose, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode, toErrorCode, toErrorMessage } from "../contract/errors.js";
 import { toFail, failFromError } from "../utils/errors.js";
 import { findTool, type Tool } from "../registry.js";
@@ -109,6 +112,10 @@ const batchStepInputSchema = z.object({
 /** batch_run 输入 schema。 */
 export const batchRunInputSchema = z.object({
   steps: z.array(batchStepInputSchema).min(1),
+  verbose: z
+    .boolean()
+    .optional()
+    .describe("true 时返回每步完整结果 steps；默认仅返回聚合结论（失败附 failedStep）"),
 });
 
 /** 断言输出 schema。 */
@@ -131,11 +138,23 @@ const batchStepOutputSchema = z.object({
   assert: z.array(batchAssertOutputSchema).optional(),
 });
 
-/** batch_run 输出 schema。 */
+/**
+ * batch_run 输出 schema（工单 09 超集形态）。
+ *
+ * 默认极简：`{ allOk, summary }`，失败附 `failedStep` 诊断；
+ * `verbose: true` 时附每步完整 `steps`。`steps`/`failedStep` 均 optional，
+ * 子结构复用 `batchStepOutputSchema`（含 `batchAssertOutputSchema`）。
+ */
 export const batchRunOutputSchema = z.object({
   allOk: z.boolean().describe("整批成功（含断言通过）"),
-  steps: z.array(batchStepOutputSchema),
   summary: z.string(),
+  steps: z
+    .array(batchStepOutputSchema)
+    .optional()
+    .describe("每步完整结果；仅 verbose:true 时返回"),
+  failedStep: batchStepOutputSchema
+    .optional()
+    .describe("失败步骤诊断（短路下即最后执行的一步）；仅默认模式失败时返回"),
 });
 
 // ─── 引用解析 ───────────────────────────────────────────────
@@ -552,10 +571,12 @@ function runAsserts(
 export async function batchRunHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const raw = args as { steps?: unknown };
+  const raw = args as { steps?: unknown; verbose?: unknown };
   if (!raw.steps || !Array.isArray(raw.steps)) {
     return fail(ErrorCode.EINVAL, "batch_run 需要 steps 数组");
   }
+  // 工单 09：仅显式 true 时返回每步完整结果；默认（含省略/false）走极简输出。
+  const verbose = raw.verbose === true;
 
   const stepsRaw = raw.steps as unknown[];
   const steps: BatchStep[] = [];
@@ -716,33 +737,42 @@ export async function batchRunHandler(
   // 故聚合语义用 `allOk` 承载，避免同名覆盖契约 ok 导致 isOk/isFail 误判。
   // （spec 草案称该字段为 `ok`，实现时因与契约层 ok 冲突调整为 allOk，见 PRD 修订说明。）
   const allOk = executed.every((s) => s.ok);
+  // 失败步不变量：任一步失败即短路 break，故 executed 末条恒为失败那条；
+  // summary 与默认极简输出的 failedStep 共用同一来源，避免两处重复求值与非空断言。
+  // （steps 已校验非空且逐个执行，at(-1) 恒有值；成功路径下该值不被引用。）
+  const lastExecuted = executed.at(-1)!;
   let summary: string;
   if (allOk) {
     summary = `全部 ${executed.length} 步成功`;
   } else {
-    // 短路时最后一个执行的步骤即失败步骤，其失败原因已记录在 error 或断言中
-    const failed = executed[executed.length - 1]!;
-    if (failed.error) {
-      summary = `第 ${executed.length} 步失败: ${failed.error.code}: ${failed.error.message}`;
+    if (lastExecuted.error) {
+      summary = `第 ${executed.length} 步失败: ${lastExecuted.error.code}: ${lastExecuted.error.message}`;
     } else {
-      const firstFailed = (failed.assert ?? []).find((a) => !a.passed);
+      const firstFailed = (lastExecuted.assert ?? []).find((a) => !a.passed);
       summary = `第 ${executed.length} 步断言失败${firstFailed ? `: ${firstFailed.message}` : ""}`;
     }
   }
 
-  return ok({
-    allOk,
-    steps: executed,
-    summary,
-  });
+  // 工单 09 输出极简：默认只回聚合结论（失败附 failedStep 诊断），显式 verbose:true
+  // 才带每步完整 steps。stepOutputs 缓存与引用解析不受影响——极简只作用于最终返回，
+  // 步骤间 `{{stepId.output.path}}` 引用链在默认模式下照常工作（ADR-0003 极简输出在批量层的延续）。
+  // failedStep 与 steps 条目同形，仅在失败时存在。
+  const full = { allOk, steps: executed, summary };
+  const minimal = allOk
+    ? { allOk, summary }
+    : { allOk, summary, failedStep: lastExecuted };
+  return ok(withVerbose(minimal, full, verbose));
 }
 
 // ─── 工具定义 ───────────────────────────────────────────────
 
 export const batchRunTool: Tool = {
   name: "batch_run",
+  // 四段式引导（工单 10，与 08 号精简同一次成型、压进 150 软上限）：
+  // 引导 → 场景 → 机制要点（steps/assert/引用语法）→ 输出预期（默认极简 + verbose，
+  // 与工单 09 落地形态一致）+ 预设文档指针（docs/batch-presets/，16 号工单落地后生效）。
   description:
-    "多步操作优先用 batch_run 一次完成，避免多轮往返。如：读文件→grep→替换→写回、检查→提交。steps 串行短路；引用 {{stepId.output.path}}；assert 10 种操作符 eq/neq/gt/gte/lt/lte/in/re/truthy/falsy。返回 { allOk, steps, summary }。",
+    "多步操作优先用本工具一次完成，避免多轮往返。如读文件→替换→写回。steps串行短路；assert 10种操作符；引用{{stepId.output.path}}；模板docs/batch-presets/。默认{allOk,summary}，失败附failedStep，详情verbose:true",
   inputSchema: batchRunInputSchema,
   outputSchema: batchRunOutputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true },

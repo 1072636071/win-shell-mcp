@@ -37,12 +37,31 @@ interface BatchRunData {
   summary: string;
 }
 
+/** batch_run 默认极简输出（工单 09）：`steps` 仅在 verbose:true 时存在，失败附 `failedStep` 诊断。 */
+interface BatchRunMinimalData {
+  allOk: boolean;
+  summary: string;
+  failedStep?: BatchRunData["steps"][number];
+}
+
 /**
  * 调 batch_run 并收窄返回类型，使 `r.steps` 有具体结构（避免 AnyToolResult 的
  * `Record<string, unknown>` 宽类型让字段访问落为 unknown）。
+ *
+ * 工单 09 迁移：本 helper 统一显式传 `verbose: true`，既有用例（断言 `r.steps`
+ * 的完整形态覆盖）全部走 verbose 模式保住原覆盖；默认极简模式的行为由
+ * `batchRunMinimal` + 「batch_run 输出极简（工单 09）」用例组单独钉住。
  */
 async function batchRun(args: Record<string, unknown>): Promise<ToolResult<BatchRunData>> {
-  return (await callTool("batch_run", args)) as unknown as ToolResult<BatchRunData>;
+  return (await callTool("batch_run", { ...args, verbose: true })) as unknown as ToolResult<BatchRunData>;
+}
+
+/**
+ * 调 batch_run 且不传 verbose（默认极简模式），收窄到极简输出结构。
+ * 仅工单 09 的默认形态用例使用；不断言内部 executed 等实现细节。
+ */
+async function batchRunMinimal(args: Record<string, unknown>): Promise<ToolResult<BatchRunMinimalData>> {
+  return (await callTool("batch_run", args)) as unknown as ToolResult<BatchRunMinimalData>;
 }
 
 /** 获取临时目录，用于文件操作测试。 */
@@ -918,6 +937,168 @@ describe("batch_run 聚合 allOk（工单 01）", () => {
     expect(isOk(rAssert)).toBe(true);
     if (isOk(rAssert)) {
       expect(rAssert.allOk).toBe(false);
+    }
+  });
+});
+
+describe("batch_run 输出极简（工单 09）", () => {
+  it("默认成功：仅返回 { allOk, summary }，不含 steps 与任何步骤 data", async () => {
+    const r = await batchRunMinimal({
+      steps: [
+        { tool: "pwd", args: {} },
+        { tool: "echo", args: { args: ["hello"] } },
+      ],
+    });
+    expect(isOk(r)).toBe(true); // 契约层：batch_run 调用本身成功
+    if (isOk(r)) {
+      expect(r.allOk).toBe(true);
+      expect(r.summary).toBe("全部 2 步成功");
+      // 默认形态不再输出 steps 字段
+      expect("steps" in r).toBe(false);
+      // 防回弹：整个返回体不含成功步骤 data 的特征键/特征值
+      const serialized = JSON.stringify(r);
+      expect(serialized).not.toContain('"cwd"');
+      expect(serialized).not.toContain('"output"');
+      expect(serialized).not.toContain("hello");
+    }
+  });
+
+  it("默认失败：附 failedStep 诊断（id/tool/error），不含 steps 与成功步骤 data", async () => {
+    const r = await batchRunMinimal({
+      steps: [
+        { tool: "pwd", args: {} },
+        { tool: "nonexistent_tool_xyz", args: {} },
+      ],
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r.allOk).toBe(false);
+      expect(r.summary).toContain("第 2 步失败");
+      expect(r.summary).toContain("EINVAL");
+      expect("steps" in r).toBe(false);
+      // failedStep 即失败那条（短路下最后执行的一步），结构与 steps 条目同形
+      expect(r.failedStep).toBeDefined();
+      expect(r.failedStep!.id).toBe("step2");
+      expect(r.failedStep!.tool).toBe("nonexistent_tool_xyz");
+      expect(r.failedStep!.ok).toBe(false);
+      expect(r.failedStep!.error?.code).toBe("EINVAL");
+      expect(r.failedStep!.error?.message).toContain("未知工具");
+      // 失败路径也不泄漏成功步骤的 data（pwd 的 cwd）
+      const serialized = JSON.stringify(r);
+      expect(serialized).not.toContain('"cwd"');
+    }
+  });
+
+  it("默认断言失败：failedStep.assert 含逐条归因", async () => {
+    const r = await batchRunMinimal({
+      steps: [
+        {
+          id: "s1",
+          tool: "echo",
+          args: { args: ["hello"] },
+          assert: [
+            { path: "output", op: "eq", value: "world" },
+            { path: "output", op: "eq", value: "hello" },
+          ],
+        },
+      ],
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r.allOk).toBe(false);
+      expect(r.summary).toContain("第 1 步断言失败");
+      expect(r.failedStep).toBeDefined();
+      expect(r.failedStep!.id).toBe("s1");
+      expect(r.failedStep!.ok).toBe(false);
+      expect(r.failedStep!.assert).toHaveLength(2);
+      expect(r.failedStep!.assert![0]!.passed).toBe(false);
+      expect(r.failedStep!.assert![0]!.message).toContain("期望");
+      expect(r.failedStep!.assert![1]!.passed).toBe(true);
+    }
+  });
+
+  it("verbose:true 成功路径返回完整 steps（与变更前一致）", async () => {
+    const r = await batchRun({
+      steps: [
+        { tool: "pwd", args: {} },
+        { tool: "echo", args: { args: ["hello"] } },
+      ],
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r.allOk).toBe(true);
+      expect(r.steps).toHaveLength(2);
+      expect(r.steps[0]!.data?.cwd).toBeDefined();
+      expect(r.steps[1]!.data?.output).toBe("hello");
+    }
+  });
+
+  it("verbose:true 失败路径也返回完整 steps", async () => {
+    const r = await batchRun({
+      steps: [
+        { tool: "pwd", args: {} },
+        { tool: "nonexistent_tool_xyz", args: {} },
+      ],
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r.allOk).toBe(false);
+      expect(r.steps).toHaveLength(2);
+      expect(r.steps[0]!.ok).toBe(true);
+      expect(r.steps[1]!.ok).toBe(false);
+    }
+  });
+
+  it("引用链在默认模式下照常工作：整串单引用保类型（assert）+ 混合拼接（args）", async () => {
+    const tmpDir = getTempDir();
+    const f1 = path.join(tmpDir, "a.txt");
+    try {
+      const r = await batchRunMinimal({
+        steps: [
+          { id: "s1", tool: "fs_write", args: { path: f1, content: "aaaa" } }, // written = 4
+          {
+            id: "s2",
+            tool: "fs_write",
+            args: { path: f1, content: "len={{s1.output.written}}" }, // 混合拼接 → "len=4"，written = 5
+            assert: [
+              // 整串单引用保类型：value 解析为 number 4；若被字符串化成 "4"，
+              // gte 的数值比较会报"要求数值类型"。此处 5 ≥ 4 通过即证明保类型。
+              { path: "written", op: "gte", value: "{{s1.output.written}}" },
+            ],
+          },
+        ],
+      });
+      expect(isOk(r)).toBe(true);
+      if (isOk(r)) {
+        // 引用解析在 server 内部照常流转，不受默认极简影响
+        expect(r.allOk).toBe(true);
+        expect(r.summary).toBe("全部 2 步成功");
+        expect("steps" in r).toBe(false);
+        expect(fs.statSync(f1).size).toBe(5); // s2 实际写入 "len=4"
+      }
+    } finally {
+      removeDir(tmpDir);
+    }
+  });
+
+  it("混合拼接引用在默认模式下转字符串照常工作", async () => {
+    const r = await batchRunMinimal({
+      steps: [
+        { id: "s1", tool: "echo", args: { args: ["123"] } },
+        {
+          id: "s2",
+          tool: "echo",
+          args: { args: ["num={{s1.output.output}}"] },
+          // 独立期望值（source of truth 为字面量 "num=123"）：
+          // 仅当混合拼接真实发生，断言才可能通过——钉住默认模式下的插值行为
+          assert: [{ path: "output", op: "eq", value: "num=123" }],
+        },
+      ],
+    });
+    expect(isOk(r)).toBe(true);
+    if (isOk(r)) {
+      expect(r.allOk).toBe(true);
+      expect("steps" in r).toBe(false);
     }
   });
 });

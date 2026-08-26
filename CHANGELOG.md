@@ -101,8 +101,56 @@
 - replacement 中需要回引用展开的场景必须改用正则 pattern；字面量场景下 `$` 记号不再展开（多数情况这正是期望行为）；
 - 原「0 命中静默成功」的调用需处理新的 EINVAL 错误。
 
+### ⚠️ Changed（破坏性变更）：`batch_run` 输出默认极简 + 新增 `verbose` 开关
+
+依据 ADR-0003（极简输出）在批量层的延续（PRD-07 P0-2）：批量操作的本意是省 token，
+默认不再把每一步的完整 `data` 全数送回上下文。**升级前请检查所有解析返回体 `steps`
+字段的既有调用。**
+
+#### 语义变化一览
+
+| 维度 | 旧行为 | 新行为 |
+| --- | --- | --- |
+| 成功输出 | `{ allOk, steps: [每步完整 data], summary }` | `{ allOk, summary }`（不再含 `steps`） |
+| 失败输出 | 同上（失败步骤混在 `steps` 中） | `{ allOk, summary, failedStep }` —— `failedStep` 即原 `steps` 中失败那条（短路下即最后执行的一条），结构与步骤条目同形 `{ id, tool, ok, data?, error?, assert? }`，断言失败保留逐条归因 |
+| 每步详情 | 默认返回 | 显式传 `verbose: true` 才返回完整 `steps` 数组（与旧形态完全一致） |
+| 聚合字段名 | `allOk` | **不变**（契约层 `ok` 已表示「调用本身成功」，聚合判定沿用 `allOk`） |
+| `summary` 文案 | 「全部 N 步成功」/「第 N 步失败: CODE: message」/「第 N 步断言失败: …」 | 不变 |
+| 步骤间引用 `{{stepId.output.path}}` | server 内部流转 | 不变——引用链在默认模式下照常工作，极简只作用于最终返回 |
+
+#### 新增输入
+
+- `verbose: boolean`（可选）：`true` 时返回每步完整结果 `steps`；默认（省略/false）仅返回聚合结论。
+
+#### 新旧对照示例
+
+```jsonc
+// 旧：无论成败都返回每步完整输出
+{ "ok": true, "allOk": true, "summary": "全部 3 步成功",
+  "steps": [ { "id": "step1", "tool": "fs_read", "ok": true, "data": { /* 完整输出 */ } }, /* … */ ] }
+
+// 新 · 默认成功：只回聚合结论（多步输出 token 与单步同量级）
+{ "ok": true, "allOk": true, "summary": "全部 3 步成功" }
+
+// 新 · 默认失败：附 failedStep 诊断（含断言逐条归因），不含成功步骤的 data
+{ "ok": true, "allOk": false, "summary": "第 2 步失败: ENOENT: no such file …",
+  "failedStep": { "id": "step2", "tool": "fs_read", "ok": false,
+                  "error": { "code": "ENOENT", "message": "no such file …" } } }
+
+// 新 · verbose: true：与旧形态完全一致（逐步排查引用与断言问题时使用）
+{ "ok": true, "allOk": false, "summary": "…", "steps": [ /* 每步完整结果 */ ] }
+```
+
+#### 迁移指引
+
+- 依赖读取 `steps`（每步 `data`、断言明细）的既有调用：显式加 `verbose: true`，行为与升级前一致；
+- 只关心成败的调用无需改动，返回体会显著变小；
+- 失败归因可从「在 `steps` 里找 `ok: false`」改为直接读 `failedStep`；
+- `outputSchema` 已同步更新为覆盖两种模式的超集 `{ allOk, summary, steps?, failedStep? }`。
+
 ### Added
 
 - `text_replace` 新增可选布尔参数 `all`（显式全量替换开关，见上）。
+- `batch_run` 新增可选布尔参数 `verbose`（显式要求每步完整结果，见上方 ⚠️ Changed 条目）。
 - 共享基础设施（工单 01/02 产物）：`src/utils/pattern.ts`（双模严格判定解析器）、
   `src/utils/hints.ts`(双向 hint 引擎)，`text_grep` 同批获得 `patternMode` 输出与 hint 字段。

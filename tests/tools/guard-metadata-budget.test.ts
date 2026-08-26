@@ -19,8 +19,12 @@ import { builtinTools } from "../../src/registry.js";
  * 基线：2026-08-26 精简前实测 56277。
  * 02 号精简工单目标 基线 ×0.7（≤39393）；实测 49769（降幅 11.56%），
  * 未达 30% 目标，用户已同意放宽基线至实测值，后续工单可继续收紧。
+ * 工单 09/10（2026-08-26）：batch_run 新增 verbose 输入与 steps?/failedStep?
+ * 输出超集（schema 增长），同时 description 四段式改写并移出豁免清单
+ * （回到 ≤150 软上限），净增后重取基线实测 50516；放宽经用户确认授权，
+ * 后续工单可继续收紧。
  */
-const METADATA_BUDGET = 49769;
+const METADATA_BUDGET = 50516;
 
 /** description 长度软上限（字符）。 */
 const DESCRIPTION_MAX = 150;
@@ -33,7 +37,6 @@ const DESCRIPTION_MAX = 150;
  */
 const DESCRIPTION_EXCEPTIONS: Readonly<Record<string, string>> = {
   text_replace: "双模（literal/regex）陷阱语义，字段名表达不了",
-  batch_run: "PRD-10 引导语，多工具编排语义无法压缩至 150 内",
 };
 
 describe("工单 01 元数据预算护栏", () => {
@@ -70,5 +73,34 @@ describe("工单 01 元数据预算护栏", () => {
         `${name} 已不超长，应从豁免清单移除`,
       ).toBeGreaterThan(DESCRIPTION_MAX);
     }
+  });
+
+  describe("batch_run 引导语义护栏（工单 10）", () => {
+    // 经 listTools() 投影断言外部可观察形态（工单 10-02 指定 seam，与 AI 实际所见一致）
+    const description = listTools().find((t) => t.name === "batch_run")?.description;
+
+    it("batch_run 存在且 description 非空", () => {
+      expect(description).toBeDefined();
+      expect(description!.length).toBeGreaterThan(0);
+    });
+
+    it("description 含引导关键词「优先」「一次」（钉住引导存在，不快照全文）", () => {
+      expect(description).toContain("优先");
+      expect(description).toContain("一次");
+    });
+
+    it("description 含场景要素（读文件/替换/写回 流程示例的最小关键词）", () => {
+      expect(description).toContain("读文件");
+      expect(description).toContain("替换");
+      expect(description).toContain("写回");
+    });
+
+    it("description 长度满足预算护栏：≤150 软上限（工单 10 改写后不在豁免清单）", () => {
+      expect(DESCRIPTION_EXCEPTIONS["batch_run"]).toBeUndefined();
+      const len = description?.length ?? 0;
+      expect(len, `batch_run description ${len} 字符超限`).toBeLessThanOrEqual(
+        DESCRIPTION_MAX,
+      );
+    });
   });
 });
