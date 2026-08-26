@@ -9,22 +9,27 @@
  * 设计原则：极简输出、自动跳过二进制、跨平台兼容、边界安全。
  */
 
-import { promises as fs } from 'node:fs';
-import type { Dirent, Stats } from 'node:fs';
-import path from 'node:path';
-import { z } from 'zod';
-import { ok, fail, truncate, withVerbose, type AnyToolResult } from '../contract/output.js';
-import { ErrorCode } from '../contract/errors.js';
-import { parsePattern, SEARCH_PATTERN_FLAGS } from '../utils/pattern.js';
-import { buildSearchHint } from '../utils/hints.js';
-import { splitLines } from '../utils/readText.js';
-import { globToRegExp, isValidGlob } from '../utils/glob.js';
-import type { Tool } from '../registry.js';
+import { promises as fs } from "node:fs";
+import type { Dirent, Stats } from "node:fs";
+import path from "node:path";
+import { z } from "zod";
+import {
+  ok,
+  fail,
+  truncate,
+  withVerbose,
+  type AnyToolResult,
+} from "../contract/output.js";
+import { ErrorCode } from "../contract/errors.js";
+import { parsePattern, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
+import { buildSearchHint } from "../utils/hints.js";
+import { splitLines } from "../utils/readText.js";
+import { globToRegExp, isValidGlob } from "../utils/glob.js";
+import type { Tool } from "../registry.js";
 
 // ============================================================================
 // 内部工具函数
 // ============================================================================
-
 
 /** 递归列出目录下所有文件（相对 cwd 的相对路径，用 / 分隔）。跳过无权限子目录。 */
 async function listFiles(dir: string, recursive: boolean): Promise<string[]> {
@@ -40,7 +45,7 @@ async function listFiles(dir: string, recursive: boolean): Promise<string[]> {
     for (const entry of entries) {
       const full = path.join(d, entry.name);
       if (entry.isFile()) {
-        files.push(path.relative(dir, full).split(path.sep).join('/'));
+        files.push(path.relative(dir, full).split(path.sep).join("/"));
       } else if (entry.isDirectory() && recursive) {
         await walk(full);
       }
@@ -80,12 +85,12 @@ async function validateCwd(cwd: string): Promise<AnyToolResult | null> {
 function parseExclude(rawExclude: unknown): AnyToolResult | RegExp[] {
   if (rawExclude === undefined) return [];
   if (!Array.isArray(rawExclude)) {
-    return fail(ErrorCode.EINVAL, 'exclude 必须是字符串数组');
+    return fail(ErrorCode.EINVAL, "exclude 必须是字符串数组");
   }
   const patterns = rawExclude as string[];
   const res: string[] = [];
   for (const g of patterns) {
-    if (typeof g !== 'string' || !isValidGlob(g)) {
+    if (typeof g !== "string" || !isValidGlob(g)) {
       return fail(ErrorCode.EINVAL, `非法 exclude glob: ${String(g)}`);
     }
     res.push(g);
@@ -98,29 +103,31 @@ function parseExclude(rawExclude: unknown): AnyToolResult | RegExp[] {
 // ============================================================================
 
 export const searchGlobInputSchema = z.object({
-  pattern: z.string().min(1).describe('支持 *、**、?、[]'),
-  cwd: z.string().optional().describe('默认 process.cwd()'),
-  recursive: z.boolean().optional().describe('默认 true'),
+  pattern: z.string().min(1).describe("支持 *、**、?、[]"),
+  cwd: z.string().optional().describe("默认 process.cwd()"),
+  recursive: z.boolean().optional().describe("默认 true"),
   maxResults: z.number().int().positive().optional(),
   exclude: z
     .array(z.string())
     .optional()
-    .describe('匹配任一 exclude 的相对路径被移除'),
+    .describe("匹配任一 exclude 的相对路径被移除"),
 });
 
 export type SearchGlobInput = z.infer<typeof searchGlobInputSchema>;
 
-export async function searchGlobHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const pattern = args['pattern'];
-  if (typeof pattern !== 'string' || pattern.length === 0) {
-    return fail(ErrorCode.EINVAL, 'pattern 不能为空');
+export async function searchGlobHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const pattern = args["pattern"];
+  if (typeof pattern !== "string" || pattern.length === 0) {
+    return fail(ErrorCode.EINVAL, "pattern 不能为空");
   }
-  const cwd = (args['cwd'] as string | undefined) ?? process.cwd();
-  const recursive = (args['recursive'] as boolean | undefined) ?? true;
-  const maxResults = args['maxResults'] as number | undefined;
+  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const recursive = (args["recursive"] as boolean | undefined) ?? true;
+  const maxResults = args["maxResults"] as number | undefined;
 
   // 解析并校验 exclude 列表
-  const excludeRes = parseExclude(args['exclude']);
+  const excludeRes = parseExclude(args["exclude"]);
   if (!Array.isArray(excludeRes)) return excludeRes;
 
   if (!isValidGlob(pattern)) {
@@ -135,7 +142,7 @@ export async function searchGlobHandler(args: Record<string, unknown>): Promise<
     files = await listFiles(cwd, recursive);
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
-    if (e.code === 'EACCES') {
+    if (e.code === "EACCES") {
       return fail(ErrorCode.EACCES, `无权限访问目录: ${cwd}`);
     }
     return fail(ErrorCode.EUNKNOWN, `读取目录失败: ${e.message}`);
@@ -162,14 +169,15 @@ export async function searchGlobHandler(args: Record<string, unknown>): Promise<
  * 成功返回 `{ files, count, truncated }`：files 为匹配的相对路径列表，count 为返回数，truncated 标识是否触发 maxResults 截断。
  */
 export const searchGlobOutputSchema = z.object({
-  files: z.array(z.string()).describe('相对路径'),
+  files: z.array(z.string()).describe("相对路径"),
   count: z.number().int().nonnegative(),
-  truncated: z.boolean().describe('触发 maxResults 截断'),
+  truncated: z.boolean().describe("触发 maxResults 截断"),
 });
 
 export const searchGlobTool: Tool = {
-  name: 'search_glob',
-  description: '按 glob 模式匹配文件路径（≈ find -name），返回相对路径列表。支持 *、**、?、[]。',
+  name: "search_glob",
+  description:
+    "按 glob 模式匹配文件路径（≈ find -name），返回相对路径列表。支持 *、**、?、[]。",
   inputSchema: searchGlobInputSchema,
   outputSchema: searchGlobOutputSchema,
   annotations: { readOnlyHint: true },
@@ -185,15 +193,15 @@ export const searchContentInputSchema = z.object({
     .string()
     .min(1)
     .describe(
-      '默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s）',
+      "默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s）",
     ),
-  cwd: z.string().optional().describe('默认 process.cwd()'),
-  glob: z.string().optional().describe('默认 **/*'),
+  cwd: z.string().optional().describe("默认 process.cwd()"),
+  glob: z.string().optional().describe("默认 **/*"),
   exclude: z
     .array(z.string())
     .optional()
-    .describe('匹配任一 exclude 的相对路径被跳过'),
-  ignoreCase: z.boolean().optional().describe('默认 false'),
+    .describe("匹配任一 exclude 的相对路径被跳过"),
+  ignoreCase: z.boolean().optional().describe("默认 false"),
   maxResults: z.number().int().positive().optional(),
 });
 
@@ -205,18 +213,20 @@ interface ContentMatch {
   text: string;
 }
 
-export async function searchContentHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const pattern = args['pattern'];
-  if (typeof pattern !== 'string' || pattern.length === 0) {
-    return fail(ErrorCode.EINVAL, 'pattern 不能为空');
+export async function searchContentHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const pattern = args["pattern"];
+  if (typeof pattern !== "string" || pattern.length === 0) {
+    return fail(ErrorCode.EINVAL, "pattern 不能为空");
   }
-  const cwd = (args['cwd'] as string | undefined) ?? process.cwd();
-  const globPattern = (args['glob'] as string | undefined) ?? '**/*';
-  const ignoreCase = (args['ignoreCase'] as boolean | undefined) ?? false;
-  const maxResults = args['maxResults'] as number | undefined;
+  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const globPattern = (args["glob"] as string | undefined) ?? "**/*";
+  const ignoreCase = (args["ignoreCase"] as boolean | undefined) ?? false;
+  const maxResults = args["maxResults"] as number | undefined;
 
   // 解析并校验 exclude 列表
-  const excludeRes = parseExclude(args['exclude']);
+  const excludeRes = parseExclude(args["exclude"]);
   if (!Array.isArray(excludeRes)) return excludeRes;
 
   if (!isValidGlob(globPattern)) {
@@ -231,7 +241,7 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     files = await listFiles(cwd, true);
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
-    if (e.code === 'EACCES') {
+    if (e.code === "EACCES") {
       return fail(ErrorCode.EACCES, `无权限访问目录: ${cwd}`);
     }
     return fail(ErrorCode.EUNKNOWN, `读取目录失败: ${e.message}`);
@@ -248,10 +258,14 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
   if (!parsed.ok) {
     return fail(ErrorCode.EINVAL, parsed.error);
   }
-  const isRegex = parsed.mode === 'regex';
+  const isRegex = parsed.mode === "regex";
   const regex = isRegex ? parsed.regex : null;
   // 字面量匹配针：ignoreCase 时两侧统一小写比较（与 text_grep 一致），元字符不参与任何转义
-  const needle = isRegex ? '' : ignoreCase ? parsed.value.toLowerCase() : parsed.value;
+  const needle = isRegex
+    ? ""
+    : ignoreCase
+      ? parsed.value.toLowerCase()
+      : parsed.value;
 
   const allMatches: ContentMatch[] = [];
   let totalLines = 0;
@@ -267,7 +281,7 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     }
     if (isBinary(buf)) continue;
 
-    const content = buf.toString('utf8');
+    const content = buf.toString("utf8");
     // 与 text_grep 共用 splitLines：末尾换行不产生幻影空行，行号与总行数口径一致
     const lines = splitLines(content);
     totalLines += lines.length;
@@ -314,7 +328,7 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
     matchCount: allMatches.length,
     totalLines,
   });
-  if (hint !== undefined) payload['hint'] = hint;
+  if (hint !== undefined) payload["hint"] = hint;
 
   return ok(payload) as unknown as AnyToolResult;
 }
@@ -330,24 +344,23 @@ export async function searchContentHandler(args: Record<string, unknown>): Promi
  * - hint：可选双向提示文案
  */
 export const searchContentOutputSchema = z.object({
-  matches: z
-    .array(
-      z.object({
-        file: z.string().describe('相对路径'),
-        line: z.number().int().positive().describe('1-indexed'),
-        text: z.string().describe('可能截断'),
-      }),
-    ),
-  count: z.number().int().nonnegative().describe('返回的匹配数'),
-  truncated: z.boolean().describe('触发 maxResults 截断'),
-  patternMode: z.enum(['literal', 'regex']),
-  hint: z.string().optional().describe('双向提示文案'),
+  matches: z.array(
+    z.object({
+      file: z.string().describe("相对路径"),
+      line: z.number().int().positive().describe("1-indexed"),
+      text: z.string().describe("可能截断"),
+    }),
+  ),
+  count: z.number().int().nonnegative().describe("返回的匹配数"),
+  truncated: z.boolean().describe("触发 maxResults 截断"),
+  patternMode: z.enum(["literal", "regex"]),
+  hint: z.string().optional().describe("双向提示文案"),
 });
 
 export const searchContentTool: Tool = {
-  name: 'search_content',
+  name: "search_content",
   description:
-    '跨文件递归搜内容（≈ grep -r），返回[{file,line,text}]。pattern 默认字面量子串（元字符原样，反斜杠路径免转义）；/正则/ 启用正则（flags i/m/s，体内 \\/）。向字面量收敛。残余洞/tmp/类短串判正则，异常偏多附hint。区别text_grep：跨文件。',
+    "跨文件递归搜内容（≈ grep -r），返回[{file,line,text}]。pattern 默认字面量子串（元字符原样，反斜杠路径免转义）；/正则/ 启用正则（flags i/m/s，体内 \\/）。向字面量收敛。残余洞/tmp/类短串判正则，异常偏多附hint。区别text_grep：跨文件。",
   inputSchema: searchContentInputSchema,
   outputSchema: searchContentOutputSchema,
   annotations: { readOnlyHint: true },
@@ -360,25 +373,27 @@ export const searchContentTool: Tool = {
 
 export const searchWhichInputSchema = z.object({
   command: z.string().min(1),
-  verbose: z.boolean().optional().describe('true 时返回 all 字段'),
+  verbose: z.boolean().optional().describe("true 时返回 all 字段"),
 });
 
 export type SearchWhichInput = z.infer<typeof searchWhichInputSchema>;
 
 /** Windows 可执行文件后缀。 */
-const WINDOWS_EXTS = ['.exe', '.cmd', '.bat', '.ps1'];
+const WINDOWS_EXTS = [".exe", ".cmd", ".bat", ".ps1"];
 
-export async function searchWhichHandler(args: Record<string, unknown>): Promise<AnyToolResult> {
-  const command = args['command'];
-  if (typeof command !== 'string' || command.length === 0) {
-    return fail(ErrorCode.EINVAL, 'command 不能为空');
+export async function searchWhichHandler(
+  args: Record<string, unknown>,
+): Promise<AnyToolResult> {
+  const command = args["command"];
+  if (typeof command !== "string" || command.length === 0) {
+    return fail(ErrorCode.EINVAL, "command 不能为空");
   }
-  const verbose = args['verbose'] === true;
+  const verbose = args["verbose"] === true;
 
-  const isWindows = process.platform === 'win32';
+  const isWindows = process.platform === "win32";
   // Windows: Path 或 PATH；unix: PATH
-  const pathEnv = process.env['PATH'] ?? process.env['Path'] ?? '';
-  const sep = isWindows ? ';' : ':';
+  const pathEnv = process.env["PATH"] ?? process.env["Path"] ?? "";
+  const sep = isWindows ? ";" : ":";
   const dirs = pathEnv.split(sep).filter((d) => d.length > 0);
 
   const all: string[] = [];
@@ -436,13 +451,14 @@ export async function searchWhichHandler(args: Record<string, unknown>): Promise
  */
 export const searchWhichOutputSchema = z.object({
   found: z.boolean(),
-  path: z.string().optional().describe('found=true 时存在'),
-  all: z.array(z.string()).optional().describe('verbose 模式'),
+  path: z.string().optional().describe("found=true 时存在"),
+  all: z.array(z.string()).optional().describe("verbose 模式"),
 });
 
 export const searchWhichTool: Tool = {
-  name: 'search_which',
-  description: '在 PATH 中定位可执行文件（≈ which）。Windows 自动尝试 .exe/.cmd/.bat/.ps1 后缀。',
+  name: "search_which",
+  description:
+    "在 PATH 中定位可执行文件（≈ which）。Windows 自动尝试 .exe/.cmd/.bat/.ps1 后缀。",
   inputSchema: searchWhichInputSchema,
   outputSchema: searchWhichOutputSchema,
   annotations: { readOnlyHint: true },

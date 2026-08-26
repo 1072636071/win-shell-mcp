@@ -278,10 +278,7 @@ export const netGetTool: Tool = {
 export const netPostInputSchema = z.object({
   url: z.string(),
   body: z.string().optional(),
-  json: z
-    .boolean()
-    .optional()
-    .describe("设 Content-Type: application/json"),
+  json: z.boolean().optional().describe("设 Content-Type: application/json"),
   headers: z
     .record(z.string(), z.string())
     .optional()

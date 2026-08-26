@@ -281,12 +281,7 @@ export const gitStatusTool: Tool = {
 /** git_log 输入 schema。 */
 export const gitLogInputSchema = z.object({
   cwd: z.string().optional().describe("默认当前工作目录"),
-  limit: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe("提交数上限，默认 10"),
+  limit: z.number().int().positive().optional().describe("提交数上限，默认 10"),
   verbose: z
     .boolean()
     .optional()
@@ -524,14 +519,8 @@ export const gitBranchTool: Tool = {
 /** git_diff 输入 schema。 */
 export const gitDiffInputSchema = z.object({
   cwd: z.string().optional().describe("默认当前工作目录"),
-  staged: z
-    .boolean()
-    .optional()
-    .describe("显示暂存区差异（--cached）"),
-  against: z
-    .string()
-    .optional()
-    .describe("目标 ref（commit/分支/HEAD~1）"),
+  staged: z.boolean().optional().describe("显示暂存区差异（--cached）"),
+  against: z.string().optional().describe("目标 ref（commit/分支/HEAD~1）"),
   path: z.string().optional().describe("限制差异范围"),
   verbose: z.boolean().optional().describe("不截断 diff 输出"),
 });
@@ -616,9 +605,7 @@ export const gitDiffTool: Tool = {
 /** git_add 输入 schema。 */
 export const gitAddInputSchema = z.object({
   cwd: z.string().optional().describe("默认当前工作目录"),
-  paths: z
-    .array(z.string())
-    .min(1),
+  paths: z.array(z.string()).min(1),
 });
 
 /** git_add 输出。 */
@@ -672,8 +659,7 @@ export const gitAddOutputSchema = z.object({
 /** git_add 工具定义。 */
 export const gitAddTool: Tool = {
   name: "git_add",
-  description:
-    "暂存文件到 git 索引（≈ git add）。返回 { added }。",
+  description: "暂存文件到 git 索引（≈ git add）。返回 { added }。",
   inputSchema: gitAddInputSchema,
   outputSchema: gitAddOutputSchema,
   // 修改 git 索引（暂存区），readOnlyHint: false
@@ -687,10 +673,7 @@ export const gitAddTool: Tool = {
 export const gitCommitInputSchema = z.object({
   cwd: z.string().optional().describe("默认当前工作目录"),
   message: z.string().min(1),
-  amend: z
-    .boolean()
-    .optional()
-    .describe("修改上一个提交（--amend）"),
+  amend: z.boolean().optional().describe("修改上一个提交（--amend）"),
 });
 
 /** git_commit 输出。 */
@@ -1087,14 +1070,8 @@ export async function gitStashHandler(
  */
 export const gitStashOutputSchema = z.object({
   action: z.string().describe("push/pop/list/drop"),
-  stashes: z
-    .array(z.string())
-    .optional()
-    .describe("仅 action=list 时返回"),
-  success: z
-    .boolean()
-    .optional()
-    .describe("仅 action≠list 时返回"),
+  stashes: z.array(z.string()).optional().describe("仅 action=list 时返回"),
+  success: z.boolean().optional().describe("仅 action≠list 时返回"),
 });
 
 /**

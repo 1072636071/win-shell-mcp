@@ -75,9 +75,7 @@ function padTo512(buf: Buffer): Buffer {
 }
 
 /** 递归收集文件列表。 */
-async function collectFiles(
-  root: string,
-): Promise<
+async function collectFiles(root: string): Promise<
   Array<{
     rel: string;
     abs: string;
@@ -386,9 +384,7 @@ export const archiveCreateInputSchema = z.object({
   format: z
     .enum(["tar", "tar.gz", "zip"])
     .optional()
-    .describe(
-      "默认按扩展名推断（.tar.gz/.tgz→tar.gz, .zip→zip, 其他→tar）",
-    ),
+    .describe("默认按扩展名推断（.tar.gz/.tgz→tar.gz, .zip→zip, 其他→tar）"),
   cwd: z.string().optional().describe("默认 process.cwd()"),
 });
 

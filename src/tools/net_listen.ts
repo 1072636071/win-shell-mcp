@@ -17,10 +17,7 @@ import type { Tool } from "../registry.js";
 
 /** net_listen 输入 schema。 */
 export const netListenInputSchema = z.object({
-  filter: z
-    .string()
-    .optional()
-    .describe("含子串，大小写不敏感"),
+  filter: z.string().optional().describe("含子串，大小写不敏感"),
 });
 
 /** 监听端口条目。 */

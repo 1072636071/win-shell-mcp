@@ -36,10 +36,7 @@ const DEFAULT_MANAGERS = [
 
 /** pkg_detect 输入 schema。 */
 export const pkgDetectInputSchema = z.object({
-  managers: z
-    .array(z.string().min(1))
-    .optional()
-    .describe("默认检测全部"),
+  managers: z.array(z.string().min(1)).optional().describe("默认检测全部"),
 });
 
 /** pkg_detect 输入类型。 */
@@ -119,10 +116,7 @@ export const pkgDetectTool: Tool = {
 /** pkg_run 输入 schema。 */
 export const pkgRunInputSchema = z.object({
   manager: z.string().min(1).describe("如 npm/pnpm/pip"),
-  args: z
-    .array(z.string())
-    .optional()
-    .describe('如 ["install","lodash"]'),
+  args: z.array(z.string()).optional().describe('如 ["install","lodash"]'),
   cwd: z.string().optional(),
   timeout: z
     .number()
@@ -236,7 +230,12 @@ export const pkgRunOutputSchema = z.object({
   stdout: z.string().describe("可能截断"),
   stderr: z.string().describe("可能截断"),
   pid: z.number().int().optional().describe("verbose 时返回"),
-  duration: z.number().int().nonnegative().optional().describe("verbose 时返回"),
+  duration: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("verbose 时返回"),
 });
 
 /** pkg_run 工具定义。 */

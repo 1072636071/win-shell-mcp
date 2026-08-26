@@ -136,11 +136,7 @@ async function spawnCommand(opts: {
 const runCommandOutputSchema = z.object({
   stdout: z.string().describe("可能截断"),
   stderr: z.string().describe("可能截断"),
-  exitCode: z
-    .number()
-    .int()
-    .nullable()
-    .describe("null 表示被信号终止"),
+  exitCode: z.number().int().nullable().describe("null 表示被信号终止"),
   signal: z.string().nullable().describe("null 表示正常退出"),
   truncated: z.boolean(),
 });

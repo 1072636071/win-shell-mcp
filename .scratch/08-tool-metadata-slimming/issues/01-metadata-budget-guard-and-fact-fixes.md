@@ -8,12 +8,12 @@
 
 **验收标准：**
 
-- [ ] 新增护栏测试 `tests/tools/guard-metadata-budget.test.ts`（沿用 `guard-mutating.test.ts` 的全集遍历护栏先例），断言：
-  - [ ] 每个工具的 description 非空且长度 ≤150 字符（软上限）；确需保留长陷阱语义的工具（如 `text_grep`）在显式例外清单中声明
-  - [ ] `JSON.stringify(listTools())` 总量 ≤ 预算常量；预算常量先取实测现状基线（数值写入测试常量并注明测量日期），保持当前绿
-- [ ] 基线数值实测：实现时运行 `JSON.stringify(listTools())` 记录精简前总字符数，并记录到本工单评论区，供 02 号收紧
-- [ ] 事实修正：`server.ts`、`registry.ts`、`tests/integration/server.test.ts` 顶部标题中的"58 个工具"改为 59；`batch_run` description 中"9 种操作符"改为 10 种（op 枚举全列）
-- [ ] 全量 `npm test` 保持绿（本工单不改行为，护栏自身满足预算即绿）
+- [x] 新增护栏测试 `tests/tools/guard-metadata-budget.test.ts`（沿用 `guard-mutating.test.ts` 的全集遍历护栏先例），断言：
+  - [x] 每个工具的 description 非空且长度 ≤150 字符（软上限）；确需保留长陷阱语义的工具（如 `text_grep`）在显式例外清单中声明 —— **结果**：120 断言全绿
+  - [x] `JSON.stringify(listTools())` 总量 ≤ 预算常量；预算常量先取实测现状基线（数值写入测试常量并注明测量日期），保持当前绿 —— **结果**：基线常量 56277
+- [x] 基线数值实测：实现时运行 `JSON.stringify(listTools())` 记录精简前总字符数，并记录到本工单评论区，供 02 号收紧 —— **结果**：56277 字符（已记录评论区，02 号收紧目标 39393）
+- [x] 事实修正：`server.ts`、`registry.ts`、`tests/integration/server.test.ts` 顶部标题中的"58 个工具"改为 59；`batch_run` description 中"9 种操作符"改为 10 种（op 枚举全列） —— **结果**：9 处文件 58→59，batch_run 注释 9→10 全部修正
+- [x] 全量 `npm test` 保持绿（本工单不改行为，护栏自身满足预算即绿） —— **结果**：1533 passed | 2 skipped
 
 ## 评论
 

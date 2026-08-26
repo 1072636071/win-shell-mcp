@@ -22,7 +22,9 @@ export const envGetInputSchema = z.object({
   filter: z
     .string()
     .optional()
-    .describe("按变量名过滤（includes 匹配，大小写不敏感），仅 name 省略时生效"),
+    .describe(
+      "按变量名过滤（includes 匹配，大小写不敏感），仅 name 省略时生效",
+    ),
   maxLen: z
     .number()
     .int()
@@ -170,8 +172,7 @@ export const envSetOutputSchema = z.object({
 /** env_set 工具定义。 */
 export const envSetTool: Tool = {
   name: "env_set",
-  description:
-    "设置环境变量（≈ export），写入 process.env 对后续会话生效。",
+  description: "设置环境变量（≈ export），写入 process.env 对后续会话生效。",
   inputSchema: envSetInputSchema,
   outputSchema: envSetOutputSchema,
   // 修改进程环境变量，destructiveHint: true（覆盖既有值）

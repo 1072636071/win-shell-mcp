@@ -518,8 +518,16 @@ export const fsMkdirTool: Tool = {
  */
 export const fsRmOutputSchema = z.object({
   removed: z.boolean().describe("是否删除"),
-  targetType: z.enum(["file", "dir", "symlink"]).optional().describe("目标类型（force 删不存在时无）"),
-  recursiveCount: z.number().int().nonnegative().optional().describe("递归删除条目数（含目录自身，仅 recursive+目录时）"),
+  targetType: z
+    .enum(["file", "dir", "symlink"])
+    .optional()
+    .describe("目标类型（force 删不存在时无）"),
+  recursiveCount: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("递归删除条目数（含目录自身，仅 recursive+目录时）"),
 });
 
 /** fs_rm 工具定义。 */

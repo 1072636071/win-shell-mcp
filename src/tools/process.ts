@@ -33,10 +33,7 @@ const TASKKILL_ACCESS_DENIED_PATTERNS = ["access is denied", "拒绝访问"];
 
 /** process_list 输入 schema。 */
 export const processListInputSchema = z.object({
-  filter: z
-    .string()
-    .optional()
-    .describe("includes 匹配，大小写不敏感"),
+  filter: z.string().optional().describe("includes 匹配，大小写不敏感"),
   verbose: z.boolean().optional().describe("尽力而为"),
   maxResults: z.number().int().positive().optional(),
 });

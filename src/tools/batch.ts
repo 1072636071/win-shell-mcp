@@ -15,11 +15,7 @@
 
 import { z } from "zod";
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
-import {
-  ErrorCode,
-  toErrorCode,
-  toErrorMessage,
-} from "../contract/errors.js";
+import { ErrorCode, toErrorCode, toErrorMessage } from "../contract/errors.js";
 import { toFail, failFromError } from "../utils/errors.js";
 import { findTool, type Tool } from "../registry.js";
 
@@ -131,9 +127,7 @@ const batchStepOutputSchema = z.object({
   tool: z.string(),
   ok: z.boolean(),
   data: z.record(z.string(), z.unknown()).optional(),
-  error: z
-    .object({ code: z.string(), message: z.string() })
-    .optional(),
+  error: z.object({ code: z.string(), message: z.string() }).optional(),
   assert: z.array(batchAssertOutputSchema).optional(),
 });
 
@@ -166,11 +160,7 @@ function getPath(
   const parts = path.split(".");
   let cur: unknown = obj;
   for (const part of parts) {
-    if (
-      cur === null ||
-      cur === undefined ||
-      typeof cur !== "object"
-    ) {
+    if (cur === null || cur === undefined || typeof cur !== "object") {
       return { value: undefined, exists: false };
     }
     const record = cur as Record<string, unknown>;
@@ -193,9 +183,7 @@ function lookupRef(
   stepId: string,
   path: string,
   stepOutputs: Map<string, Record<string, unknown>>,
-):
-  | { value: unknown }
-  | { failed: true; errorMessage: string } {
+): { value: unknown } | { failed: true; errorMessage: string } {
   const output = stepOutputs.get(stepId);
   if (!output) {
     return { failed: true, errorMessage: `引用了不存在的步骤: ${stepId}` };
@@ -410,10 +398,7 @@ function runAssertion(
     case "neq":
       return {
         passed: actual !== expected,
-        message:
-          actual !== expected
-            ? "不等"
-            : `期望不等于 ${str(expected)}`,
+        message: actual !== expected ? "不等" : `期望不等于 ${str(expected)}`,
       };
     case "gt":
       return compareNumeric(actual, expected, "gt");
@@ -432,10 +417,9 @@ function runAssertion(
       }
       return {
         passed: expected.includes(actual),
-        message:
-          expected.includes(actual)
-            ? "在集合中"
-            : `实际值 ${str(actual)} 不在期望集合中`,
+        message: expected.includes(actual)
+          ? "在集合中"
+          : `实际值 ${str(actual)} 不在期望集合中`,
       };
     case "re": {
       if (typeof expected !== "string") {
@@ -470,17 +454,13 @@ function runAssertion(
       return {
         passed: Boolean(actual) === true,
         message:
-          Boolean(actual) === true
-            ? "为真"
-            : `期望真值，实际 ${str(actual)}`,
+          Boolean(actual) === true ? "为真" : `期望真值，实际 ${str(actual)}`,
       };
     case "falsy":
       return {
         passed: Boolean(actual) === false,
         message:
-          Boolean(actual) === false
-            ? "为假"
-            : `期望假值，实际 ${str(actual)}`,
+          Boolean(actual) === false ? "为假" : `期望假值，实际 ${str(actual)}`,
       };
     default:
       return { passed: false, message: `未知操作符: ${op}` };
@@ -540,7 +520,11 @@ function runAsserts(
     }
 
     // 执行断言
-    const assertResult = runAssertion(pathResult.value, a.op, valueResult.resolved);
+    const assertResult = runAssertion(
+      pathResult.value,
+      a.op,
+      valueResult.resolved,
+    );
     const result: AssertResult = {
       path: a.path,
       op: a.op,
@@ -570,10 +554,7 @@ export async function batchRunHandler(
 ): Promise<AnyToolResult> {
   const raw = args as { steps?: unknown };
   if (!raw.steps || !Array.isArray(raw.steps)) {
-    return fail(
-      ErrorCode.EINVAL,
-      "batch_run 需要 steps 数组",
-    );
+    return fail(ErrorCode.EINVAL, "batch_run 需要 steps 数组");
   }
 
   const stepsRaw = raw.steps as unknown[];
@@ -583,10 +564,7 @@ export async function batchRunHandler(
   for (let i = 0; i < stepsRaw.length; i++) {
     const stepRaw = stepsRaw[i]!;
     if (!stepRaw || typeof stepRaw !== "object") {
-      return fail(
-        ErrorCode.EINVAL,
-        `步骤 ${i + 1} 必须是对象`,
-      );
+      return fail(ErrorCode.EINVAL, `步骤 ${i + 1} 必须是对象`);
     }
     const parsed = batchStepInputSchema.safeParse(stepRaw);
     if (!parsed.success) {
@@ -612,10 +590,7 @@ export async function batchRunHandler(
     }
     // 检查 id 唯一性
     if (stepIds.has(steps[i]!.id!)) {
-      return fail(
-        ErrorCode.EINVAL,
-        `步骤 id 重复: ${steps[i]!.id}`,
-      );
+      return fail(ErrorCode.EINVAL, `步骤 id 重复: ${steps[i]!.id}`);
     }
     stepIds.add(steps[i]!.id!);
   }
@@ -679,9 +654,7 @@ export async function batchRunHandler(
     // ── 4. 调用 handler ──
     let toolResult: AnyToolResult;
     try {
-      toolResult = await tool.handler(
-        parsed.data as Record<string, unknown>,
-      );
+      toolResult = await tool.handler(parsed.data as Record<string, unknown>);
     } catch (err) {
       toolResult = failFromError(err);
     }
