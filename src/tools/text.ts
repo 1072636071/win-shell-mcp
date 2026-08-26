@@ -553,20 +553,24 @@ export async function textDiffHandler(
 
   const aLines = splitLines(aContent);
   const bLines = splitLines(bContent);
-  const diff = formatUnifiedDiff(aPath, bPath, aLines, bLines, context);
-  const same = diff === "";
+  const rawDiff = formatUnifiedDiff(aPath, bPath, aLines, bLines, context);
+  const same = rawDiff === "";
+  const diff = truncate(rawDiff);
+  const truncated = rawDiff.length > diff.length;
 
-  return ok({ diff: truncate(diff), same });
+  return ok({ diff, same, truncated });
 }
 
 /**
  * text_diff 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 成功返回 `{ diff, same }`：diff 为 unified diff 文本（可能截断），same 表示两文件是否完全相同。
+ * 成功返回 `{ diff, same, truncated }`：diff 为 unified diff 文本（可能截断），same 表示两文件是否完全相同。
+ * truncated 纳入默认输出：截断是「哑信息」，缺标记会迫使 AI 再补一轮（极简 ≠ 丢信息）。
  */
 export const textDiffOutputSchema = z.object({
   diff: z.string().describe("可能截断"),
   same: z.boolean().describe("两文件是否完全相同"),
+  truncated: z.boolean().describe("diff 是否被截断"),
 });
 
 export const textDiffTool: Tool = {
@@ -967,10 +971,12 @@ export async function textReplaceHandler(
     }
   }
 
+  const content = truncate(res.content);
   const payload: Record<string, unknown> = {
     replaced: res.replaced,
     totalMatches: total,
-    content: truncate(res.content),
+    content,
+    truncated: res.content.length > content.length,
     written,
     patternMode: parsed.mode,
   };
@@ -997,10 +1003,11 @@ export async function textReplaceHandler(
 /**
  * text_replace 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 成功返回 `{ replaced, totalMatches, content, written, patternMode, position?, context?, hint? }`：
+ * 成功返回 `{ replaced, totalMatches, content, truncated, written, patternMode, position?, context?, hint? }`：
  * - replaced：实际替换次数
  * - totalMatches：全文命中总数
  * - content：替换后内容（可能截断）
+ * - truncated：content 是否被截断（截断是「哑信息」，缺标记会迫使 AI 再补一轮）
  * - written：是否写回文件
  * - patternMode：pattern 解释模式（literal/regex）
  * - position：恰 1 命中时的命中位置（行:列）
@@ -1011,6 +1018,7 @@ export const textReplaceOutputSchema = z.object({
   replaced: z.number().int().nonnegative(),
   totalMatches: z.number().int().nonnegative().describe("全文命中总数"),
   content: z.string().describe("可能截断"),
+  truncated: z.boolean().describe("content 是否被截断"),
   written: z.boolean(),
   patternMode: z.enum(["literal", "regex"]),
   position: z

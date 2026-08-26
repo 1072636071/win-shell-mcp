@@ -215,15 +215,15 @@ describe('netGetHandler verbose', () => {
     }
   });
 
-  it('非 verbose 不含 verbose 专属字段', async () => {
+  it('非 verbose 不含 verbose 专属字段，但含 truncated', async () => {
     const result = await netGetHandler({ url: `${baseUrl}/json` });
     if (isOk(result)) {
       // ok 是 OkResult 契约固有字段（始终为 true），非 verbose 专属
       expect(result['ok']).toBe(true);
+      expect(typeof result['truncated']).toBe('boolean');
       expect(result['headers']).toBeUndefined();
       expect(result['statusText']).toBeUndefined();
       expect(result['duration']).toBeUndefined();
-      expect(result['truncated']).toBeUndefined();
     }
   });
 });
@@ -412,17 +412,17 @@ describe('netPostHandler verbose', () => {
     }
   });
 
-  it('非 verbose 不含 verbose 专属字段', async () => {
+  it('非 verbose 不含 verbose 专属字段，但含 truncated', async () => {
     const result = await netPostHandler({
       url: `${baseUrl}/post`,
       body: 'x',
     });
     if (isOk(result)) {
       expect(result['ok']).toBe(true);
+      expect(typeof result['truncated']).toBe('boolean');
       expect(result['headers']).toBeUndefined();
       expect(result['statusText']).toBeUndefined();
       expect(result['duration']).toBeUndefined();
-      expect(result['truncated']).toBeUndefined();
     }
   });
 });

@@ -186,6 +186,7 @@ describe('envGetHandler 读取全部变量', () => {
         expect(val.length).toBeLessThan(100);
         expect(val).toContain('truncated');
         expect(val.startsWith('xxxxxxxxxx')).toBe(true);
+        expect(result['truncated']).toBe(true);
       }
     } finally {
       delete process.env['WSMCP_TEST_LONG'];

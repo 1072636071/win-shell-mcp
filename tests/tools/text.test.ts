@@ -960,6 +960,7 @@ describe('text_diff', () => {
     if (isOk(result)) {
       expect(result['same']).toBe(true);
       expect(result['diff']).toBe('');
+      expect(result['truncated']).toBe(false);
     }
   });
 
@@ -1099,6 +1100,7 @@ describe('text_replace', () => {
     if (isOk(result)) {
       expect(result['replaced']).toBe(1);
       expect(result['totalMatches']).toBe(1);
+      expect(result['truncated']).toBe(false);
       expect(result['written']).toBe(false);
       expect(result['patternMode']).toBe('literal');
       expect(result['position']).toEqual({ line: 2, col: 9 });

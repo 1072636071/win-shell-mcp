@@ -31,10 +31,11 @@ import type { Tool } from "../registry.js";
 /** 默认请求超时（毫秒）。 */
 const DEFAULT_HTTP_TIMEOUT_MS = 30000;
 
-/** HTTP 极简输出。 */
+/** HTTP 极简输出。truncated 纳入默认输出：body 截断是「哑信息」，缺标记会迫使 AI 再补一轮。 */
 interface HttpMinimal {
   status: number;
   body: string;
+  truncated: boolean;
 }
 
 /** HTTP verbose 输出。 */
@@ -43,7 +44,6 @@ interface HttpFull extends HttpMinimal {
   ok: boolean;
   statusText: string;
   duration: number;
-  truncated: boolean;
 }
 
 /**
@@ -166,15 +166,19 @@ async function buildHttpResult(
   const truncatedBody = truncate(rawBody);
   const truncated = truncatedBody !== rawBody;
 
-  const minimal: HttpMinimal = { status: response.status, body: truncatedBody };
+  const minimal: HttpMinimal = {
+    status: response.status,
+    body: truncatedBody,
+    truncated,
+  };
   const full: HttpFull = {
     status: response.status,
     body: truncatedBody,
+    truncated,
     headers: headersToObject(response.headers),
     ok: response.ok,
     statusText: response.statusText,
     duration,
-    truncated,
   };
   return ok(withVerbose(minimal, full, verbose));
 }
@@ -200,8 +204,8 @@ export type NetGetInput = z.infer<typeof netGetInputSchema>;
 /**
  * net_get handler：发起 HTTP GET 请求。
  *
- * 极简返回 `{ status, body }`，body 截断至 2000 字符。
- * verbose 额外返回 `{ headers, ok, statusText, duration, truncated }`。
+ * 极简返回 `{ status, body, truncated }`，body 截断至 2000 字符。
+ * verbose 额外返回 `{ headers, ok, statusText, duration }`。
  * timeoutMs 用 AbortController + setTimeout。
  *
  * 错误：
@@ -246,17 +250,17 @@ export async function netGetHandler(
 /**
  * net_get 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 极简返回 `{ status, body }`；verbose 额外返回 `{ headers, ok, statusText, duration, truncated }`。
+ * 极简返回 `{ status, body, truncated }`；verbose 额外返回 `{ headers, ok, statusText, duration }`。
  * 用 optional 字段表达最通用形状（与 net_post 输出形状一致）。
  */
 export const netGetOutputSchema = z.object({
   status: z.number().int(),
   body: z.string().describe("可能截断"),
+  truncated: z.boolean().describe("body 是否被截断"),
   headers: z.record(z.string(), z.string()).optional(),
   ok: z.boolean().optional(),
   statusText: z.string().optional(),
   duration: z.number().int().nonnegative().optional(),
-  truncated: z.boolean().optional(),
 });
 
 /** net_get 工具定义。 */
@@ -299,9 +303,9 @@ export type NetPostInput = z.infer<typeof netPostInputSchema>;
 /**
  * net_post handler：发起 HTTP POST 请求。
  *
- * 极简返回 `{ status, body }`，body 截断至 2000 字符。
+ * 极简返回 `{ status, body, truncated }`，body 截断至 2000 字符。
  * `json=true` 时设置 Content-Type: application/json。
- * verbose 额外返回 `{ headers, ok, statusText, duration, truncated }`。
+ * verbose 额外返回 `{ headers, ok, statusText, duration }`。
  * timeoutMs 用 AbortController + setTimeout。
  *
  * 错误：
@@ -358,17 +362,17 @@ export async function netPostHandler(
 /**
  * net_post 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 极简返回 `{ status, body }`；verbose 额外返回 `{ headers, ok, statusText, duration, truncated }`。
+ * 极简返回 `{ status, body, truncated }`；verbose 额外返回 `{ headers, ok, statusText, duration }`。
  * 与 net_get 输出形状一致，用 optional 字段表达最通用形状。
  */
 export const netPostOutputSchema = z.object({
   status: z.number().int(),
   body: z.string().describe("可能截断"),
+  truncated: z.boolean().describe("body 是否被截断"),
   headers: z.record(z.string(), z.string()).optional(),
   ok: z.boolean().optional(),
   statusText: z.string().optional(),
   duration: z.number().int().nonnegative().optional(),
-  truncated: z.boolean().optional(),
 });
 
 /** net_post 工具定义。 */

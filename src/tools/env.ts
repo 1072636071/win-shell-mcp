@@ -42,10 +42,11 @@ interface EnvGetOneResult {
   value: string | null;
 }
 
-/** 全部变量返回结构。 */
+/** 全部变量返回结构。truncated 纳入默认输出：maxLen 触发截断是「哑信息」，缺标记会迫使 AI 再补一轮。 */
 interface EnvGetAllResult {
   vars: Record<string, string>;
   count: number;
+  truncated: boolean;
 }
 
 /**
@@ -81,12 +82,23 @@ export async function envGetHandler(
     typeof maxLen === "number" && maxLen > 0 ? Math.floor(maxLen) : null;
 
   const vars: Record<string, string> = {};
+  let anyTruncated = false;
   for (const [key, val] of Object.entries(process.env)) {
     if (typeof val !== "string") continue;
     if (filterStr !== null && !key.toLowerCase().includes(filterStr)) continue;
-    vars[key] = limit !== null ? truncate(val, limit) : val;
+    if (limit !== null) {
+      const truncatedVal = truncate(val, limit);
+      if (truncatedVal.length < val.length) anyTruncated = true;
+      vars[key] = truncatedVal;
+    } else {
+      vars[key] = val;
+    }
   }
-  const result: EnvGetAllResult = { vars, count: Object.keys(vars).length };
+  const result: EnvGetAllResult = {
+    vars,
+    count: Object.keys(vars).length,
+    truncated: anyTruncated,
+  };
   return ok(result);
 }
 
@@ -94,13 +106,15 @@ export async function envGetHandler(
  * env_get 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
  * name 指定时返回 `{ name, value }`（value 为 string 或 null）；
- * name 省略时返回 `{ vars, count }`。两种形状互斥，用 optional 字段表达最通用形状。
+ * name 省略时返回 `{ vars, count, truncated }`。两种形状互斥，用 optional 字段表达最通用形状。
+ * truncated 纳入默认输出：maxLen 触发截断是「哑信息」，缺标记会迫使 AI 再补一轮（极简 ≠ 丢信息）。
  */
 export const envGetOutputSchema = z.object({
   name: z.string().optional(),
   value: z.union([z.string(), z.null()]).optional(),
   vars: z.record(z.string(), z.string()).optional(),
   count: z.number().int().nonnegative().optional(),
+  truncated: z.boolean().optional().describe("是否任一变量值被 maxLen 截断"),
 });
 
 /** env_get 工具定义。 */

@@ -102,15 +102,16 @@ describe('shellExecHandler 正常执行', () => {
     }
   });
 
-  it('极简输出只含 exitCode/stdout/stderr', async () => {
+  it('极简输出含 exitCode/stdout/stderr/truncated', async () => {
     const result = await shellExecHandler({ command: 'echo hi' });
     if (isOk(result)) {
       expect(result['exitCode']).toBeDefined();
       expect(result['stdout']).toBeDefined();
       expect(result['stderr']).toBeDefined();
+      expect(result['truncated']).toBeDefined();
+      expect(typeof result['truncated']).toBe('boolean');
       expect(result['pid']).toBeUndefined();
       expect(result['duration']).toBeUndefined();
-      expect(result['truncated']).toBeUndefined();
     }
   });
 

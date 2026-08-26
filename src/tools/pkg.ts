@@ -131,11 +131,12 @@ export const pkgRunInputSchema = z.object({
 /** pkg_run 输入类型。 */
 export type PkgRunInput = z.infer<typeof pkgRunInputSchema>;
 
-/** 极简输出字段。 */
+/** 极简输出字段。truncated 纳入默认输出：截断是「哑信息」，缺标记会迫使 AI 再补一轮。 */
 interface PkgRunMinimal {
   exitCode: number;
   stdout: string;
   stderr: string;
+  truncated: boolean;
 }
 
 /** verbose 输出字段。 */
@@ -203,10 +204,17 @@ export async function pkgRunHandler(
     );
   }
 
+  const stdout = truncate(outcome.stdout);
+  const stderr = truncate(outcome.stderr);
+  const truncated =
+    outcome.stdout.length > stdout.length ||
+    outcome.stderr.length > stderr.length;
+
   const minimal: PkgRunMinimal = {
     exitCode: outcome.exitCode,
-    stdout: truncate(outcome.stdout),
-    stderr: truncate(outcome.stderr),
+    stdout,
+    stderr,
+    truncated,
   };
 
   if (!verbose) {
@@ -224,12 +232,14 @@ export async function pkgRunHandler(
 /**
  * pkg_run 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 极简返回 `{ exitCode, stdout, stderr }`；verbose 额外返回 `{ pid, duration }`。
+ * 极简返回 `{ exitCode, stdout, stderr, truncated }`；verbose 额外返回 `{ pid, duration }`。
+ * truncated 纳入默认输出：截断是「哑信息」，缺标记会迫使 AI 再补一轮（极简 ≠ 丢信息）。
  */
 export const pkgRunOutputSchema = z.object({
   exitCode: z.number().int().describe("非零是正常结果，不是工具失败"),
   stdout: z.string().describe("可能截断"),
   stderr: z.string().describe("可能截断"),
+  truncated: z.boolean().describe("stdout 或 stderr 是否被截断"),
   pid: z.number().int().optional().describe("verbose 时返回"),
   duration: z
     .number()

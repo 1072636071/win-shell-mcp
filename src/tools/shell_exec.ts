@@ -44,18 +44,18 @@ export const shellExecInputSchema = z.object({
 /** shell_exec 输入类型。 */
 export type ShellExecInput = z.infer<typeof shellExecInputSchema>;
 
-/** 极简输出字段。 */
+/** 极简输出字段。truncated 纳入默认输出：截断是「哑信息」，缺标记会迫使 AI 再补一轮。 */
 interface ShellExecMinimal {
   exitCode: number;
   stdout: string;
   stderr: string;
+  truncated: boolean;
 }
 
 /** verbose 输出字段。 */
 interface ShellExecFull extends ShellExecMinimal {
   pid: number;
   duration: number;
-  truncated: boolean;
 }
 
 /**
@@ -146,13 +146,13 @@ export async function shellExecHandler(
     exitCode: outcome.exitCode,
     stdout,
     stderr,
+    truncated,
   };
 
   const full: ShellExecFull = {
     ...minimal,
     pid: outcome.pid,
     duration: outcome.duration,
-    truncated,
   };
   const result = withVerbose(minimal, full, verbose);
   return ok(result);
@@ -161,16 +161,17 @@ export async function shellExecHandler(
 /**
  * shell_exec 输出 schema（描述 success data 结构，不含 ok 包装）。
  *
- * 极简返回 `{ exitCode, stdout, stderr }`；verbose 额外返回 `{ pid, duration, truncated }`。
+ * 极简返回 `{ exitCode, stdout, stderr, truncated }`；verbose 额外返回 `{ pid, duration }`。
+ * truncated 纳入默认输出：截断是「哑信息」，缺标记会迫使 AI 再补一轮（极简 ≠ 丢信息）。
  * 与 ShellExecMinimal/ShellExecFull 接口等价的 zod schema。
  */
 export const shellExecOutputSchema = z.object({
   exitCode: z.number().int().describe("非零是正常结果"),
   stdout: z.string().describe("可能截断"),
   stderr: z.string().describe("可能截断"),
+  truncated: z.boolean().describe("stdout 或 stderr 是否被截断"),
   pid: z.number().int().optional(),
   duration: z.number().int().nonnegative().optional(),
-  truncated: z.boolean().optional(),
 });
 
 /** shell_exec 工具定义。 */
