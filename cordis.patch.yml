@@ -1,0 +1,7 @@
+# win-shell-mcp DSH bundle patch: 作为 profile 层（`dsh.bundle.patch` 清单字段）
+# 挂载 preset-sync 插件。工具注册不在本层——WShell 各 preset 的
+# `agent.cordis.yml`（经 `./tool-win-shell.mjs`）负责把 win-shell-mcp 工具挂进
+# agent-plane。激活：`dsh plugin --profile <name> add <win-shell-mcp 安装方式>`。
+- insert:
+    - id: wshell-bundle
+      name: 'win-shell-mcp/dsh-bundle'

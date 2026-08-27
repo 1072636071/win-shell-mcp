@@ -20,7 +20,7 @@ export default defineConfig([
     banner: { js: "#!/usr/bin/env node" },
   },
   {
-    entry: ["src/plugin.ts", "src/core.ts"],
+    entry: ["src/plugin.ts", "src/core.ts", "src/dsh-bundle/index.ts"],
     format: ["esm"],
     target: "node18",
     platform: "node",

@@ -1,0 +1,3 @@
+name: WShell 标准模式
+description: win-shell-mcp 精简命令工具 + DSH 原生 fs/web/lsp 补缺；native 全量呈现、单行极简 persona。
+order: 6
