@@ -1,0 +1,52 @@
+# The `wshell-standard` (WShell 标准模式) agent preset: win-shell-mcp 的精简
+# 命令工具（58 域工具，native schema 注册）＋ DSH 原生三组补缺（fs: read/
+# write/edit/read_image，web: web_fetch/web_search，lsp），native 全量注入，
+# persona 保持单行极简（对齐官方 Minimal preset 的 persona）。目录共 65 工具
+# （58 win-shell-mcp + 4 fs + 2 web + 1 lsp，裁决见 memorial 007 D9 / ADR-0018）。
+#
+# 目录构成（按组挂载，DSH 工具成组注册）：
+#   - win-shell-mcp 工具：`./tool-win-shell.mjs`（re-export win-shell-mcp/plugin）
+#   - DSH fs 组：@deepseek-ai/dsh-tool-fs（read/read_image/write/edit）
+#   - DSH web 组：@deepseek-ai/dsh-tool-web（web_fetch/web_search）
+#   - DSH lsp：@deepseek-ai/dsh-tool-lsp（lsp）
+#
+# 这是 AGENT-PLANE 组合：宿主组合保留注册表/沙箱/审批/持久化/模型路由。
+# 发布 service 的行必须放在带 `isolate` realm 的 group——本组合无 service 行。
+
+# ── identity ────────────────────────────────────────────────────────────────
+# 单行极简 persona（对齐官方 Minimal preset），不注入任何工具映射表或规则堆砌。
+# `complete:true` 视 persona 为完整系统提示（不并入全局身份/工具指引），
+# `includeRuntimeContext:false` 不注入运行时上下文快照——保证系统提示干净。
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: You are a helpful software engineer assistant.
+    complete: true
+    includeRuntimeContext: false
+
+# ── win-shell-mcp 工具 ───────────────────────────────────────────────────────
+# 经 preset 内相对包装器注册 win-shell-mcp 的 Cordis 插件（tool-win-shell），
+# 58 域工具以 native schema 进入目录。包装器 `./tool-win-shell.mjs` 仅
+# re-export `win-shell-mcp/plugin`，随 preset 一并 sync。
+#
+# `exclude` 剔除 3 个 meta 工具（batch_run / tool_groups / list_domain_tools），
+# 使 win-shell-mcp 只贡献 58 域工具、目录总数为 65（memorial 007 D9）。batch_run
+# 保留给 WShell 批量模式（工单 05）；tool_groups/list_domain_tools 为元导航工具。
+- id: tool-win-shell
+  name: ./tool-win-shell.mjs
+  config:
+    exclude: [batch_run, tool_groups, list_domain_tools]
+
+# ── DSH 原生补缺 ─────────────────────────────────────────────────────────────
+# 三个 win-shell-mcp 无对应实现的 DSH 原生组。fs/web 服务与 policy 在宿主
+# base bundle；lsp 无 provider 时工具照常注册、调用返回 LSP_UNAVAILABLE。
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    searchTimeoutMs: 60000
+
+- id: tool-lsp
+  name: '@deepseek-ai/dsh-tool-lsp'

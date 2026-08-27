@@ -3,6 +3,9 @@
 > 本目录是 JX 模式的**权威模板**与说明文档。部署实例位于用户配置根 `~/.dsh/.agent-presets/jx-mode/`（2026-08-24 部署）；两者不一致时，以本目录为源同步过去。
 >
 > 基线：DeepSeek Harness（dsh），`DSH_HOME=C:\Users\jxc123\.dsh`，profile=`web`。
+>
+> **姊妹文档**：win-shell-mcp 的 WShell 三模式（标准/批量/全量，bundle 插件一键
+> 安装）见 [wshell-modes.md](./wshell-modes.md)。两者在模式选择器并存、互不覆盖。
 
 ## 这是什么
 

@@ -7,13 +7,22 @@
     "win-shell-mcp": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "presets",
+    "cordis.patch.yml"
   ],
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
     "./core": "./dist/core.js",
-    "./plugin": "./dist/plugin.js"
+    "./plugin": "./dist/plugin.js",
+    "./dsh-bundle": "./dist/dsh-bundle/index.js",
+    "./presets/*": "./presets/*"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
   "scripts": {
     "build": "tsup",

@@ -1,0 +1,145 @@
+# The `wshell-full` (WShell 全量模式) agent preset: 以 DSH 官方 `standard`
+#（完整编码 agent）原生工具组合为基线，叠加 win-shell-mcp 全部命令工具，能力
+# 最大化；persona 保持单行极简。目录构成 = 58 win-shell 域工具 + DSH core
+# 原生工具（subagent/subagent_fork/workflow/ralph/goal/jobs/fs/fs-search/
+# skill/todo/ask-user/web/plan-mode 等）。裁定见工单 06 评论：剔除
+# experimental/opt-in 包（@deepseek-ai/dsh-experimental-tool-agent-team、
+# @deepseek-ai/dsh-tool-cordis 等）与
+# 生产未装 provider 变体，故实测目录远低于 PRD 原始"~121"粗估。
+#
+# 这是 AGENT-PLANE 组合：宿主组合保留注册表/沙箱/审批/持久化/模型路由。
+# 发布 service 的行必须放在带 `isolate` realm 的 group（见 planning/
+# delegation 组）。tool-subagent 因共享 host 单例 registry 在本
+# 组合挂 delegation 工具（realm isolate workflowEngine），tool-subagent-
+# report 属 host-plane 不在本组合挂。
+
+# ── identity ────────────────────────────────────────────────────────────────
+# 单行极简 persona（对齐官方 Minimal preset），不注入任何工具映射表或规则
+# 堆砌；complete 视为完整系统提示、includeRuntimeContext 不注入上下文快照。
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: You are a helpful software engineer assistant.
+    complete: true
+    includeRuntimeContext: false
+
+# ── win-shell-mcp 工具 ───────────────────────────────────────────────────────
+# 经 preset 内相对包装器注册 win-shell-mcp 全部命令工具。`exclude` 剔除 3 个
+# meta 工具（batch_run / tool_groups / list_domain_tools），win-shell 贡献
+# 58 域工具（与标准/批量模式同口径；全量模式为何仍剔 meta：meta 为目录导航
+# 工具，进全量目录属噪音，见工单 06 口径）。
+- id: tool-win-shell
+  name: ./tool-win-shell.mjs
+  config:
+    exclude: [batch_run, tool_groups, list_domain_tools]
+
+# ── shell ───────────────────────────────────────────────────────────────────
+# 一次性 shell 栈按平台二选一（win32 挂 pwsh、POSIX 挂 bash），与原版
+# `standard` preset 一致；executor 由宿主提供。
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── background jobs ────────────────────────────────────────────────────────
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── skills ──────────────────────────────────────────────────────────────────
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── goals ───────────────────────────────────────────────────────────────────
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# ── plan mode ───────────────────────────────────────────────────────────────
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it; a user's conversational agreement approves nothing. Explore first with non-mutating reads and searches, ground the plan in the actual repository, and do not edit files, run formatters, or commit while planning. When ready, call exit_plan_mode with the complete decision-complete plan as markdown starting with a # title; make it the only and final tool call in that response. If review rejects it, fold the feedback in and present again.
+
+# ── delegation and workflows ────────────────────────────────────────────────
+# 与官方 `standard` preset 相同的 delegation 组合：subagents registry 在
+# host 单例，本组合只挂 delegation TOOLS；`workflows` 共享 entry-local realm。
+# 生产 dsh 不安装 codex/claude-code 可选 provider，故不挂其 disabled 变体。
+- id: delegation
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+  config:
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+
+    - id: tool-subagent-list-agents
+      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent
+        backgroundMode: continuable
+
+    - id: tool-subagent-fork
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: fork
+        toolName: subagent_fork
+        backgroundMode: continuable
+
+    - id: workflow-worker-thread
+      name: '@deepseek-ai/dsh-workflow-worker-thread'
+      config:
+        provider: spawn
+
+    - id: tool-workflow
+      name: '@deepseek-ai/dsh-tool-workflow'
+
+    - id: tool-ralph
+      name: '@deepseek-ai/dsh-tool-ralph'
+      config:
+        subagentProvider: spawn
+        maxRounds: 64
+
+# ── remaining model-facing rows ───────────────────────────────────────────
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+# `web` 服务与其 search provider 留宿主，只挂模型侧工具。
+# `fetch:false` 与 DSH 官方 standard 原样一致；web_fetch 能力由 win-shell
+# net_get/net_download 覆盖（memorial 007 D2）。wshell-standard/batch 未设
+# 此键（不启用 web_fetch），本组合保持官方 standard 的原配置。
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000

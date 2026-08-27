@@ -1,0 +1,3 @@
+name: WShell 批量模式
+description: 基于 WShell 标准模式，persona 引导多步操作优先用 batch_run 一次完成。
+order: 7

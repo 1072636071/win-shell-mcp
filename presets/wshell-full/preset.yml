@@ -1,0 +1,3 @@
+name: WShell 全量模式
+description: 以 DSH 官方 standard（完整编码 agent）原生组合 + win-shell 全部命令工具，能力最大化；persona 单行极简。
+order: 8
