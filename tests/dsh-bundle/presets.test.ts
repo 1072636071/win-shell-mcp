@@ -186,3 +186,108 @@ describe.each(MODES)("$id preset", (mode) => {
     }
   });
 });
+
+/**
+ * WShell 全量模式：目录构成与 standard/batch（persona + tool-win-shell +
+ * fs/web/lsp 三组，共 5 顶层行）不同——它是 DSH 官方 `standard`（完整编码
+ * agent）原生组合 + win-shell 58 域工具，顶层含大量原生工具行与 cordis:group
+ * 组。故独立 describe，聚焦：结构校验、persona 极简、win-shell 注册 58、
+ * 关键原生行存在、不含 experimental/opt-in 包。
+ */
+describe("wshell-full preset", () => {
+  const dir = join(PRESETS_ROOT, "wshell-full");
+  const agent = join(dir, "agent.cordis.yml");
+  const read = (): string => readFileSync(agent, "utf8").replace(/\r\n/g, "\n");
+
+  /** 全量模式顶层须含的 DSH core 原生行 id（官方 standard 组合，不含组内子行）。 */
+  const CORE_NATIVE_ROWS = [
+    "tool-bash",
+    "tool-pwsh",
+    "tool-fs",
+    "tool-fs-search",
+    "tool-jobs",
+    "skill-filesystem",
+    "tool-skill",
+    "tool-goal",
+    "planning",
+    "delegation",
+    "tool-ask-user",
+    "tool-todo",
+    "tool-web",
+  ];
+  /** 组内（cordis:group 嵌套）原生行——parseRows 只解析顶层，故按文本匹配。 */
+  const NESTED_NATIVE_IDS = [
+    "tool-subagent",
+    "tool-subagent-fork",
+    "tool-workflow",
+    "tool-ralph",
+  ];
+  /** 全量应为空的 experimental/opt-in 包行 id（工单 06 口径：剔除）。 */
+  const EXCLUDED_ROWS = [
+    "tool-cordis",
+    "tool-agent-team",
+  ];
+
+  it("agent.cordis.yml 存在且通过结构校验", () => {
+    expect(existsSync(agent)).toBe(true);
+    expect(validateAgentCordis(readFileSync(agent, "utf8"))).toEqual([]);
+  });
+
+  it("目录构成：persona + tool-win-shell + DSH core 原生行", () => {
+    const text = readFileSync(agent, "utf8");
+    const rows = parseRows(text);
+    const ids = rows.map((r) => r.id);
+    expect(ids[0]).toBe("persona");
+    expect(ids).toContain("tool-win-shell");
+    for (const id of CORE_NATIVE_ROWS) {
+      expect(ids, `missing native row ${id}`).toContain(id);
+    }
+    // 组内子行按文本锚点断言存在（parseRows 不可达）。
+    for (const id of NESTED_NATIVE_IDS) {
+      expect(text, `missing nested native row ${id}`).toMatch(new RegExp(`- id: ${id}\\s*$`, "m"));
+    }
+    for (const id of EXCLUDED_ROWS) {
+      expect(ids, `unexpected experimental/opt-in row ${id}`).not.toContain(id);
+      expect(text, `unexpected experimental/opt-in row ${id}`).not.toMatch(new RegExp(`- id: ${id}\\s*$`, "m"));
+    }
+  });
+
+  it("tool-win-shell exclude 3 meta，win-shell 注册 58 域工具", () => {
+    const rows = parseRows(readFileSync(agent, "utf8"));
+    const exclude = rows.find((r) => r.id === "tool-win-shell")?.exclude ?? [];
+    expect(exclude).toEqual(["batch_run", "tool_groups", "list_domain_tools"]);
+    const { ctx, defined } = makeFakeCtx();
+    pluginApply(ctx, { exclude });
+    // registry 全量 − 3 exclude → 58 域工具（单一来源，勿手写魔法数）
+    expect(defined.size).toBe(builtinTools.length - 3);
+    for (const meta of META_TOOLS) expect(defined.has(meta)).toBe(false);
+  });
+
+  it("persona 保持单行极简，对齐官方 Minimal", () => {
+    const personaBlock = personaSubtree(read());
+    expect(personaBlock).toMatch(/text:\s*You are a helpful software engineer assistant\./);
+    expect(personaBlock).toMatch(/complete:\s*true/);
+    expect(personaBlock).toMatch(/includeRuntimeContext:\s*false/);
+    expect(personaBlock.trim().length).toBeLessThan(200);
+    expect(personaBlock).not.toMatch(/batch_run|tool_groups|list_domain_tools/);
+  });
+
+  it("tool-win-shell 行通过 ./tool-win-shell.mjs 包装器", () => {
+    expect(read()).toContain("name: ./tool-win-shell.mjs");
+    const wrapper = join(dir, "tool-win-shell.mjs");
+    expect(existsSync(wrapper)).toBe(true);
+    expect(readFileSync(wrapper, "utf8")).toContain("win-shell-mcp/plugin");
+  });
+
+  it("preset.yml 存在且含显示名", () => {
+    const preset = join(dir, "preset.yml");
+    expect(existsSync(preset)).toBe(true);
+    expect(readFileSync(preset, "utf8")).toContain("name: WShell 全量模式");
+  });
+
+  it("所有行 name 可被 dsh loader 接受", () => {
+    for (const row of parseRows(read())) {
+      expect(row.name, `row ${row.id}`).toMatch(NAME_RE);
+    }
+  });
+});

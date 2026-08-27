@@ -38,6 +38,7 @@ describe("dsh-bundle apply", () => {
     expect(existsSync(bundledPresetsRoot())).toBe(true);
     expect(existsSync(join(bundledPresetsRoot(), "wshell-standard", "agent.cordis.yml"))).toBe(true);
     expect(existsSync(join(bundledPresetsRoot(), "wshell-batch", "agent.cordis.yml"))).toBe(true);
+    expect(existsSync(join(bundledPresetsRoot(), "wshell-full", "agent.cordis.yml"))).toBe(true);
   });
 
   it("apply 同步 preset 到 <DSH_HOME>/.agent-presets", () => {
@@ -51,8 +52,9 @@ describe("dsh-bundle apply", () => {
     expect(existsSync(join(target, "tool-win-shell.mjs"))).toBe(true);
     const synced = readdirSync(join(home, ".agent-presets"));
     expect(synced).toContain("wshell-standard");
-    // 批量模式随 bundle 一并同步进 agent-presets 发现根
+    // 批量/全量模式随 bundle 一并同步进 agent-presets 发现根
     expect(synced).toContain("wshell-batch");
+    expect(synced).toContain("wshell-full");
   });
 
   it("enabled: false 时不同步", () => {
