@@ -21,7 +21,7 @@ import {
   type AnyToolResult,
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
-import { parsePattern, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
+import { parsePattern, prepareMatcher, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
 import { buildSearchHint } from "../utils/hints.js";
 import { splitLines } from "../utils/readText.js";
 import { globToRegExp, isValidGlob } from "../utils/glob.js";
@@ -259,14 +259,8 @@ export async function searchContentHandler(
   if (!parsed.ok) {
     return fail(ErrorCode.EINVAL, parsed.error);
   }
-  const isRegex = parsed.mode === "regex";
-  const regex = isRegex ? parsed.regex : null;
-  // 字面量匹配针：ignoreCase 时两侧统一小写比较（与 text_grep 一致），元字符不参与任何转义
-  const needle = isRegex
-    ? ""
-    : ignoreCase
-      ? parsed.value.toLowerCase()
-      : parsed.value;
+  // 行匹配谓词（工单 C-1）：needle 准备与逐行匹配三元提取至 prepareMatcher 共享
+  const matcher = prepareMatcher(parsed, ignoreCase);
 
   const allMatches: ContentMatch[] = [];
   let totalLines = 0;
@@ -289,12 +283,7 @@ export async function searchContentHandler(
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line === undefined) continue;
-      const matched = regex
-        ? regex.test(line)
-        : ignoreCase
-          ? line.toLowerCase().includes(needle)
-          : line.includes(needle);
-      if (matched) {
+      if (matcher.test(line)) {
         allMatches.push({ file, line: i + 1, text: truncate(line) });
       }
     }

@@ -3,6 +3,18 @@
  *
  * 基于 Node 18+ 内置 fetch，流式写入文件，支持自动跟随重定向。
  * 返回 { saved, bytes, path }。
+ *
+ * 复用共享 HTTP 机器（src/utils/http.ts）：validateUrl 校验 URL、fetchWithTimeout
+ * 发起请求并统一超时/连接错误码（NET_TIMEOUT / NET_FAIL），消除与 net_get/net_post
+ * 的错误码分叉（见 ADR-0003 / E-1）。流式写入（getReader + createWriteStream）
+ * 为本工具特有，不与 net_get/net_post 共享。
+ *
+ * 错误码：
+ * - 非法 URL → INVALID_URL
+ * - 超时 → NET_TIMEOUT
+ * - HTTP 非 2xx / 无 body → NET_FAIL
+ * - 父目录不存在且未 mkdirParents → ENOENT
+ * - path 非法 → EINVAL
  */
 
 import { createWriteStream } from "node:fs";
@@ -11,12 +23,16 @@ import path from "node:path";
 import { z } from "zod";
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
-import { failFromError } from "../utils/errors.js";
+import { failFromError, toFail } from "../utils/errors.js";
+import { fetchWithTimeout, validateUrl } from "../utils/http.js";
 import type { Tool } from "../registry.js";
+
+/** 默认请求超时（毫秒）。与 net_get/net_post 一致。 */
+const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30000;
 
 /** net_download 输入 schema。 */
 export const netDownloadInputSchema = z.object({
-  url: z.string().url(),
+  url: z.string(),
   path: z.string(),
   mkdirParents: z.boolean().optional().describe("默认 true"),
   timeout: z
@@ -24,7 +40,7 @@ export const netDownloadInputSchema = z.object({
     .int()
     .positive()
     .optional()
-    .describe("毫秒，超时返回 EXEC_TIMEOUT"),
+    .describe("毫秒，超时返回 NET_TIMEOUT，默认 30000"),
 });
 
 /** net_download 输出。 */
@@ -37,19 +53,20 @@ interface NetDownloadResult {
 /**
  * net_download handler：下载文件。
  *
- * 错误：EINVAL（参数非法）/ ENOENT（父目录不存在且未 mkdirParents）/ EXEC_TIMEOUT / 网络错误
+ * 错误：INVALID_URL（url 非法）/ EINVAL（path 非法）/ ENOENT（父目录不存在且未 mkdirParents）/ ENOTDIR / NET_TIMEOUT / NET_FAIL
  */
 export async function netDownloadHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const url = args["url"] as string | undefined;
+  const url = args["url"];
   const filePath = args["path"] as string | undefined;
   const mkdirParents = args["mkdirParents"] !== false; // 默认 true
   const timeout = args["timeout"] as number | undefined;
 
-  if (typeof url !== "string" || url.length === 0) {
-    return fail(ErrorCode.EINVAL, "url 必须是非空字符串");
-  }
+  // URL 校验：复用 validateUrl，统一返回 INVALID_URL
+  const urlError = validateUrl(url);
+  if (urlError !== null) return urlError;
+
   if (typeof filePath !== "string" || filePath.length === 0) {
     return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
   }
@@ -80,60 +97,57 @@ export async function netDownloadHandler(
     }
   }
 
-  // 超时控制
-  const controller = new AbortController();
-  const timer: NodeJS.Timeout | null =
+  // 超时：复用 fetchWithTimeout，统一返回 NET_TIMEOUT / NET_FAIL
+  const timeoutMs =
     typeof timeout === "number" && timeout > 0
-      ? setTimeout(() => controller.abort(), timeout)
-      : null;
+      ? timeout
+      : DEFAULT_DOWNLOAD_TIMEOUT_MS;
+
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      url as string,
+      { redirect: "follow" },
+      timeoutMs,
+    );
+  } catch (err) {
+    return toFail(err, ErrorCode.NET_FAIL);
+  }
+
+  if (!response.ok) {
+    return fail(
+      ErrorCode.NET_FAIL,
+      `HTTP ${response.status} ${response.statusText}: ${url}`,
+    ) as unknown as AnyToolResult;
+  }
+  if (response.body === null) {
+    return fail(
+      ErrorCode.NET_FAIL,
+      `响应无 body: ${url}`,
+    ) as unknown as AnyToolResult;
+  }
+
+  // 流式写入：本工具特有逻辑，不与 net_get/net_post 共享
+  const writeStream = createWriteStream(filePath);
+  const reader = response.body.getReader();
+  let bytes = 0;
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    if (!response.ok) {
-      return fail(
-        ErrorCode.EXEC_FAIL,
-        `HTTP ${response.status} ${response.statusText}: ${url}`,
-      ) as unknown as AnyToolResult;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      writeStream.write(value);
+      bytes += value.length;
     }
-    if (response.body === null) {
-      return fail(
-        ErrorCode.EXEC_FAIL,
-        `响应无 body: ${url}`,
-      ) as unknown as AnyToolResult;
-    }
-
-    const writeStream = createWriteStream(filePath);
-    const reader = response.body.getReader();
-    let bytes = 0;
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        writeStream.write(value);
-        bytes += value.length;
-      }
-    } finally {
-      writeStream.end();
-      await new Promise<void>((resolve) => writeStream.on("finish", resolve));
-    }
-
-    const result: NetDownloadResult = { saved: true, bytes, path: filePath };
-    return ok(result) as unknown as AnyToolResult;
   } catch (err) {
-    if (controller.signal.aborted) {
-      return fail(
-        ErrorCode.EXEC_TIMEOUT,
-        `下载超时: ${url}`,
-      ) as unknown as AnyToolResult;
-    }
-    return failFromError(err);
+    return toFail(err, ErrorCode.NET_FAIL);
   } finally {
-    if (timer !== null) clearTimeout(timer);
+    writeStream.end();
+    await new Promise<void>((resolve) => writeStream.on("finish", resolve));
   }
+
+  const result: NetDownloadResult = { saved: true, bytes, path: filePath };
+  return ok(result) as unknown as AnyToolResult;
 }
 
 /**

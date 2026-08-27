@@ -616,7 +616,7 @@ describe("net_download", () => {
     }
   });
 
-  it("超时返回 EXEC_TIMEOUT", async () => {
+  it("超时返回 NET_TIMEOUT", async () => {
     const server = createServer((req, res) => {
       // 永远不写响应
     });
@@ -634,7 +634,7 @@ describe("net_download", () => {
       });
       expect(isFail(result)).toBe(true);
       if (isFail(result)) {
-        expect(result.error.code).toBe("EXEC_TIMEOUT");
+        expect(result.error.code).toBe("NET_TIMEOUT");
       }
     } finally {
       server.close();
@@ -642,7 +642,7 @@ describe("net_download", () => {
     }
   });
 
-  it("HTTP 404 返回 EXEC_FAIL", async () => {
+  it("HTTP 404 返回 NET_FAIL", async () => {
     const server = createServer((req, res) => {
       res.writeHead(404);
       res.end("not found");
@@ -660,7 +660,7 @@ describe("net_download", () => {
       });
       expect(isFail(result)).toBe(true);
       if (isFail(result)) {
-        expect(result.error.code).toBe("EXEC_FAIL");
+        expect(result.error.code).toBe("NET_FAIL");
       }
     } finally {
       server.close();
@@ -668,17 +668,23 @@ describe("net_download", () => {
     }
   });
 
-  it("url 或 path 为空返回 EINVAL", async () => {
+  it("url 为空返回 INVALID_URL，path 为空返回 EINVAL", async () => {
     const r1 = await netDownloadHandler({
       url: "",
       path: join(workDir, "a.txt"),
     });
     expect(isFail(r1)).toBe(true);
+    if (isFail(r1)) {
+      expect(r1.error.code).toBe("INVALID_URL");
+    }
     const r2 = await netDownloadHandler({
       url: "http://127.0.0.1:1/",
       path: "",
     });
     expect(isFail(r2)).toBe(true);
+    if (isFail(r2)) {
+      expect(r2.error.code).toBe("EINVAL");
+    }
   });
 
   it("连接被拒绝返回 fail", async () => {

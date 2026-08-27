@@ -119,3 +119,36 @@ export function parsePattern(
   // 多字母、不含全量标志 g → 更可能是路径词组（/usr/bin、/etc/hosts），安全收敛为字面量
   return { ok: true, mode: 'literal', value: pattern };
 }
+
+/**
+ * 行匹配谓词（共享）：封装 needle 准备与逐行匹配三元（工单 C-1）。
+ *
+ * text_grep 与 search_content 的最内层匹配逻辑逐字相同——
+ * - 正则模式：直接 regex.test(line)（正则已在 parsePattern 内合并 i 标志，可安全复用 test()）
+ * - 字面量模式：ignoreCase 时两侧统一小写比较（needle 预先小写化），元字符不参与任何转义
+ *
+ * 仅提取最内层匹配谓词，不触碰外层扫描循环与 context 收集策略
+ * （text_grep 收 ±context 行号、search_content 收 {file,line,text}），避免耦合两种收集策略。
+ *
+ * @param parsed parsePattern 的成功结果（ok: true 分支）
+ * @param ignoreCase 忽略大小写：对字面量模式生效（正则模式已在 parsePattern 内合并 i 标志）
+ * @returns 行匹配谓词 { test(line: string): boolean }
+ */
+export function prepareMatcher(
+  parsed: Extract<PatternParseResult, { ok: true }>,
+  ignoreCase: boolean,
+): { test(line: string): boolean } {
+  if (parsed.mode === 'regex') {
+    const regex = parsed.regex;
+    return { test(line) { return regex.test(line); } };
+  }
+  // 字面量匹配针：ignoreCase 时两侧统一小写比较，元字符不参与任何转义
+  const needle = ignoreCase ? parsed.value.toLowerCase() : parsed.value;
+  return {
+    test(line) {
+      return ignoreCase
+        ? line.toLowerCase().includes(needle)
+        : line.includes(needle);
+    },
+  };
+}

@@ -4,129 +4,25 @@
  * 与 shell_exec 的区别：shell_exec 将整个字符串交给 cmd.exe / sh 解析（支持管道、重定向、
  * 通配符），适合交互式 shell 片段；run_command 将 command + args 数组直接 spawn，
  * 不经过 shell，适合调用带空格路径或需精确参数的程序（如 ["C:\\Program Files\\app.exe", "a b"]）。
+ *
+ * 子进程机器（spawn、stdout/stderr 收集、超时、进程树终止、GBK/UTF-8 解码）全部委托给
+ * 命令执行深模块（src/exec/run.ts）。handler 仅做 RunOutcome → 输出契约映射与字符级截断，
+ * 无 try/catch、无异常路径（深模块从不抛异常）。
  */
 
-import { spawn } from "node:child_process";
 import { z } from "zod";
-import { ok, fail, type AnyToolResult } from "../contract/output.js";
+import {
+  ok,
+  fail,
+  truncate,
+  type AnyToolResult,
+} from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
-import { failFromError } from "../utils/errors.js";
-import { decodeBuffer } from "../encoding/detect.js";
+import { runCommand } from "../exec/run.js";
 import type { Tool } from "../registry.js";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
-
-export type RunCommandResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  signal: string | null;
-  truncated: boolean;
-};
-
-async function spawnCommand(opts: {
-  command: string;
-  args: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  timeoutMs: number;
-  maxOutputBytes: number;
-  encoding?: "utf8" | "gbk";
-  stdin?: string;
-}): Promise<RunCommandResult> {
-  const {
-    command,
-    args,
-    cwd,
-    env,
-    timeoutMs,
-    maxOutputBytes,
-    encoding,
-    stdin,
-  } = opts;
-  const hasStdin = typeof stdin === "string";
-  const proc = spawn(command, args, {
-    cwd: cwd ?? process.cwd(),
-    env: { ...process.env, ...(env ?? {}) },
-    windowsHide: true,
-    stdio: hasStdin ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
-  });
-
-  // 写入 stdin 后关闭
-  if (hasStdin && proc.stdin) {
-    try {
-      proc.stdin.write(stdin as string);
-      proc.stdin.end();
-    } catch {
-      // 子进程已关闭 stdin，忽略 EPIPE
-    }
-  }
-
-  const stdoutChunks: Buffer[] = [];
-  const stderrChunks: Buffer[] = [];
-  let truncated = false;
-
-  const onData = (
-    buf: Buffer,
-    sink: (b: Buffer) => void,
-    acc: { total: number },
-  ) => {
-    const remaining = maxOutputBytes - acc.total;
-    if (remaining <= 0) {
-      // 已达预算上限，丢弃后续字节
-      truncated = true;
-      return;
-    }
-    // 保留预算内前缀；若本块局部越限则仅取前缀（尾截而不整块丢弃）
-    const slice = buf.length > remaining ? buf.subarray(0, remaining) : buf;
-    acc.total += slice.length;
-    if (slice.length < buf.length) truncated = true;
-    sink(slice);
-  };
-
-  const stdoutAcc = { total: 0 };
-  const stderrAcc = { total: 0 };
-  proc.stdout?.on("data", (b: Buffer) =>
-    onData(b, (c) => stdoutChunks.push(c), stdoutAcc),
-  );
-  proc.stderr?.on("data", (b: Buffer) =>
-    onData(b, (c) => stderrChunks.push(c), stderrAcc),
-  );
-
-  let spawnError: Error | null = null;
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    proc.kill("SIGKILL");
-  }, timeoutMs);
-  let signal: string | null = null;
-  const exitCode = await new Promise<number | null>((resolve) => {
-    proc.on("close", (c, sig) => {
-      signal = sig ?? null;
-      resolve(c);
-    });
-    proc.on("error", (e) => {
-      spawnError = e as Error;
-      resolve(null);
-    });
-  });
-  clearTimeout(timeout);
-
-  if (spawnError) throw spawnError;
-  if (timedOut) {
-    const err = new Error(
-      `命令执行超时（${timeoutMs}ms）`,
-    ) as NodeJS.ErrnoException;
-    err.code = ErrorCode.EXEC_TIMEOUT;
-    throw err;
-  }
-
-  // concat 后统一解码，避免 GBK 多字节序列在 chunk/截断边界被切断而乱码（对齐 shell_exec）
-  const stdout = decodeBuffer(Buffer.concat(stdoutChunks), encoding);
-  const stderr = decodeBuffer(Buffer.concat(stderrChunks), encoding);
-  return { stdout, stderr, exitCode, signal, truncated };
-}
 
 /**
  * run_command 输出 schema（描述 success data 结构，不含 ok 包装）。
@@ -195,21 +91,50 @@ const runCommandTool: Tool = {
       stdin?: string;
     };
     if (!command) return fail(ErrorCode.EINVAL, "command is required");
-    try {
-      const res = await spawnCommand({
-        command,
-        args: args ?? [],
-        cwd,
-        env,
-        timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        maxOutputBytes: maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
-        encoding,
-        stdin,
-      });
-      return ok(res);
-    } catch (e) {
-      return failFromError(e);
+
+    // 合并环境变量：以 process.env 为底，叠加显式 env（对齐 shell_exec）
+    const childEnv = env ? { ...process.env, ...env } : undefined;
+    const effectiveTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+    // 委托深模块：从不抛异常，返回结构化 RunOutcome
+    const outcome = await runCommand(command, args ?? [], {
+      cwd,
+      env: childEnv,
+      timeoutMs: effectiveTimeout,
+      encoding,
+      stdin,
+    });
+
+    // spawn 失败（命令不存在、cwd 无效等）→ EXEC_FAIL
+    if (outcome.spawnError) {
+      return fail(
+        ErrorCode.EXEC_FAIL,
+        `命令执行失败: ${outcome.spawnError.message}`,
+      );
     }
+
+    // 超时 → EXEC_TIMEOUT（深模块已杀进程树并立即 settle，无挂起风险）
+    if (outcome.timedOut) {
+      return fail(
+        ErrorCode.EXEC_TIMEOUT,
+        `命令执行超时（${effectiveTimeout}ms）`,
+      );
+    }
+
+    // 字符级截断（对齐 shell_exec 语义：超长附 ...[truncated, N more chars] 标记）
+    const limit = maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+    const stdout = truncate(outcome.stdout, limit);
+    const stderr = truncate(outcome.stderr, limit);
+    const truncated =
+      outcome.stdout.length > limit || outcome.stderr.length > limit;
+
+    return ok({
+      stdout,
+      stderr,
+      exitCode: outcome.exitCode,
+      signal: null,
+      truncated,
+    });
   },
 };
 

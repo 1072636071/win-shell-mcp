@@ -17,6 +17,7 @@ import { readTextAutoDetect, splitLines } from "../utils/readText.js";
 import { isLikelyGBK, decodeBuffer } from "../encoding/detect.js";
 import {
   parsePattern,
+  prepareMatcher,
   REPLACE_PATTERN_FLAGS,
   SEARCH_PATTERN_FLAGS,
   type PatternParseResult,
@@ -101,14 +102,8 @@ export async function textGrepHandler(
   if (!parsed.ok) {
     return fail(ErrorCode.EINVAL, parsed.error);
   }
-  const isRegex = parsed.mode === "regex";
-  const regex = isRegex ? parsed.regex : null;
-  // 字面量匹配针：ignoreCase 时两侧统一小写比较（与 search_content 一致），元字符不参与任何转义
-  const needle = isRegex
-    ? ""
-    : ignoreCase
-      ? parsed.value.toLowerCase()
-      : parsed.value;
+  // 行匹配谓词（工单 C-1）：needle 准备与逐行匹配三元提取至 prepareMatcher 共享
+  const matcher = prepareMatcher(parsed, ignoreCase);
 
   const lines = splitLines(content);
 
@@ -116,12 +111,7 @@ export async function textGrepHandler(
   const matchingLineNumbers: number[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    const matched = regex
-      ? regex.test(line)
-      : ignoreCase
-        ? line.toLowerCase().includes(needle)
-        : line.includes(needle);
-    if (matched) matchingLineNumbers.push(i);
+    if (matcher.test(line)) matchingLineNumbers.push(i);
   }
 
   // maxResults 截断
