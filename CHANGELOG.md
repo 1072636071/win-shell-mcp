@@ -37,7 +37,9 @@
   它保留 `complete: true`，而 DSH 的装配收尾会把除 persona 以外的所有 prompt
   section 丢弃，本组合挂的 plan 政策与原生工具 guidance（约 2.2K 字符）此前一个
   字都到不了模型。`dsh-plan-mode` 必填的 `section` 值改为与 persona 的 plan 条款
-  逐字同源（648 → 457 字符），由单测断言一致。
+  逐字同源（648 → 576 字符），由单测断言一致。精简时曾把「用户的对话式同意不构成
+  批准」误写成「你自己的对话式同意」（主语错位），并漏掉「只能由 exit_plan_mode
+  成功或用户切换模式才离开 plan 模式」；两处已按原文语义回补。
 - **文档口径修正**：`docs/dsh/wshell-modes.md` 目录数按代码取 标准 64 / 批量 65
   （lsp 早于 commit b8c76c2 移出标准与批量模式，文档未跟）；目录成本改用 DSH 实际
   发送的 `{name, description, parameters}` 形状度量 —— 58 域工具 24,716 字符，其中
