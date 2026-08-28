@@ -3,36 +3,24 @@
  *
  * 基于 Node 18+ 内置 fetch，流式写入文件，支持自动跟随重定向。
  * 返回 { saved, bytes, path }。
- *
- * 复用共享 HTTP 机器（src/utils/http.ts）：validateUrl 校验 URL、fetchWithTimeout
- * 发起请求并统一超时/连接错误码（NET_TIMEOUT / NET_FAIL），消除与 net_get/net_post
- * 的错误码分叉（见 ADR-0003 / E-1）。流式写入（getReader + createWriteStream）
- * 为本工具特有，不与 net_get/net_post 共享。
- *
- * 错误码：
- * - 非法 URL → INVALID_URL
- * - 超时 → NET_TIMEOUT
- * - HTTP 非 2xx / 无 body → NET_FAIL
- * - 父目录不存在且未 mkdirParents → ENOENT
- * - path 非法 → EINVAL
  */
 
 import { createWriteStream } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
-import { failFromError, toFail } from "../utils/errors.js";
-import { fetchWithTimeout, validateUrl } from "../utils/http.js";
+import { failFromError } from "../utils/errors.js";
+import { prepareParentDir } from "../utils/fs.js";
+import {
+  createTimeoutAbort,
+  isAbortError,
+  mapFetchError,
+} from "../net/http.js";
 import type { Tool } from "../registry.js";
-
-/** 默认请求超时（毫秒）。与 net_get/net_post 一致。 */
-const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30000;
 
 /** net_download 输入 schema。 */
 export const netDownloadInputSchema = z.object({
-  url: z.string(),
+  url: z.string().url(),
   path: z.string(),
   mkdirParents: z.boolean().optional().describe("默认 true"),
   timeout: z
@@ -40,7 +28,7 @@ export const netDownloadInputSchema = z.object({
     .int()
     .positive()
     .optional()
-    .describe("毫秒，超时返回 NET_TIMEOUT，默认 30000"),
+    .describe("毫秒，超时返回 NET_TIMEOUT"),
 });
 
 /** net_download 输出。 */
@@ -53,101 +41,83 @@ interface NetDownloadResult {
 /**
  * net_download handler：下载文件。
  *
- * 错误：INVALID_URL（url 非法）/ EINVAL（path 非法）/ ENOENT（父目录不存在且未 mkdirParents）/ ENOTDIR / NET_TIMEOUT / NET_FAIL
+ * 错误：EINVAL（参数非法）/ ENOENT（父目录不存在且未 mkdirParents）
+ *       / NET_TIMEOUT（超时）/ NET_FAIL（连接失败）
  */
 export async function netDownloadHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const url = args["url"];
+  const url = args["url"] as string | undefined;
   const filePath = args["path"] as string | undefined;
   const mkdirParents = args["mkdirParents"] !== false; // 默认 true
   const timeout = args["timeout"] as number | undefined;
 
-  // URL 校验：复用 validateUrl，统一返回 INVALID_URL
-  const urlError = validateUrl(url);
-  if (urlError !== null) return urlError;
-
+  if (typeof url !== "string" || url.length === 0) {
+    return fail(ErrorCode.EINVAL, "url 必须是非空字符串");
+  }
   if (typeof filePath !== "string" || filePath.length === 0) {
     return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
   }
 
-  // 预检查/创建父目录
-  const parent = path.dirname(filePath);
+  // 预检查/创建父目录（父目录预检助手，与 fs_write 共享同一语义）
+  const parentErr = await prepareParentDir(filePath, mkdirParents);
+  if (parentErr) return parentErr;
+
+  // 下载超时失败结果（fetch 阶段与流式阶段共用同一映射，避免重复分支）
+  const timeoutFail = (): AnyToolResult =>
+    fail(ErrorCode.NET_TIMEOUT, `下载超时: ${url}`);
+
+  // 超时控制（委托 net HTTP 深模块：覆盖请求与流式写入全程，错误语义共享）
+  const { signal, clear } = createTimeoutAbort(
+    typeof timeout === "number" && timeout > 0 ? timeout : undefined,
+  );
+
   try {
-    const parentStat = await stat(parent);
-    if (!parentStat.isDirectory()) {
+    let response: Response;
+    try {
+      response = await fetch(url, { signal, redirect: "follow" });
+    } catch (err) {
+      if (isAbortError(err)) return timeoutFail();
+      // 连接失败 → NET_FAIL（与 net_get/net_post 一致）
+      return failFromError(mapFetchError(err, url)) as unknown as AnyToolResult;
+    }
+    if (!response.ok) {
       return fail(
-        ErrorCode.ENOTDIR,
-        `父路径不是目录: ${parent}`,
+        ErrorCode.EXEC_FAIL,
+        `HTTP ${response.status} ${response.statusText}: ${url}`,
       ) as unknown as AnyToolResult;
     }
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      if (mkdirParents) {
-        await mkdir(parent, { recursive: true });
-      } else {
-        return fail(
-          ErrorCode.ENOENT,
-          `父目录不存在: ${parent}`,
-        ) as unknown as AnyToolResult;
+    if (response.body === null) {
+      return fail(
+        ErrorCode.EXEC_FAIL,
+        `响应无 body: ${url}`,
+      ) as unknown as AnyToolResult;
+    }
+
+    const writeStream = createWriteStream(filePath);
+    const reader = response.body.getReader();
+    let bytes = 0;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        writeStream.write(value);
+        bytes += value.length;
       }
-    } else {
-      return failFromError(e);
+    } finally {
+      writeStream.end();
+      await new Promise<void>((resolve) => writeStream.on("finish", resolve));
     }
-  }
 
-  // 超时：复用 fetchWithTimeout，统一返回 NET_TIMEOUT / NET_FAIL
-  const timeoutMs =
-    typeof timeout === "number" && timeout > 0
-      ? timeout
-      : DEFAULT_DOWNLOAD_TIMEOUT_MS;
-
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(
-      url as string,
-      { redirect: "follow" },
-      timeoutMs,
-    );
+    const result: NetDownloadResult = { saved: true, bytes, path: filePath };
+    return ok(result) as unknown as AnyToolResult;
   } catch (err) {
-    return toFail(err, ErrorCode.NET_FAIL);
-  }
-
-  if (!response.ok) {
-    return fail(
-      ErrorCode.NET_FAIL,
-      `HTTP ${response.status} ${response.statusText}: ${url}`,
-    ) as unknown as AnyToolResult;
-  }
-  if (response.body === null) {
-    return fail(
-      ErrorCode.NET_FAIL,
-      `响应无 body: ${url}`,
-    ) as unknown as AnyToolResult;
-  }
-
-  // 流式写入：本工具特有逻辑，不与 net_get/net_post 共享
-  const writeStream = createWriteStream(filePath);
-  const reader = response.body.getReader();
-  let bytes = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      writeStream.write(value);
-      bytes += value.length;
-    }
-  } catch (err) {
-    return toFail(err, ErrorCode.NET_FAIL);
+    if (isAbortError(err)) return timeoutFail();
+    return failFromError(err);
   } finally {
-    writeStream.end();
-    await new Promise<void>((resolve) => writeStream.on("finish", resolve));
+    clear();
   }
-
-  const result: NetDownloadResult = { saved: true, bytes, path: filePath };
-  return ok(result) as unknown as AnyToolResult;
 }
 
 /**

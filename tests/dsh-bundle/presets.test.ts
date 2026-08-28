@@ -82,10 +82,10 @@ function makeFakeCtx(): {
   return { ctx, defined };
 }
 
-/** 每个 preset 目录的契约基线（persona 1 段 + win-shell + fs/web/lsp 三组）。 */
-const ROLE_ROWS = ["persona", "tool-win-shell", "tool-fs", "tool-web", "tool-lsp"];
-/** DSH 原生补缺组常数（fs 4 + web 2 + lsp 1）。 */
-const NATIVE_GAP_COUNT = 4 + 2 + 1;
+/** 每个 preset 目录的契约基线（persona 1 段 + win-shell + fs/web 两组，标准/批量模式不纳入可选的 lsp）。 */
+const ROLE_ROWS = ["persona", "tool-win-shell", "tool-fs", "tool-web"];
+/** DSH 原生补缺组常数（fs 4 + web 2；lsp 为可选能力，标准/批量模式不纳入）。 */
+const NATIVE_GAP_COUNT = 4 + 2;
 
 /** 各模式期望（裁定向见工单 05 评论：批量模式放行 batch_run，故多 1 工具）。 */
 interface ModeSpec {
@@ -126,7 +126,7 @@ describe.each(MODES)("$id preset", (mode) => {
     expect(problems).toEqual([]);
   });
 
-  it("目录构成：persona + tool-win-shell + fs/web/lsp 三组", () => {
+  it("目录构成：persona + tool-win-shell + fs/web 两组", () => {
     const rows = parseRows(readFileSync(agent, "utf8"));
     expect(rows.map((r) => r.id)).toEqual(ROLE_ROWS);
   });
@@ -189,7 +189,7 @@ describe.each(MODES)("$id preset", (mode) => {
 
 /**
  * WShell 全量模式：目录构成与 standard/batch（persona + tool-win-shell +
- * fs/web/lsp 三组，共 5 顶层行）不同——它是 DSH 官方 `standard`（完整编码
+ * fs/web 两组，共 4 顶层行）不同——它是 DSH 官方 `standard`（完整编码
  * agent）原生组合 + win-shell 58 域工具，顶层含大量原生工具行与 cordis:group
  * 组。故独立 describe，聚焦：结构校验、persona 极简、win-shell 注册 58、
  * 关键原生行存在、不含 experimental/opt-in 包。

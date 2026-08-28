@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import {
   netGetHandler,
@@ -15,6 +18,7 @@ import {
   netTcpTool,
   netTcpInputSchema,
 } from '../../src/tools/net.js';
+import { netDownloadHandler } from '../../src/tools/net_download.js';
 import { isOk, isFail } from '../../src/contract/output.js';
 
 // ===========================================================================
@@ -469,6 +473,68 @@ describe('netPostHandler 失败路径', () => {
     expect(isFail(result)).toBe(true);
     if (isFail(result)) {
       expect(result.error.code).toBe('NET_FAIL');
+    }
+  });
+});
+
+// ===========================================================================
+// net_download handler（工单 20-04：超时统一 NET_TIMEOUT）
+// ===========================================================================
+
+describe('netDownloadHandler 超时语义', () => {
+  it('下载超时返回 NET_TIMEOUT（与 net_get/net_post 一致）', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ws-net-dl-'));
+    const target = join(dir, 'out.bin');
+    try {
+      const result = await netDownloadHandler({
+        url: `${baseUrl}/slow`,
+        path: target,
+        timeout: 100,
+      });
+      expect(isFail(result)).toBe(true);
+      if (isFail(result)) {
+        expect(result.error.code).toBe('NET_TIMEOUT');
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('连接失败返回 NET_FAIL（与 net_get/net_post 一致）', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ws-net-dl-'));
+    const target = join(dir, 'out.bin');
+    try {
+      const unusedPort = await getUnusedPort();
+      const result = await netDownloadHandler({
+        url: `http://127.0.0.1:${unusedPort}`,
+        path: target,
+      });
+      expect(isFail(result)).toBe(true);
+      if (isFail(result)) {
+        expect(result.error.code).toBe('NET_FAIL');
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('成功下载写入文件并返回字节数', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ws-net-dl-'));
+    const target = join(dir, 'out.bin');
+    try {
+      const result = await netDownloadHandler({
+        url: `${baseUrl}/text`,
+        path: target,
+      });
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result['saved']).toBe(true);
+        expect(result['bytes']).toBe('plain text response'.length);
+        expect(result['path']).toBe(target);
+      }
+      expect(readFileSync(target, 'utf8')).toBe('plain text response');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

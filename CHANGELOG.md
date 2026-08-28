@@ -36,6 +36,49 @@
   压低全局内容截断默认值。优先级：工具级 `maxLen` > 环境变量 > 常量 2000。非法值（0、负数、
   非整数、非数字）启动 fail-fast。解析并入配置模块（`src/config/env.ts`），env 读取仍只有一处。
 
+### Changed（架构深化：重复机器收敛与接缝闭合，工单 20-01~07）
+
+#### 命令执行深模块收敛（工单 20-01）
+
+- `run_command` 改经命令执行深模块（`src/exec/run.ts`）执行，删除自造的 `spawnCommand`
+  子进程机器；超时由深模块统一的进程树杀处理（Windows `taskkill /T /F`），修复此前超时
+  只杀单进程、子进程残留持有 stdio pipe 的挂起 bug。对外输出契约字段不变。
+- 深模块接口新增可选能力（零破坏）：`RunOptions.maxOutputBytes`（每流字节预算，防无界
+  收集）与 `RunOutcome.signal` / `stdoutTruncated` / `stderrTruncated`。
+
+#### tasklist 解析深模块（工单 20-02）
+
+- `process_list` 与 `net_listen` 的进程名解析收敛到共享 `parseTasklistCsv`
+  （`src/utils/tasklist.ts`），两工具对同一数据的解析行为永不漂移；输出不变。
+
+#### 读文件深模块（工单 20-03）
+
+- `fs_read` 与 `cat` 的读文件链路收敛到 `readTextFile`（`src/utils/readText.ts`），
+  统一判目录/解码/字节与行范围切片；EISDIR 消息统一为「是目录而非文件」。
+- **行为变化（0.x 窗口）**：`fs_read` 行范围对「以换行结尾的文件」现在按 `splitLines`
+  语义掐掉结尾空段（与 `cat` 一致），此类文件的 `content`/`lines` 会略有变化。
+
+#### net HTTP 深模块（工单 20-04）
+
+- `net_get`/`net_post`/`net_download` 收敛到共享 HTTP 机器（`src/net/http.ts`：
+  fetch + 超时 + 错误映射）。
+- **行为变化（0.x 窗口）**：`net_download` 超时错误码由 `EXEC_TIMEOUT` 统一为
+  `NET_TIMEOUT`，连接失败由 `EUNKNOWN` 统一为 `NET_FAIL`（与 `net_get`/`net_post` 一致）。
+
+#### 懒模式装配注入（工单 20-05）
+
+- `tool_groups` 不再直读 `WIN_SHELL_LAZY` 环境变量；懒模式判定随 `createServer` 的
+  `lazy` 选项装配注入（stdio 入口仍为唯一 env 读取点）。各模式输出不变。
+
+#### 父目录预检助手（工单 20-06）
+
+- `fs_write` 与 `net_download` 收敛到共享 `prepareParentDir`（`src/utils/fs.ts`），
+  父目录前置条件（ENOTDIR/递归建/ENOENT）语义一致；错误码与文案不变。
+
+#### git 域样板收敛（工单 20-07）
+
+- 11 个 git handler 的 getCwd/执行/失败映射样板并入 `runGitTool`；错误文案逐字不变。
+
 ### ⚠️ Changed（破坏性变更）：`text_replace` 从纯正则改为双模 + 安全三分支
 
 依据 ADR-0013（pattern 双模统一与误用可观测层），`text_replace` 与 `text_grep`/`search_content`

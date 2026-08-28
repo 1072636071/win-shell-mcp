@@ -24,6 +24,7 @@ import {
 } from "../../src/tools/list_domain_tools.js";
 import {
   createScopedToolGroupsTool,
+  createToolGroupsHandler,
   toolGroupsTool,
 } from "../../src/tools/tool_groups.js";
 import { isFail, isOk } from "../../src/contract/output.js";
@@ -95,9 +96,10 @@ describe("tool_groups 域概览", () => {
     }
   });
 
-  it("懒模式（WIN_SHELL_LAZY=1）每域标注 visible=false", async () => {
-    vi.stubEnv("WIN_SHELL_LAZY", "1");
-    const result = await callTool("tool_groups", {});
+  it("懒模式（装配注入 lazy=true）每域标注 visible=false", async () => {
+    // 懒模式判定随装配注入（createServer 的 lazy 选项 → scoped 副本），
+    // 不再依赖 WIN_SHELL_LAZY 环境变量直读（工单 20-05）。
+    const result = await createToolGroupsHandler(undefined, true)();
     const groups = dataOf(result)["groups"] as Array<{
       domain: string;
       visible?: boolean;
@@ -107,9 +109,8 @@ describe("tool_groups 域概览", () => {
     }
   });
 
-  it("懒模式判定语义对齐配置模块：非 '1' 值仍为全量模式", async () => {
-    vi.stubEnv("WIN_SHELL_LAZY", "true");
-    const result = await callTool("tool_groups", {});
+  it("非懒模式（lazy=false）不附 visible 字段", async () => {
+    const result = await createToolGroupsHandler(undefined, false)();
     const groups = dataOf(result)["groups"] as Array<{ visible?: boolean }>;
     expect(groups.every((g) => g.visible === undefined)).toBe(true);
   });

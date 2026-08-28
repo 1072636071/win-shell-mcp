@@ -24,10 +24,7 @@ import {
 } from "../contract/output.js";
 import { ErrorCode, toErrorMessage } from "../contract/errors.js";
 import { toFail } from "../utils/errors.js";
-import {
-  fetchWithTimeout,
-  validateUrl,
-} from "../utils/http.js";
+import { fetchWithTimeout } from "../net/http.js";
 import type { Tool } from "../registry.js";
 
 // ===================== net_get / net_post 共享 =====================
@@ -89,7 +86,24 @@ function mergeHeaders(
 }
 
 /**
+ * 解析并验证 URL 字符串。
+ *
+ * @param url 待验证的 URL
+ * @returns 成功返回 null；失败返回 fail 结果
+ */
+function validateUrl(url: unknown): AnyToolResult | null {
+  if (typeof url !== "string" || url.length === 0) {
+    return fail(ErrorCode.INVALID_URL, "url 必须是非空字符串");
+  }
+  try {
+    new URL(url);
+    return null;
+  } catch {
+    return fail(ErrorCode.INVALID_URL, `非法 URL: ${url}`);
+  }
+}
 
+/**
  * 从 fetch Response 构造工具返回结果。
  *
  * @param response fetch Response
