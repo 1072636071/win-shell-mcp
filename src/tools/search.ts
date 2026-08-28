@@ -21,7 +21,7 @@ import {
   type AnyToolResult,
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
-import { parsePattern, prepareMatcher, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
+import { parsePattern, prepareMatcher, patternConvention, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
 import { buildSearchHint } from "../utils/hints.js";
 import { splitLines } from "../utils/readText.js";
 import { globToRegExp, isValidGlob } from "../utils/glob.js";
@@ -193,9 +193,7 @@ export const searchContentInputSchema = z.object({
   pattern: z
     .string()
     .min(1)
-    .describe(
-      "默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s）",
-    ),
+    .describe(patternConvention(SEARCH_PATTERN_FLAGS)),
   cwd: z.string().optional().describe("默认 process.cwd()"),
   glob: z.string().optional().describe("默认 **/*"),
   exclude: z
@@ -351,7 +349,7 @@ export const searchContentTool: Tool = {
   name: "search_content",
   domain: "search",
   description:
-    "跨文件递归搜内容（≈ grep -r），返回[{file,line,text}]。pattern 默认字面量子串（元字符原样，反斜杠路径免转义）；/正则/ 启用正则（flags i/m/s，体内 \\/）。向字面量收敛。残余洞/tmp/类短串判正则，异常偏多附hint。区别text_grep：跨文件。",
+    "跨文件递归搜内容（≈ grep -r），返回[{file,line,text}]。与 text_grep 唯一差别是搜索范围。",
   inputSchema: searchContentInputSchema,
   outputSchema: searchContentOutputSchema,
   annotations: { readOnlyHint: true },
