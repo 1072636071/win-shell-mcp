@@ -1,9 +1,12 @@
-# The `wshell-batch` (WShell 批量模式) agent preset: 基于 WShell 标准模式，persona
-# 追加"多步操作优先用 batch_run 一次完成"规则。目录 = 标准模式（persona +
-# win-shell-mcp + fs/web 两组），但**放行 batch_run**：win-shell 贡献 59
-# （58 域工具 + batch_run，只剔除 tool_groups/list_domain_tools 两个 meta 导航工具），
-# 共 65 工具（59 win-shell + 4 fs + 2 web）。裁定见工单 05 评论 / PRD D10、
-# US4：批量规则要求 batch_run 可调用，故比"标准 64"多 1。
+# The `wshell-batch` (WShell 批量模式) agent preset: 与 WShell 标准模式**同一
+# persona**，唯一差异是目录放行 `batch_run`。win-shell 贡献 59（58 域工具 +
+# batch_run，只剔除 tool_groups/list_domain_tools 两个 meta 导航工具），共 65
+# 工具（59 win-shell + 4 fs + 2 web）。裁定见工单 05 评论 / PRD D10、US4。
+#
+# 「多步操作优先一次完成」的引导住在 batch_run 的工具描述里，不住 persona：
+# 该事实只关于选哪个工具，描述是它的唯一归属地；MCP 形态没有 persona，只有
+# 描述能同时覆盖两种交付形态。所以本模式不需要自己的规则文本，persona 与
+# 标准模式逐字相同（单测断言二者一致）。
 #
 # 目录构成（按组挂载，DSH 工具成组注册）：
 #   - win-shell-mcp 工具：`./tool-win-shell.mjs`（re-export win-shell-mcp/plugin）
@@ -14,23 +17,23 @@
 # 发布 service 的行必须放在带 `isolate` realm 的 group——本组合无 service 行。
 
 # ── identity ────────────────────────────────────────────────────────────────
-# 单行 persona：极简身份 + 一条批量规则（对齐官方 Minimal 的
-# complete/includeRuntimeContext），不注入工具映射表或规则堆砌。
+# 与 wshell-standard 逐字一致：身份 + 相对路径基准，无规则堆砌。
+# `{{cwd}}` 与下面 tool-win-shell 的 `cwd` 同源（都取 DSH_CWD ?? process.cwd()）。
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: You are a helpful software engineer assistant. 多步操作（读→改→写、批量改多文件等）优先用 batch_run 一次完成，避免多轮往返；单步操作直接调用工具。
+    text: You are a helpful software engineer assistant. Relative paths resolve against {{cwd}}.
     complete: true
     includeRuntimeContext: false
 
 # ── win-shell-mcp 工具 ───────────────────────────────────────────────────────
-# 经 preset 内相对包装器注册 win-shell-mcp 的 Cordis 插件（tool-win-shell）。
 # `exclude` 只剔除 2 个 meta 导航工具（tool_groups / list_domain_tools），
-# **保留 batch_run**（批量规则的反向交付点）：win-shell 贡献 58 域 + batch_run = 59。
+# **保留 batch_run**：win-shell 贡献 58 域 + batch_run = 59。
 - id: tool-win-shell
   name: ./tool-win-shell.mjs
   config:
     exclude: [tool_groups, list_domain_tools]
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
 
 # ── DSH 原生补缺 ─────────────────────────────────────────────────────────────
 # 两个 win-shell-mcp 无对应实现的 DSH 原生组（与标准模式一致）。lsp 为可选

@@ -1,20 +1,29 @@
 # The `wshell-standard` (WShell 标准模式) agent preset: win-shell-mcp 的精简
 # 命令工具（58 域工具，native schema 注册）＋ DSH 原生 fs/web 两组补缺（fs:
 # read/write/edit/read_image，web: web_fetch/web_search），native 全量注入，
-# persona 保持单行极简（对齐官方 Minimal preset 的 persona）。目录共 64 工具
-# （58 win-shell-mcp + 4 fs + 2 web，裁决见 memorial 007 D9 / ADR-0018）。
+# persona 极简（身份 + 相对路径基准两句）。目录共 64 工具（58 win-shell-mcp +
+# 4 fs + 2 web，裁决见 memorial 007 D9 / ADR-0018；lsp 为可选能力，非所有 DSH
+# 部署安装，故标准与批量模式都不纳入——见 commit b8c76c2）。
 #
-# 注：lsp 为可选能力，非所有 DSH 部署安装，故标准模式不纳入；需要 lsp 的会话
-# 可选用 WShell 全量模式（其依赖 DSH standard 组合，含 lsp 条件注册）。
+# persona 与 WShell 批量模式逐字一致：两个模式的差异只在目录（批量放行
+# batch_run）。批量引导由 batch_run 自身的工具描述承载，不在 persona 复述
+# ——同一事实两处表述会随时间漂移，且 MCP 形态没有 persona，只有描述能同时
+# 覆盖两种交付形态。归属表见 docs/提示词工程/。
 
 # ── identity ────────────────────────────────────────────────────────────────
-# 单行极简 persona（对齐官方 Minimal preset），不注入任何工具映射表或规则堆砌。
+# 极简 persona（对齐官方 Minimal preset）：身份 + 相对路径基准，不注入
+# 工具映射表或规则堆砌。`{{cwd}}` 是 agent-loop 注册的变量。
 # `complete:true` 视 persona 为完整系统提示（不并入全局身份/工具指引），
 # `includeRuntimeContext:false` 不注入运行时上下文快照——保证系统提示干净。
+# 相对路径基准必须与下面 tool-win-shell 的 `cwd` 同源，否则本句成为假话：
+# 两边都取 `DSH_CWD ?? process.cwd()`。注意 dsh 的 `{{cwd}}` 变量读的是**会话头**
+# 里的 cwd，所以部署若给会话另设 cwd，必须把 DSH_CWD 同步成同一值；对不齐时把
+# 该句换成 `Relative paths resolve against the working directory reported by pwd.`
+# （恒为真，代价是每会话一次 pwd）。详见 docs/提示词工程/README.md。
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: You are a helpful software engineer assistant.
+    text: You are a helpful software engineer assistant. Relative paths resolve against {{cwd}}.
     complete: true
     includeRuntimeContext: false
 
@@ -24,16 +33,20 @@
 # re-export `win-shell-mcp/plugin`，随 preset 一并 sync。
 #
 # `exclude` 剔除 3 个 meta 工具（batch_run / tool_groups / list_domain_tools），
-# 使 win-shell-mcp 只贡献 58 域工具、目录总数为 65（memorial 007 D9）。batch_run
-# 保留给 WShell 批量模式（工单 05）；tool_groups/list_domain_tools 为元导航工具。
+# 使 win-shell-mcp 只贡献 58 域工具（memorial 007 D9）。batch_run 保留给 WShell
+# 批量模式（工单 05）；tool_groups/list_domain_tools 为元导航工具。
+#
+# `cwd` 把相对路径基准钉到会话工作目录：不注入时基准是宿主进程 cwd，模型无从
+# 得知，只能先调一次 `pwd` 探路（多一轮），或按猜测落盘（写错目录）。
 - id: tool-win-shell
   name: ./tool-win-shell.mjs
   config:
     exclude: [batch_run, tool_groups, list_domain_tools]
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
 
 # ── DSH 原生补缺 ─────────────────────────────────────────────────────────────
 # 两个 win-shell-mcp 无对应实现的 DSH 原生组。fs/web 服务与 policy 在宿主
-# base bundle；lsp 为可选能力，非所有部署安装，故不纳入标准模式目录。
+# base bundle。
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
 

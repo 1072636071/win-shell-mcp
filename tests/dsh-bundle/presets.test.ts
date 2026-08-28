@@ -7,9 +7,16 @@
  * re-export `win-shell-mcp/plugin`。
  *
  * 覆盖 wshell-standard（剔除 3 meta，58 域工具）与 wshell-batch（放行
- * batch_run，只剔除 2 meta；persona 含批量规则），按模式参数化断言。
+ * batch_run，只剔除 2 meta），按模式参数化断言。两模式 persona **逐字相同**：
+ * 批量差异只在目录，「多步优先一次完成」的引导由 batch_run 工具描述独占
+ * （persona 复述即双写，且 MCP 形态没有 persona）。
  * win-shell 贡献数由 registry 推导（builtinTools.length − exclude 数），
  * 避免魔法数与注册实现漂移（单一来源）。
+ *
+ * 全量模式 persona 额外承载 plan 政策与后台并行委派两条 guidance：它的
+ * `complete: true` 会把 dsh 原生工具的 prompt section 排除在渲染之外。其中
+ * plan 条款必须与 dsh-plan-mode 必填的 `section` 值逐字同源（该值在 complete
+ * 下不渲染，只是配置形状），由同源断言把守。
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -63,6 +70,52 @@ function personaSubtree(text: string): string {
   return body.join("\n");
 }
 
+/**
+ * 提取某个键的标量文本，兼容同行标量（`key: value`）与折叠标量（`key: >-`）。
+ *
+ * persona 契约要按文本本身断言（长度、跨模式逐字一致），而不是按 YAML 子树
+ * 长度——后者把键名与注释都算进去，会把"加一行注释"误判成"规则堆砌"。
+ * @param lines 已按行切分的 YAML 文本
+ * @param start 从哪一行开始向后找该键
+ * @param key 目标键名
+ * @returns 折叠为单行的标量文本
+ */
+function scalarValue(lines: readonly string[], start: number, key: string): string {
+  const head = new RegExp(`^(\\s*)${key}:(\\s*)(>-|>\\+|\\|)?(.*)$`);
+  for (let index = start; index < lines.length; index += 1) {
+    const match = head.exec(lines[index]!);
+    if (match === null) continue;
+    const [, indent, , block, inline] = match;
+    if (block === undefined || block === "") {
+      return (inline ?? "").trim();
+    }
+    const deeper = new RegExp(`^\\s{${(indent ?? "").length + 1},}\\S`);
+    const body: string[] = [];
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const line = lines[next]!;
+      if (line.trim() === "") break;
+      if (!deeper.test(line)) break;
+      body.push(line.trim());
+    }
+    return body.join(" ");
+  }
+  throw new Error(`未找到键 ${key}`);
+}
+
+/** 提取 persona 的 `text` 值（生效的系统提示正文）。 */
+function personaText(text: string): string {
+  const lines = text.split("\n");
+  const start = lines.findIndex((line) => /^-\s+id:\s*persona\s*$/.test(line));
+  return scalarValue(lines, start, "text");
+}
+
+/** 提取 plan-mode 行的 `section` 值（dsh-plan-mode 必填的部署政策文本）。 */
+function planSectionText(text: string): string {
+  const lines = text.split("\n");
+  const start = lines.findIndex((line) => /^\s*-\s+id:\s*plan-mode\s*$/.test(line));
+  return scalarValue(lines, start, "section");
+}
+
 /** win-shell-mcp 侧 3 个 meta 工具名（registry 的 builtinTools.length = 58 域 + 3 meta）。 */
 const META_TOOLS = ["batch_run", "tool_groups", "list_domain_tools"] as const;
 
@@ -94,8 +147,6 @@ interface ModeSpec {
   exclude: string[];
   /** preset.yml 显示名。 */
   displayName: string;
-  /** persona 是否须含批量规则（batch_run 一次完成）。 */
-  batchRule: boolean;
 }
 
 const MODES: ModeSpec[] = [
@@ -103,13 +154,11 @@ const MODES: ModeSpec[] = [
     id: "wshell-standard",
     exclude: ["batch_run", "tool_groups", "list_domain_tools"],
     displayName: "WShell 标准模式",
-    batchRule: false,
   },
   {
     id: "wshell-batch",
     exclude: ["tool_groups", "list_domain_tools"],
     displayName: "WShell 批量模式",
-    batchRule: true,
   },
 ];
 
@@ -131,10 +180,14 @@ describe.each(MODES)("$id preset", (mode) => {
     expect(rows.map((r) => r.id)).toEqual(ROLE_ROWS);
   });
 
-  it("tool-win-shell exclude 符合模式约定", () => {
+  it("tool-win-shell exclude 符合模式约定，且注入相对路径基准", () => {
     const rows = parseRows(readFileSync(agent, "utf8"));
     const toolWinShell = rows.find((r) => r.id === "tool-win-shell");
     expect(toolWinShell?.exclude).toEqual(mode.exclude);
+    // persona 声明 {{cwd}}，基准就必须由本行注入；两者缺一即成假话。
+    expect(readFileSync(agent, "utf8")).toContain(
+      "cwd: !!js process.env.DSH_CWD ?? process.cwd()",
+    );
   });
 
   it(`按 exclude 注册 win-shell = ${winShellCount}，目录共 ${totalDir}`, () => {
@@ -151,19 +204,17 @@ describe.each(MODES)("$id preset", (mode) => {
   it("persona 对齐官方 Minimal，目录符合模式约定", () => {
     const text = readFileSync(agent, "utf8").replace(/\r\n/g, "\n");
     const personaBlock = personaSubtree(text);
-    expect(personaBlock).toMatch(/text:\s*You are a helpful software engineer assistant\./);
     // 对齐官方 Minimal：complete 视为完整系统提示、不注入运行时上下文
     expect(personaBlock).toMatch(/complete:\s*true/);
     expect(personaBlock).toMatch(/includeRuntimeContext:\s*false/);
-    if (mode.batchRule) {
-      // 批量模式：persona 注入一条 batch_run 优先规则（非工具映射表）
-      expect(personaBlock).toMatch(/优先用 batch_run 一次完成/);
-      expect(personaBlock).not.toMatch(/tool_groups|list_domain_tools/);
-    } else {
-      // 极简模式：单行 text 配置，不允许规则堆砌
-      expect(personaBlock.trim().length).toBeLessThan(200);
-      expect(personaBlock).not.toMatch(/batch_run|tool_groups|list_domain_tools/);
-    }
+    const persona = personaText(text);
+    expect(persona).toBe(
+      "You are a helpful software engineer assistant. Relative paths resolve against {{cwd}}.",
+    );
+    // 极简的度量落在正文：只允许身份 + 路径基准两句，规则堆砌即红。
+    expect(persona.length).toBeLessThan(120);
+    expect(persona).toContain("{{cwd}}");
+    expect(persona).not.toMatch(/batch_run|tool_groups|list_domain_tools/);
   });
 
   it("tool-win-shell 行通过 ./tool-win-shell.mjs 包装器", () => {
@@ -187,11 +238,20 @@ describe.each(MODES)("$id preset", (mode) => {
   });
 });
 
+it("标准与批量模式的 persona 逐字相同（差异只在目录）", () => {
+  const [standard, batch] = MODES.map((mode) =>
+    personaText(
+      readFileSync(join(PRESETS_ROOT, mode.id, "agent.cordis.yml"), "utf8").replace(/\r\n/g, "\n"),
+    ),
+  );
+  expect(batch).toBe(standard);
+});
+
 /**
  * WShell 全量模式：目录构成与 standard/batch（persona + tool-win-shell +
  * fs/web 两组，共 4 顶层行）不同——它是 DSH 官方 `standard`（完整编码
  * agent）原生组合 + win-shell 58 域工具，顶层含大量原生工具行与 cordis:group
- * 组。故独立 describe，聚焦：结构校验、persona 极简、win-shell 注册 58、
+ * 组。故独立 describe，聚焦：结构校验、persona 内容、win-shell 注册 58、
  * 关键原生行存在、不含 experimental/opt-in 包。
  */
 describe("wshell-full preset", () => {
@@ -263,13 +323,27 @@ describe("wshell-full preset", () => {
     for (const meta of META_TOOLS) expect(defined.has(meta)).toBe(false);
   });
 
-  it("persona 保持单行极简，对齐官方 Minimal", () => {
-    const personaBlock = personaSubtree(read());
-    expect(personaBlock).toMatch(/text:\s*You are a helpful software engineer assistant\./);
+  it("persona 承载身份 + 路径基准 + 本模式必要的两条 guidance", () => {
+    const text = read();
+    const personaBlock = personaSubtree(text);
     expect(personaBlock).toMatch(/complete:\s*true/);
     expect(personaBlock).toMatch(/includeRuntimeContext:\s*false/);
-    expect(personaBlock.trim().length).toBeLessThan(200);
-    expect(personaBlock).not.toMatch(/batch_run|tool_groups|list_domain_tools/);
+    const persona = personaText(text);
+    expect(persona.startsWith("You are a helpful software engineer assistant.")).toBe(true);
+    // complete:true 会丢弃 dsh 原生工具的 prompt section，plan 政策与后台委派
+    // 默认只能由 persona 自己承载，否则模型拿到 schema 却拿不到用法边界。
+    expect(persona).toContain("Relative paths resolve against {{cwd}}");
+    expect(persona).toContain("While plan mode is active");
+    expect(persona).toContain("Delegate with subagent in the background by default");
+    expect(persona).not.toMatch(/batch_run|tool_groups|list_domain_tools/);
+  });
+
+  it("persona 的 plan 条款与 dsh-plan-mode 必填 section 逐字同源", () => {
+    // 该 section 在 complete:true 下不参与渲染，只是 dsh-plan-mode 的必填形状；
+    // 与 persona 同文才能保证哪天不再 complete 时两处不会各自漂移。
+    const text = read();
+    expect(personaText(text)).toContain(planSectionText(text));
+    expect(text).toContain("cwd: !!js process.env.DSH_CWD ?? process.cwd()");
   });
 
   it("tool-win-shell 行通过 ./tool-win-shell.mjs 包装器", () => {
