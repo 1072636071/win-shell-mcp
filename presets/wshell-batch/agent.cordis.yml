@@ -1,15 +1,14 @@
 # The `wshell-batch` (WShell 批量模式) agent preset: 基于 WShell 标准模式，persona
 # 追加"多步操作优先用 batch_run 一次完成"规则。目录 = 标准模式（persona +
-# win-shell-mcp + fs/web/lsp 三组），但**放行 batch_run**：win-shell 贡献 59
+# win-shell-mcp + fs/web 两组），但**放行 batch_run**：win-shell 贡献 59
 # （58 域工具 + batch_run，只剔除 tool_groups/list_domain_tools 两个 meta 导航工具），
-# 共 66 工具（59 win-shell + 4 fs + 2 web + 1 lsp）。裁定见工单 05 评论 / PRD D10、
-# US4：批量规则要求 batch_run 可调用，故比"标准 65"多 1。
+# 共 65 工具（59 win-shell + 4 fs + 2 web）。裁定见工单 05 评论 / PRD D10、
+# US4：批量规则要求 batch_run 可调用，故比"标准 64"多 1。
 #
 # 目录构成（按组挂载，DSH 工具成组注册）：
 #   - win-shell-mcp 工具：`./tool-win-shell.mjs`（re-export win-shell-mcp/plugin）
 #   - DSH fs 组：@deepseek-ai/dsh-tool-fs（read/read_image/write/edit）
 #   - DSH web 组：@deepseek-ai/dsh-tool-web（web_fetch/web_search）
-#   - DSH lsp：@deepseek-ai/dsh-tool-lsp（lsp）
 #
 # 这是 AGENT-PLANE 组合：宿主组合保留注册表/沙箱/审批/持久化/模型路由。
 # 发布 service 的行必须放在带 `isolate` realm 的 group——本组合无 service 行。
@@ -34,7 +33,8 @@
     exclude: [tool_groups, list_domain_tools]
 
 # ── DSH 原生补缺 ─────────────────────────────────────────────────────────────
-# 三个 win-shell-mcp 无对应实现的 DSH 原生组（与标准模式一致）。
+# 两个 win-shell-mcp 无对应实现的 DSH 原生组（与标准模式一致）。lsp 为可选
+# 能力，非所有部署安装，故不纳入。
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
 
@@ -42,6 +42,3 @@
   name: '@deepseek-ai/dsh-tool-web'
   config:
     searchTimeoutMs: 60000
-
-- id: tool-lsp
-  name: '@deepseek-ai/dsh-tool-lsp'

@@ -1,17 +1,11 @@
 # The `wshell-standard` (WShell 标准模式) agent preset: win-shell-mcp 的精简
-# 命令工具（58 域工具，native schema 注册）＋ DSH 原生三组补缺（fs: read/
-# write/edit/read_image，web: web_fetch/web_search，lsp），native 全量注入，
-# persona 保持单行极简（对齐官方 Minimal preset 的 persona）。目录共 65 工具
-# （58 win-shell-mcp + 4 fs + 2 web + 1 lsp，裁决见 memorial 007 D9 / ADR-0018）。
+# 命令工具（58 域工具，native schema 注册）＋ DSH 原生 fs/web 两组补缺（fs:
+# read/write/edit/read_image，web: web_fetch/web_search），native 全量注入，
+# persona 保持单行极简（对齐官方 Minimal preset 的 persona）。目录共 64 工具
+# （58 win-shell-mcp + 4 fs + 2 web，裁决见 memorial 007 D9 / ADR-0018）。
 #
-# 目录构成（按组挂载，DSH 工具成组注册）：
-#   - win-shell-mcp 工具：`./tool-win-shell.mjs`（re-export win-shell-mcp/plugin）
-#   - DSH fs 组：@deepseek-ai/dsh-tool-fs（read/read_image/write/edit）
-#   - DSH web 组：@deepseek-ai/dsh-tool-web（web_fetch/web_search）
-#   - DSH lsp：@deepseek-ai/dsh-tool-lsp（lsp）
-#
-# 这是 AGENT-PLANE 组合：宿主组合保留注册表/沙箱/审批/持久化/模型路由。
-# 发布 service 的行必须放在带 `isolate` realm 的 group——本组合无 service 行。
+# 注：lsp 为可选能力，非所有 DSH 部署安装，故标准模式不纳入；需要 lsp 的会话
+# 可选用 WShell 全量模式（其依赖 DSH standard 组合，含 lsp 条件注册）。
 
 # ── identity ────────────────────────────────────────────────────────────────
 # 单行极简 persona（对齐官方 Minimal preset），不注入任何工具映射表或规则堆砌。
@@ -38,8 +32,8 @@
     exclude: [batch_run, tool_groups, list_domain_tools]
 
 # ── DSH 原生补缺 ─────────────────────────────────────────────────────────────
-# 三个 win-shell-mcp 无对应实现的 DSH 原生组。fs/web 服务与 policy 在宿主
-# base bundle；lsp 无 provider 时工具照常注册、调用返回 LSP_UNAVAILABLE。
+# 两个 win-shell-mcp 无对应实现的 DSH 原生组。fs/web 服务与 policy 在宿主
+# base bundle；lsp 为可选能力，非所有部署安装，故不纳入标准模式目录。
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
 
@@ -47,6 +41,3 @@
   name: '@deepseek-ai/dsh-tool-web'
   config:
     searchTimeoutMs: 60000
-
-- id: tool-lsp
-  name: '@deepseek-ai/dsh-tool-lsp'
