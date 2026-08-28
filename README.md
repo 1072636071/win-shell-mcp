@@ -89,8 +89,10 @@ npx win-shell-mcp
 
 ## 环境变量
 
-> 本小节为部署面环境变量的共用小节：本批优化后续变量（懒加载开关 `WIN_SHELL_LAZY`、
-> 输出截断阈值 `WIN_SHELL_TRUNCATE`）将在同一小节追加。
+> 部署面共用小节，现有四个变量：工具白名单 `WIN_SHELL_TOOLS`、懒加载开关
+> `WIN_SHELL_LAZY`、输出截断阈值 `WIN_SHELL_TRUNCATE`、相对路径基准
+> `WIN_SHELL_CWD`。均只在 MCP stdio 入口读取；DSH 插件面对应
+> `config.exclude` / `config.cwd`，不读本节变量。
 
 ### `WIN_SHELL_TOOLS` —— 工具白名单（MCP stdio 入口）
 
@@ -121,6 +123,32 @@ WIN_SHELL_LAZY=1 win-shell-mcp
 - **运行期稳定**：注册集不变，不发 listChanged 通知，模式切换无需调整提示词；
 - **与白名单正交可组合**：两者同设时白名单先过滤工具集，域概览/明细只反映过滤后集合（被裁空的域不出现）；懒模式下 meta 三件套豁免白名单恒列入恒可调，纯白名单模式（不设本变量）下 meta 照常受约束；
 - 作用范围：MCP stdio 入口。dsh 插件面不读取本变量。
+
+### `WIN_SHELL_TRUNCATE` —— 输出截断阈值（MCP stdio 入口）
+
+```bash
+WIN_SHELL_TRUNCATE=800 win-shell-mcp
+```
+
+- 长内容截断的字符上限，正整数；未设置或空串 = 默认 2000；
+- **fail-fast**：`0`、负数、非整数、非数字一律启动失败并点名变量与非法值原文，
+  不静默降级。
+
+### `WIN_SHELL_CWD` —— 相对路径基准（MCP stdio 入口）
+
+```bash
+WIN_SHELL_CWD=/d/work/space/my-repo win-shell-mcp
+```
+
+- 决定各工具 `path` / `cwd` 参数缺省时的解析起点：给了非空值就用该值，否则回落到
+  本基准；`pwd` 报出的也是这个目录；
+- **未设置 = 行为不变**：基准实时取进程 `process.cwd()`（不快照，`chdir` 照常生效）；
+- 值是纯字符串，不校验目录是否存在（基准目录可能稍后才创建）；
+- 同一进程内重复设置为不同值直接抛错：基准是进程级唯一值，静默取其一会让另一路
+  调用把文件写到意料外的目录；
+- **DSH 插件面对应 `config.cwd`**（不读本变量）：WShell 三模式的 preset 写成
+  `cwd: !!js process.env.DSH_CWD ?? process.cwd()`，与提示词里的 `{{cwd}}` 同源——
+  模型据此不必再花一轮调 `pwd` 探路。
 
 ## 工具清单（59 个）
 

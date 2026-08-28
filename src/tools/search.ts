@@ -22,6 +22,7 @@ import {
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { parsePattern, prepareMatcher, patternConvention, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
+import { resolveCwd } from "../config/cwd.js";
 import { buildSearchHint } from "../utils/hints.js";
 import { splitLines } from "../utils/readText.js";
 import { globToRegExp, isValidGlob } from "../utils/glob.js";
@@ -104,7 +105,7 @@ function parseExclude(rawExclude: unknown): AnyToolResult | RegExp[] {
 
 export const searchGlobInputSchema = z.object({
   pattern: z.string().min(1).describe("支持 *、**、?、[]"),
-  cwd: z.string().optional().describe("默认 process.cwd()"),
+  cwd: z.string().optional().describe("默认工作目录"),
   recursive: z.boolean().optional().describe("默认 true"),
   maxResults: z.number().int().positive().optional(),
   exclude: z
@@ -122,7 +123,7 @@ export async function searchGlobHandler(
   if (typeof pattern !== "string" || pattern.length === 0) {
     return fail(ErrorCode.EINVAL, "pattern 不能为空");
   }
-  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const cwd = resolveCwd(args["cwd"]);
   const recursive = (args["recursive"] as boolean | undefined) ?? true;
   const maxResults = args["maxResults"] as number | undefined;
 
@@ -194,7 +195,7 @@ export const searchContentInputSchema = z.object({
     .string()
     .min(1)
     .describe(patternConvention(SEARCH_PATTERN_FLAGS)),
-  cwd: z.string().optional().describe("默认 process.cwd()"),
+  cwd: z.string().optional().describe("默认工作目录"),
   glob: z.string().optional().describe("默认 **/*"),
   exclude: z
     .array(z.string())
@@ -219,7 +220,7 @@ export async function searchContentHandler(
   if (typeof pattern !== "string" || pattern.length === 0) {
     return fail(ErrorCode.EINVAL, "pattern 不能为空");
   }
-  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const cwd = resolveCwd(args["cwd"]);
   const globPattern = (args["glob"] as string | undefined) ?? "**/*";
   const ignoreCase = (args["ignoreCase"] as boolean | undefined) ?? false;
   const maxResults = args["maxResults"] as number | undefined;

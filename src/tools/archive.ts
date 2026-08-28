@@ -17,6 +17,7 @@ import { z } from "zod";
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { failFromError } from "../utils/errors.js";
+import { resolveCwd } from "../config/cwd.js";
 import type { Tool } from "../registry.js";
 
 // ============================================================================
@@ -385,7 +386,7 @@ export const archiveCreateInputSchema = z.object({
     .enum(["tar", "tar.gz", "zip"])
     .optional()
     .describe("默认按扩展名推断（.tar.gz/.tgz→tar.gz, .zip→zip, 其他→tar）"),
-  cwd: z.string().optional().describe("默认 process.cwd()"),
+  cwd: z.string().optional().describe("默认工作目录"),
 });
 
 /** archive_create 输出。 */
@@ -412,7 +413,7 @@ export async function archiveCreateHandler(
   const archivePath = args["path"] as string | undefined;
   const rawSources = args["sources"];
   const formatArg = args["format"] as string | undefined;
-  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const cwd = resolveCwd(args["cwd"]);
 
   if (typeof archivePath !== "string" || archivePath.length === 0) {
     return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
@@ -497,7 +498,7 @@ export const archiveCreateTool: Tool = {
 export const archiveExtractInputSchema = z.object({
   path: z.string(),
   dest: z.string().optional().describe("默认归档所在目录"),
-  cwd: z.string().optional().describe("默认 process.cwd()"),
+  cwd: z.string().optional().describe("默认工作目录"),
 });
 
 /** archive_extract 输出。 */
@@ -514,7 +515,7 @@ export async function archiveExtractHandler(
 ): Promise<AnyToolResult> {
   const archivePath = args["path"] as string | undefined;
   const destArg = args["dest"] as string | undefined;
-  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const cwd = resolveCwd(args["cwd"]);
 
   if (typeof archivePath !== "string" || archivePath.length === 0) {
     return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
