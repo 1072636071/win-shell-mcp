@@ -634,7 +634,8 @@ describe("net_download", () => {
       });
       expect(isFail(result)).toBe(true);
       if (isFail(result)) {
-        expect(result.error.code).toBe("EXEC_TIMEOUT");
+        // 工单 20-04：net_download 超时错误码统一为 NET_TIMEOUT（与 net_get/net_post 一致）
+        expect(result.error.code).toBe("NET_TIMEOUT");
       }
     } finally {
       server.close();

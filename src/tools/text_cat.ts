@@ -10,7 +10,6 @@
  * 错误：EINVAL（参数非法）/ ENOENT（不存在）/ EISDIR（是目录）/ EACCES（无权限）
  */
 
-import { stat, readFile } from "node:fs/promises";
 import { z } from "zod";
 import {
   ok,
@@ -21,8 +20,7 @@ import {
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { failFromError } from "../utils/errors.js";
-import { decodeBuffer } from "../encoding/detect.js";
-import { splitLines } from "../utils/readText.js";
+import { readTextFile, splitLines } from "../utils/readText.js";
 import type { Tool } from "../registry.js";
 
 /** text_cat 输入 schema。 */
@@ -84,38 +82,19 @@ export async function textCatHandler(
   const eByte = typeof endByte === "number" ? endByte : undefined;
 
   try {
-    // 先检查路径是否为文件（非目录）
-    const stats = await stat(path);
-    if (stats.isDirectory()) {
-      return fail(ErrorCode.EISDIR, `是目录: ${path}`);
-    }
-
-    const buf = await readFile(path);
-
-    // ① 字节范围（0-based 含）：先切片原始 buffer
-    let rangedBuf = buf;
-    if (sByte !== undefined || eByte !== undefined) {
-      const begin = sByte !== undefined ? sByte : 0;
-      const end = eByte !== undefined ? eByte + 1 : buf.length;
-      const lo = Math.max(0, begin);
-      const hi = Math.min(buf.length, end);
-      rangedBuf = buf.subarray(lo, hi);
-    }
-
-    // ② 解码：encoding 指定则显式用之；'auto'/缺省时自动识别
-    const hint =
-      encoding === "utf8" || encoding === "gbk"
-        ? (encoding as string)
-        : undefined;
-    let content = decodeBuffer(rangedBuf, hint);
-
-    // ③ 行范围（1-based 含）：在逻辑行上切片并重新 join，避免结尾残留空段
-    if (sLine !== undefined || eLine !== undefined) {
-      const ls = splitLines(content);
-      const startIdx = sLine !== undefined ? Math.max(1, sLine) - 1 : 0;
-      const endIdx = eLine !== undefined ? eLine : ls.length;
-      content = ls.slice(startIdx, endIdx).join("\n");
-    }
+    // 读文件链路（判目录/字节范围/解码/行范围切片）委托给读文件深模块
+    const content = await readTextFile(path, {
+      encoding:
+        encoding === "utf8" || encoding === "gbk"
+          ? (encoding as string)
+          : undefined,
+      ...(sByte !== undefined || eByte !== undefined
+        ? { byteRange: { start: sByte, end: eByte } }
+        : {}),
+      ...(sLine !== undefined || eLine !== undefined
+        ? { lineRange: { start: sLine, end: eLine } }
+        : {}),
+    });
 
     // 行数以返回内容中的逻辑行为准（结尾换行不计，空内容为 0）
     const totalLines = content === "" ? 0 : splitLines(content).length;

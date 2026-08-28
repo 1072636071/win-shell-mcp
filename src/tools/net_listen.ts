@@ -13,6 +13,7 @@ import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode, toErrorMessage } from "../contract/errors.js";
 import { runCommand } from "../exec/run.js";
 import { IS_WIN } from "../utils/platform.js";
+import { parseTasklistCsv } from "../utils/tasklist.js";
 import type { Tool } from "../registry.js";
 
 /** net_listen 输入 schema。 */
@@ -58,43 +59,10 @@ export function parseNetstatLine(line: string): ListenEntry | null {
 }
 
 /**
- * 解析 tasklist CSV 行，返回 pid 与进程名。
- *
- * 列顺序：映像名,PID,...
- */
-function parseTasklistNameLine(
-  line: string,
-): { pid: number; name: string } | null {
-  if (line.length === 0) return null;
-  const fields: string[] = [];
-  let i = 0;
-  while (i < line.length) {
-    if (line[i] === '"') {
-      const end = line.indexOf('"', i + 1);
-      if (end === -1) return null;
-      fields.push(line.slice(i + 1, end));
-      i = end + 1;
-      if (line[i] === ",") i++;
-    } else {
-      const end = line.indexOf(",", i);
-      if (end === -1) {
-        fields.push(line.slice(i));
-        i = line.length;
-      } else {
-        fields.push(line.slice(i, end));
-        i = end + 1;
-      }
-    }
-  }
-  if (fields.length < 2) return null;
-  const name = fields[0]!;
-  const pid = Number(fields[1]);
-  if (!Number.isInteger(pid) || pid < 0) return null;
-  return { pid, name };
-}
-
-/**
  * 获取 Windows pid → 进程名映射。
+ *
+ * 进程名解析委托给 tasklist 解析深模块（src/utils/tasklist.ts），
+ * 与 process_list 共享同一解析行为。
  */
 async function getWindowsProcessNames(): Promise<Map<number, string>> {
   try {
@@ -103,7 +71,7 @@ async function getWindowsProcessNames(): Promise<Map<number, string>> {
     const text = outcome.stdout;
     const map = new Map<number, string>();
     for (const line of text.split(/\r?\n/)) {
-      const entry = parseTasklistNameLine(line);
+      const entry = parseTasklistCsv(line);
       if (entry) map.set(entry.pid, entry.name);
     }
     return map;

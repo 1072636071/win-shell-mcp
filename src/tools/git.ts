@@ -88,6 +88,50 @@ function getCwd(args: Record<string, unknown>): string {
 }
 
 /**
+ * 运行 git 命令并映射失败（样板收敛，工单 20-07）。
+ *
+ * 吸收「getCwd + runGit + exitCode 检查 + gitError 失败映射」组合样板；
+ * git_branch/git_commit 的二次命令不走本助手。
+ *
+ * @param args 工具参数（cwd 提取）
+ * @param gitArgs git 参数数组
+ * @param subcommand git 子命令名（错误文案用）
+ * @param isOkOnFailure 失败语义谓词：返回 true 时该失败按可接受处理，
+ *   原样返回执行结果而非 GIT_FAIL（git_log 的空仓库特殊分支用）
+ * @returns 失败结果或 git 执行结果
+ */
+async function runGitTool(
+  args: Record<string, unknown>,
+  gitArgs: string[],
+  subcommand: string,
+  isOkOnFailure?: (stderr: string) => boolean,
+): Promise<AnyToolResult | GitExecResult> {
+  const result = await runGit(gitArgs, getCwd(args));
+  if (result.exitCode !== 0) {
+    if (isOkOnFailure !== undefined && isOkOnFailure(result.stderr)) {
+      return result;
+    }
+    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, subcommand));
+  }
+  return result;
+}
+
+/** git log 空仓库 stderr 特征（无提交时 git log 失败）。 */
+function isEmptyRepoStderr(stderr: string): boolean {
+  const s = stderr.toLowerCase();
+  return (
+    s.includes("does not have any commits") ||
+    s.includes("bad default revision 'head'") ||
+    s.includes("unknown revision")
+  );
+}
+
+/** runGitTool 结果守卫：命中即失败结果（非 git 执行结果）。 */
+function isGitFail(result: AnyToolResult | GitExecResult): result is AnyToolResult {
+  return (result as AnyToolResult).ok === false;
+}
+
+/**
  * 解析 git status --porcelain=v1 -b 的分支行。
  *
  * 行格式：
@@ -194,13 +238,14 @@ interface GitStatusFull extends GitStatusMinimal {
 export async function gitStatusHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const verbose = args["verbose"] === true;
 
-  const result = await runGit(["status", "--porcelain=v1", "-b"], cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "status"));
-  }
+  const result = await runGitTool(
+    args,
+    ["status", "--porcelain=v1", "-b"],
+    "status",
+  );
+  if (isGitFail(result)) return result;
 
   const lines = result.stdout.split(/\r?\n/);
   const branchLine = lines[0] ?? "";
@@ -320,7 +365,6 @@ const LOG_SEP = "\x1f";
 export async function gitLogHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const verbose = args["verbose"] === true;
   const rawLimit = args["limit"];
   const limit =
@@ -332,22 +376,18 @@ export async function gitLogHandler(
   // 而非输出结构差异，因此不适合用 withVerbose（withVerbose 适用于极简/完整两种输出结构）。
   const hashFormat = verbose ? "%H" : "%h";
   const format = `${hashFormat}${LOG_SEP}%an${LOG_SEP}%ad${LOG_SEP}%s`;
-  const result = await runGit(
+  const result = await runGitTool(
+    args,
     ["log", "-n", String(limit), `--format=${format}`, "--date=iso"],
-    cwd,
+    "log",
+    isEmptyRepoStderr,
   );
+  if (isGitFail(result)) return result;
+
+  // 空仓库：git log 失败但 stderr 匹配空仓库特征 → 返回空历史
   if (result.exitCode !== 0) {
-    // 空仓库：无提交
-    const stderr = result.stderr.toLowerCase();
-    if (
-      stderr.includes("does not have any commits") ||
-      stderr.includes("bad default revision 'head'") ||
-      stderr.includes("unknown revision")
-    ) {
-      const empty: GitLogResult = { commits: [], count: 0 };
-      return ok(empty);
-    }
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "log"));
+    const empty: GitLogResult = { commits: [], count: 0 };
+    return ok(empty);
   }
 
   const commits: LogCommit[] = [];
@@ -441,10 +481,8 @@ export async function gitBranchHandler(
   const verbose = args["verbose"] === true;
 
   // 获取当前分支
-  const currentResult = await runGit(["branch", "--show-current"], cwd);
-  if (currentResult.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(currentResult.stderr, "branch"));
-  }
+  const currentResult = await runGitTool(args, ["branch", "--show-current"], "branch");
+  if (isGitFail(currentResult)) return currentResult;
   let current = currentResult.stdout.trim();
 
   // detached HEAD 时 current 为空，用短 hash 作为标识
@@ -456,13 +494,12 @@ export async function gitBranchHandler(
   }
 
   // 获取所有本地分支（带 upstream，tab 分隔；直接用 tab 字符避免 %x09 兼容问题）
-  const listResult = await runGit(
+  const listResult = await runGitTool(
+    args,
     ["branch", "--list", `--format=%(refname:short)\t%(upstream:short)`],
-    cwd,
+    "branch",
   );
-  if (listResult.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(listResult.stderr, "branch"));
-  }
+  if (isGitFail(listResult)) return listResult;
 
   const branches: string[] = [];
   const all: BranchEntry[] = [];
@@ -549,7 +586,6 @@ interface GitDiffResult {
 export async function gitDiffHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const staged = args["staged"] === true;
   const verbose = args["verbose"] === true;
   const rawPath = args["path"];
@@ -564,10 +600,8 @@ export async function gitDiffHandler(
     diffArgs.push("--", rawPath);
   }
 
-  const result = await runGit(diffArgs, cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "diff"));
-  }
+  const result = await runGitTool(args, diffArgs, "diff");
+  if (isGitFail(result)) return result;
 
   const rawDiff = result.stdout;
   const files = parseDiffFiles(rawDiff);
@@ -630,7 +664,6 @@ interface GitAddResult {
 export async function gitAddHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const rawPaths = args["paths"];
 
   if (!Array.isArray(rawPaths) || rawPaths.length === 0) {
@@ -643,10 +676,8 @@ export async function gitAddHandler(
     return fail(ErrorCode.EINVAL, "paths 不能为空");
   }
 
-  const result = await runGit(["add", "--", ...paths], cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "add"));
-  }
+  const result = await runGitTool(args, ["add", "--", ...paths], "add");
+  if (isGitFail(result)) return result;
 
   const out: GitAddResult = { added: paths };
   return ok(out);
@@ -715,10 +746,8 @@ export async function gitCommitHandler(
   const commitArgs = ["commit", "-m", message];
   if (amend) commitArgs.push("--amend");
 
-  const result = await runGit(commitArgs, cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "commit"));
-  }
+  const result = await runGitTool(args, commitArgs, "commit");
+  if (isGitFail(result)) return result;
 
   // 获取新提交 hash
   const hashResult = await runGit(["rev-parse", "HEAD"], cwd);
@@ -776,7 +805,6 @@ export const gitCheckoutInputSchema = z.object({
 export async function gitCheckoutHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const branch = args["branch"];
   const create = args["create"] === true;
   const paths = args["paths"];
@@ -819,10 +847,8 @@ export async function gitCheckoutHandler(
     gitArgs.push("--", ...(paths as string[]));
   }
 
-  const result = await runGit(gitArgs, cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "checkout"));
-  }
+  const result = await runGitTool(args, gitArgs, "checkout");
+  if (isGitFail(result)) return result;
 
   return ok({
     checkedOut: true,
@@ -870,7 +896,6 @@ export const gitPushInputSchema = z.object({
 export async function gitPushHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const remote = (args["remote"] as string | undefined) ?? "origin";
   const branch = args["branch"] as string | undefined;
   const force = args["force"] === true;
@@ -880,10 +905,8 @@ export async function gitPushHandler(
   gitArgs.push(remote);
   if (typeof branch === "string" && branch.length > 0) gitArgs.push(branch);
 
-  const result = await runGit(gitArgs, cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "push"));
-  }
+  const result = await runGitTool(args, gitArgs, "push");
+  if (isGitFail(result)) return result;
 
   return ok({
     pushed: true,
@@ -930,17 +953,14 @@ export const gitPullInputSchema = z.object({
 export async function gitPullHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const remote = (args["remote"] as string | undefined) ?? "origin";
   const branch = args["branch"] as string | undefined;
 
   const gitArgs = ["pull", remote];
   if (typeof branch === "string" && branch.length > 0) gitArgs.push(branch);
 
-  const result = await runGit(gitArgs, cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "pull"));
-  }
+  const result = await runGitTool(args, gitArgs, "pull");
+  if (isGitFail(result)) return result;
 
   return ok({
     pulled: true,
@@ -987,7 +1007,6 @@ export const gitCloneInputSchema = z.object({
 export async function gitCloneHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const url = args["url"];
   const targetPath = args["path"] as string | undefined;
 
@@ -999,10 +1018,8 @@ export async function gitCloneHandler(
   if (typeof targetPath === "string" && targetPath.length > 0)
     gitArgs.push(targetPath);
 
-  const result = await runGit(gitArgs, cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "clone"));
-  }
+  const result = await runGitTool(args, gitArgs, "clone");
+  if (isGitFail(result)) return result;
 
   return ok({
     cloned: true,
@@ -1048,7 +1065,6 @@ export const gitStashInputSchema = z.object({
 export async function gitStashHandler(
   args: Record<string, unknown>,
 ): Promise<AnyToolResult> {
-  const cwd = getCwd(args);
   const action = (args["action"] as string | undefined) ?? "push";
 
   let gitArgs: string[];
@@ -1067,10 +1083,8 @@ export async function gitStashHandler(
       break;
   }
 
-  const result = await runGit(gitArgs, cwd);
-  if (result.exitCode !== 0) {
-    return fail(ErrorCode.GIT_FAIL, gitError(result.stderr, "stash"));
-  }
+  const result = await runGitTool(args, gitArgs, "stash");
+  if (isGitFail(result)) return result;
 
   if (action === "list") {
     const stashes = result.stdout

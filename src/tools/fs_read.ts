@@ -9,7 +9,7 @@
  * 用 Node fs/promises API，lstat 检测 symlink，stat 跟随链接。
  */
 
-import { readdir, readFile, lstat, stat } from "node:fs/promises";
+import { readdir, lstat, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { z } from "zod";
 import {
@@ -22,7 +22,7 @@ import {
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { toFail } from "../utils/errors.js";
-import { decodeBuffer } from "../encoding/detect.js";
+import { readTextFile } from "../utils/readText.js";
 import { globToRegExp, isValidGlob } from "../utils/glob.js";
 import type { Tool } from "../registry.js";
 
@@ -296,31 +296,20 @@ export async function fsReadHandler(
     return fail(ErrorCode.EINVAL, "path 必须是字符串");
   }
 
+  // 行范围处理（1-indexed，闭区间：含 start 含 end，与 cat 的 startLine/endLine 语义一致）
+  const startLine =
+    typeof start === "number" && start > 0 ? Math.floor(start) : 1;
+  const endLine =
+    typeof end === "number" && end > 0 ? Math.floor(end) : undefined;
+
   try {
-    // 先检查路径是否为文件（非目录）
-    const stats = await stat(path);
-    if (stats.isDirectory()) {
-      return fail(ErrorCode.EISDIR, `是目录: ${path}`);
-    }
-
-    const buf = await readFile(path);
-    let content = decodeBuffer(
-      buf,
-      typeof encoding === "string" ? encoding : undefined,
-    );
-
-    // 行范围处理（1-indexed，闭区间：含 start 含 end，与 cat 的 startLine/endLine 语义一致）
-    const startLine =
-      typeof start === "number" && start > 0 ? Math.floor(start) : 1;
-    const endLine =
-      typeof end === "number" && end > 0 ? Math.floor(end) : undefined;
-
-    if (startLine > 1 || endLine !== undefined) {
-      const lines = content.split("\n");
-      const sliceStart = startLine - 1; // 转 0-indexed
-      const sliceEnd = endLine !== undefined ? endLine : lines.length; // 闭区间：含 end 行 → slice 上界 exclusive 取 endLine
-      content = lines.slice(sliceStart, sliceEnd).join("\n");
-    }
+    // 读文件链路（判目录/解码/行范围切片）委托给读文件深模块
+    const content = await readTextFile(path, {
+      encoding: typeof encoding === "string" ? encoding : undefined,
+      ...(startLine > 1 || endLine !== undefined
+        ? { lineRange: { start: startLine, end: endLine } }
+        : {}),
+    });
 
     const totalLines = content.split("\n").length;
     const limit =

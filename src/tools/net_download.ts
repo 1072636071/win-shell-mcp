@@ -6,12 +6,16 @@
  */
 
 import { createWriteStream } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { failFromError } from "../utils/errors.js";
+import { prepareParentDir } from "../utils/fs.js";
+import {
+  createTimeoutAbort,
+  isAbortError,
+  mapFetchError,
+} from "../net/http.js";
 import type { Tool } from "../registry.js";
 
 /** net_download 输入 schema。 */
@@ -24,7 +28,7 @@ export const netDownloadInputSchema = z.object({
     .int()
     .positive()
     .optional()
-    .describe("毫秒，超时返回 EXEC_TIMEOUT"),
+    .describe("毫秒，超时返回 NET_TIMEOUT"),
 });
 
 /** net_download 输出。 */
@@ -37,7 +41,8 @@ interface NetDownloadResult {
 /**
  * net_download handler：下载文件。
  *
- * 错误：EINVAL（参数非法）/ ENOENT（父目录不存在且未 mkdirParents）/ EXEC_TIMEOUT / 网络错误
+ * 错误：EINVAL（参数非法）/ ENOENT（父目录不存在且未 mkdirParents）
+ *       / NET_TIMEOUT（超时）/ NET_FAIL（连接失败）
  */
 export async function netDownloadHandler(
   args: Record<string, unknown>,
@@ -54,44 +59,28 @@ export async function netDownloadHandler(
     return fail(ErrorCode.EINVAL, "path 必须是非空字符串");
   }
 
-  // 预检查/创建父目录
-  const parent = path.dirname(filePath);
-  try {
-    const parentStat = await stat(parent);
-    if (!parentStat.isDirectory()) {
-      return fail(
-        ErrorCode.ENOTDIR,
-        `父路径不是目录: ${parent}`,
-      ) as unknown as AnyToolResult;
-    }
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      if (mkdirParents) {
-        await mkdir(parent, { recursive: true });
-      } else {
-        return fail(
-          ErrorCode.ENOENT,
-          `父目录不存在: ${parent}`,
-        ) as unknown as AnyToolResult;
-      }
-    } else {
-      return failFromError(e);
-    }
-  }
+  // 预检查/创建父目录（父目录预检助手，与 fs_write 共享同一语义）
+  const parentErr = await prepareParentDir(filePath, mkdirParents);
+  if (parentErr) return parentErr;
 
-  // 超时控制
-  const controller = new AbortController();
-  const timer: NodeJS.Timeout | null =
-    typeof timeout === "number" && timeout > 0
-      ? setTimeout(() => controller.abort(), timeout)
-      : null;
+  // 下载超时失败结果（fetch 阶段与流式阶段共用同一映射，避免重复分支）
+  const timeoutFail = (): AnyToolResult =>
+    fail(ErrorCode.NET_TIMEOUT, `下载超时: ${url}`);
+
+  // 超时控制（委托 net HTTP 深模块：覆盖请求与流式写入全程，错误语义共享）
+  const { signal, clear } = createTimeoutAbort(
+    typeof timeout === "number" && timeout > 0 ? timeout : undefined,
+  );
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, { signal, redirect: "follow" });
+    } catch (err) {
+      if (isAbortError(err)) return timeoutFail();
+      // 连接失败 → NET_FAIL（与 net_get/net_post 一致）
+      return failFromError(mapFetchError(err, url)) as unknown as AnyToolResult;
+    }
     if (!response.ok) {
       return fail(
         ErrorCode.EXEC_FAIL,
@@ -124,15 +113,10 @@ export async function netDownloadHandler(
     const result: NetDownloadResult = { saved: true, bytes, path: filePath };
     return ok(result) as unknown as AnyToolResult;
   } catch (err) {
-    if (controller.signal.aborted) {
-      return fail(
-        ErrorCode.EXEC_TIMEOUT,
-        `下载超时: ${url}`,
-      ) as unknown as AnyToolResult;
-    }
+    if (isAbortError(err)) return timeoutFail();
     return failFromError(err);
   } finally {
-    if (timer !== null) clearTimeout(timer);
+    clear();
   }
 }
 

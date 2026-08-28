@@ -38,13 +38,17 @@ const LAZY_LISTED_TOOL_NAMES = [
  *   替换 handler，listTools 输出不变。
  *
  * @param tools 部署工具表
+ * @param lazy 是否懒模式（注入 tool_groups 副本的可见性判定，缺省 false）
  */
-export function scopeMetaToolsToDeployment(tools: readonly Tool[]): readonly Tool[] {
+export function scopeMetaToolsToDeployment(
+  tools: readonly Tool[],
+  lazy?: boolean,
+): readonly Tool[] {
   const metaNames = new Set<string>(LAZY_LISTED_TOOL_NAMES);
   if (!tools.some((t) => metaNames.has(t.name))) return tools;
   return tools.map((t) => {
     if (t.name === "batch_run") return createScopedBatchRunTool(tools);
-    if (t.name === "tool_groups") return createScopedToolGroupsTool(tools);
+    if (t.name === "tool_groups") return createScopedToolGroupsTool(tools, lazy);
     if (t.name === "list_domain_tools") {
       return createScopedListDomainToolsTool(tools);
     }

@@ -151,6 +151,9 @@ export interface CreateServerOptions {
   tools?: readonly Tool[];
   /** 列出工具表：ListTools 返回这张表。缺省 = tools（含其 batch_run 受限副本替换后的数组）。 */
   listedTools?: readonly Tool[];
+  /** 是否懒模式：注入 tool_groups 副本的可见性判定（visible:false 标注），
+   *  使 tool_groups 不再直读 process.env。缺省 false。 */
+  lazy?: boolean;
 }
 
 /**
@@ -180,11 +183,14 @@ export function createServer(
   const dispatchTools = options.tools ?? builtinTools;
   // 分发面沿用既有白名单语义：非全量注入的部署子表，meta 三件套替换为
   // 口径受限副本（batch_run 步骤边界 / 导航工具统计口径，12-02 + 11-05）。
-  // 装配接缝在 deploy 深模块，此处仅消费其纯函数。
+  // 装配接缝在 deploy 深模块，此处仅消费其纯函数。纯懒模式（无白名单，
+  // 分发表即全量表）也需替换 tool_groups 为 lazy 绑定副本——懒模式判定经
+  // 装配注入而非 env 直读，env 读取收敛于 stdio 入口。
+  const lazy = options.lazy ?? false;
   const deployed =
-    dispatchTools === builtinTools
+    dispatchTools === builtinTools && !lazy
       ? dispatchTools
-      : scopeMetaToolsToDeployment(dispatchTools);
+      : scopeMetaToolsToDeployment(dispatchTools, lazy);
   // 列出面：显式注入（懒模式三件套等）则原样使用；缺省 = 分发表（历史行为）。
   const listedTools = options.listedTools ?? deployed;
   const server = new Server(SERVER_INFO, {
@@ -233,13 +239,15 @@ export async function startStdioServer(): Promise<Server> {
   }
   setTruncateLimit(truncateResult.limit);
 
+  const lazy = parseLazyMode(process.env[ENV_WIN_SHELL_LAZY]);
   const tables = assembleDeployment({
     rawWhitelist: process.env[ENV_WIN_SHELL_TOOLS],
-    lazy: parseLazyMode(process.env[ENV_WIN_SHELL_LAZY]),
+    lazy,
   });
   const server = createServer({
     tools: tables.dispatchTable,
     listedTools: tables.listedTools,
+    lazy,
   });
   const transport = new StdioServerTransport();
   await server.connect(transport);

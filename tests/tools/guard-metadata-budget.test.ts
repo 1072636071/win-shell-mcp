@@ -27,8 +27,11 @@ import { builtinTools } from "../../src/registry.js";
  * 导航工具（各含非空 outputSchema，防漂移护栏强制项），重取基线实测 52607。
  * 工单 15-01（2026-08-26）：batch_run outputSchema 的 error 对象增加可选
  * hint 字段（错误可操作提示），重取基线实测 52657。
+ * 工单 18 后未随中间 schema 增长重取基线，护栏已在 HEAD 失效（实测 53075）。
+ * 工单 20（2026-08-28）：架构深化批量改动，net_download 超时错误文案
+ * EXEC_TIMEOUT→NET_TIMEOUT（-1 字符），重取基线实测 53074。
  */
-const METADATA_BUDGET = 52657;
+const METADATA_BUDGET = 53074;
 
 /** description 长度软上限（字符）。 */
 const DESCRIPTION_MAX = 150;

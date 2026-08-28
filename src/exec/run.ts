@@ -38,6 +38,9 @@ export interface RunOptions {
   windowsHide?: boolean;
   /** 写入子进程标准输入的文本（可选）。存在时 stdio 的 stdin 设为 pipe。 */
   stdin?: string;
+  /** 每流输出字节预算（stdout/stderr 独立）。设置后超限按前缀截断并标记
+   *  stdoutTruncated/stderrTruncated，防止无界收集撑爆内存；缺省不设 = 收集全部。 */
+  maxOutputBytes?: number;
 }
 
 /** spawn 本身失败时携带的错误信息。 */
@@ -62,6 +65,12 @@ export interface RunOutcome {
   duration: number;
   /** 是否因超时被终止。 */
   timedOut: boolean;
+  /** 信号终止时携带的信号名（如 'SIGTERM'）；正常退出为 null。 */
+  signal: string | null;
+  /** stdout 是否被 maxOutputBytes 预算截断（未设预算时为 false）。 */
+  stdoutTruncated: boolean;
+  /** stderr 是否被 maxOutputBytes 预算截断（未设预算时为 false）。 */
+  stderrTruncated: boolean;
   /** spawn 本身失败（如命令不存在、cwd 无效）时存在。 */
   spawnError?: SpawnError;
 }
@@ -70,17 +79,29 @@ export interface RunOutcome {
  * 终止 child 的整个进程树。
  *
  * Windows 上 `child.kill` 只杀 shell（cmd.exe）本身，子进程仍持有 stdio pipe；
- * 必须用 `taskkill /T /F` 杀整棵树。unix 直接 SIGKILL。
+ * 必须用 `taskkill /T /F` 杀整棵树。等待 taskkill 退出后再 resolve——超时语义
+ * 要求「已杀完」而非「已发起」（对齐 process_kill 的 killWindowsProcess）。
+ * unix 直接 SIGKILL（同步生效）。
  */
-function killProcessTree(child: ChildProcess): void {
+async function killProcessTree(child: ChildProcess): Promise<void> {
   if (child.pid === undefined) return;
   if (IS_WIN) {
-    spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
-      stdio: 'ignore',
-      shell: true,
-      windowsHide: true,
-    }).on('error', () => {
-      // 尽力而为，忽略 taskkill 错误
+    await new Promise<void>((resolve) => {
+      // 兜底定时器：taskkill 极端情况下不退出时也不让 runCommand 永久挂起
+      const fallback = setTimeout(resolve, 3000);
+      const proc = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        shell: true,
+        windowsHide: true,
+      });
+      proc.on('exit', () => {
+        clearTimeout(fallback);
+        resolve();
+      });
+      proc.on('error', () => {
+        clearTimeout(fallback);
+        resolve();
+      });
     });
   } else {
     try {
@@ -89,6 +110,39 @@ function killProcessTree(child: ChildProcess): void {
       // 忽略 kill 错误
     }
   }
+}
+
+/**
+ * 输出字节预算收集器。
+ *
+ * 设置 maxOutputBytes 时按流独立保留前缀、丢弃超限后续字节并标记截断
+ * （尾截不整块丢弃，避免块边界丢失全部数据）；未设预算时原样收集全部。
+ */
+interface StreamAcc {
+  chunks: Buffer[];
+  total: number;
+  truncated: boolean;
+}
+
+function makeStreamHandler(
+  acc: StreamAcc,
+  maxOutputBytes: number | undefined,
+): (chunk: Buffer) => void {
+  return (chunk: Buffer): void => {
+    if (maxOutputBytes === undefined) {
+      acc.chunks.push(chunk);
+      return;
+    }
+    const remaining = maxOutputBytes - acc.total;
+    if (remaining <= 0) {
+      acc.truncated = true;
+      return;
+    }
+    const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+    acc.total += slice.length;
+    if (slice.length < chunk.length) acc.truncated = true;
+    acc.chunks.push(slice);
+  };
 }
 
 /**
@@ -108,7 +162,7 @@ export function runCommand(
   args: string[],
   opts: RunOptions = {},
 ): Promise<RunOutcome> {
-  const { cwd, env, timeoutMs, encoding, shell = false, windowsHide = true, stdin } = opts;
+  const { cwd, env, timeoutMs, encoding, shell = false, windowsHide = true, stdin, maxOutputBytes } = opts;
   const start = Date.now();
 
   return new Promise<RunOutcome>((resolve) => {
@@ -129,6 +183,9 @@ export function runCommand(
         pid: -1,
         duration: 0,
         timedOut: false,
+        signal: null,
+        stdoutTruncated: false,
+        stderrTruncated: false,
         spawnError: { message: err instanceof Error ? err.message : String(err) },
       });
       return;
@@ -142,8 +199,8 @@ export function runCommand(
       child.stdin.end();
     }
 
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
+    const stdoutAcc: StreamAcc = { chunks: [], total: 0, truncated: false };
+    const stderrAcc: StreamAcc = { chunks: [], total: 0, truncated: false };
     let settled = false;
     let timedOut = false;
     let timer: NodeJS.Timeout | null = null;
@@ -158,24 +215,25 @@ export function runCommand(
     if (timeoutMs !== undefined) {
       timer = setTimeout(() => {
         timedOut = true;
-        killProcessTree(child);
-        settle({
-          exitCode: -1,
-          stdout: '',
-          stderr: '',
-          pid: child.pid ?? -1,
-          duration: Date.now() - start,
-          timedOut: true,
+        // 先杀完整棵进程树再结算：超时返回语义是「已终止」，不是「已发起终止」
+        void killProcessTree(child).then(() => {
+          settle({
+            exitCode: -1,
+            stdout: '',
+            stderr: '',
+            pid: child.pid ?? -1,
+            duration: Date.now() - start,
+            timedOut: true,
+            signal: null,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          });
         });
       }, timeoutMs);
     }
 
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdoutChunks.push(chunk);
-    });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderrChunks.push(chunk);
-    });
+    child.stdout?.on('data', makeStreamHandler(stdoutAcc, maxOutputBytes));
+    child.stderr?.on('data', makeStreamHandler(stderrAcc, maxOutputBytes));
 
     // spawn 本身失败（如命令不存在、cwd 无效）
     child.on('error', (err) => {
@@ -187,20 +245,27 @@ export function runCommand(
         pid: child.pid ?? -1,
         duration: Date.now() - start,
         timedOut: false,
+        signal: null,
+        stdoutTruncated: false,
+        stderrTruncated: false,
         spawnError: { code: e.code, message: err.message },
       });
     });
 
-    child.on('close', (code) => {
-      const stdout = decodeBuffer(Buffer.concat(stdoutChunks), encoding);
-      const stderr = decodeBuffer(Buffer.concat(stderrChunks), encoding);
+    child.on('close', (code, signal) => {
+      const stdout = decodeBuffer(Buffer.concat(stdoutAcc.chunks), encoding);
+      const stderr = decodeBuffer(Buffer.concat(stderrAcc.chunks), encoding);
       settle({
-        exitCode: code ?? -1,
+        // 超时语义优先：树杀引发的 close（Windows 强杀 code 可为 1）不得覆盖 -1
+        exitCode: timedOut ? -1 : code ?? -1,
         stdout,
         stderr,
         pid: child.pid ?? -1,
         duration: Date.now() - start,
         timedOut,
+        signal: signal ?? null,
+        stdoutTruncated: stdoutAcc.truncated,
+        stderrTruncated: stderrAcc.truncated,
       });
     });
   });

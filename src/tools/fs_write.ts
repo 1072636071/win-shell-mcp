@@ -19,6 +19,7 @@ const iconvEncode = iconvLite.encode;
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode, toErrorCode } from "../contract/errors.js";
 import { toFail, failFromError } from "../utils/errors.js";
+import { prepareParentDir } from "../utils/fs.js";
 import type { Tool } from "../registry.js";
 
 /** fs_write 输入 schema。 */
@@ -101,27 +102,9 @@ export async function fsWriteHandler(
   try {
     const buf = encodeContent(content, encoding);
 
-    // 预检查父目录
-    const parent = path.dirname(filePath);
-    try {
-      const parentStat = await fs.stat(parent);
-      if (!parentStat.isDirectory()) {
-        return fail(ErrorCode.ENOTDIR, `父路径不是目录: ${parent}`);
-      }
-    } catch (e) {
-      if (toErrorCode(e) === ErrorCode.ENOENT) {
-        if (mkdirParents) {
-          await fs.mkdir(parent, { recursive: true });
-        } else {
-          return fail(
-            ErrorCode.ENOENT,
-            `父目录不存在: ${parent}`,
-          ) as unknown as AnyToolResult;
-        }
-      } else {
-        return failFromError(e);
-      }
-    }
+    // 预检查/创建父目录（父目录预检助手，与 net_download 共享同一语义）
+    const parentErr = await prepareParentDir(filePath, mkdirParents);
+    if (parentErr) return parentErr;
 
     const flag = append ? "a" : "w";
     await fs.writeFile(filePath, buf, { flag });

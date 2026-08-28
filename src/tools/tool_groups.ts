@@ -13,19 +13,17 @@
  *   被裁时回退为域内现存工具）；
  * - examples 精选名单由 meta-tools.test.ts 护栏校验其确属该域。
  *
- * 可见性标注（验收第 5 条）：懒模式（WIN_SHELL_LAZY=1，语义见配置模块
- * parseLazyMode）下 ListTools 列出面只含 3 个 meta，任何命令域的工具都不被
- * 列出，此时每个分组附 `visible: false` 标注；全量模式下全部列出，字段整体
- * 省略（输出极简，同 batch_run verbose 字段的 optional 形态约定）。
- * 模式判定复用配置模块纯函数；env 原始读取点在 04 号双表 API 落地后应随
- * listedTools 注入链路上收，此处为 03 阶段唯一过渡读取点。
+ * 可见性标注：懒模式下 ListTools 列出面只含 3 个 meta，任何命令域的工具都
+ * 不被列出，此时每个分组附 `visible: false` 标注；全量模式下全部列出，字段
+ * 整体省略（输出极简，同 batch_run verbose 字段的 optional 形态约定）。
+ * 模式判定经装配期注入（createServer 的 lazy 选项 → scoped 副本），本模块
+ * 不读 process.env——env 原始读取收敛在 stdio 入口（config/env 约定）。
  */
 
 import { z } from "zod";
 import { ok, type AnyToolResult } from "../contract/output.js";
 import { COMMAND_DOMAINS, type CommandDomain } from "../domains.js";
 import { builtinTools } from "../registry.js";
-import { ENV_WIN_SHELL_LAZY, parseLazyMode } from "../config/env.js";
 import type { Tool } from "../registry.js";
 
 /** 各域一句话用途与代表工具（summary 以 CONTEXT.md 术语表为源）。 */
@@ -146,11 +144,6 @@ function buildGroups(lazy: boolean, pool: readonly Tool[]) {
   return groups;
 }
 
-/** 懒模式判定（解析语义单一来源是配置模块纯函数；原始 env 读取为过渡读取点）。 */
-function resolveLazy(): boolean {
-  return parseLazyMode(process.env[ENV_WIN_SHELL_LAZY]);
-}
-
 /**
  * tool_groups handler 工厂。
  *
@@ -158,11 +151,15 @@ function resolveLazy(): boolean {
  *   注意缺省必须在闭包内惰性解析而非参数默认值：本模块由 registry 转载入，
  *   初始化期读取 builtinTools 会踩 ESM 循环 TDZ（同 batch.ts 裁决）。
  *   白名单部署子表经 {@link createScopedToolGroupsTool} 注入（工单 11-05）。
+ * @param lazy 是否懒模式（决定 visible 字段附加与否）；缺省 false。
+ *   值由装配期（createServer 的 lazy 选项）注入，本模块不读 process.env。
  */
 export function createToolGroupsHandler(
   pool?: readonly Tool[],
+  lazy?: boolean,
 ): () => Promise<AnyToolResult> {
-  return async () => ok({ groups: buildGroups(resolveLazy(), pool ?? builtinTools) });
+  const resolvedLazy = lazy ?? false;
+  return async () => ok({ groups: buildGroups(resolvedLazy, pool ?? builtinTools) });
 }
 
 /** 默认 handler：统计口径为全量注册表（既有行为，向后兼容）。 */
@@ -187,8 +184,12 @@ export const toolGroupsTool: Tool = {
  * 副本共享 schema/annotations，仅替换 handler，listTools 输出与原工具无差别。
  *
  * @param pool 部署子表（含本副本自身）
+ * @param lazy 是否懒模式（装配期注入，见 createToolGroupsHandler）
  * @returns 统计口径受限的 tool_groups 工具副本
  */
-export function createScopedToolGroupsTool(pool: readonly Tool[]): Tool {
-  return { ...toolGroupsTool, handler: createToolGroupsHandler(pool) };
+export function createScopedToolGroupsTool(
+  pool: readonly Tool[],
+  lazy?: boolean,
+): Tool {
+  return { ...toolGroupsTool, handler: createToolGroupsHandler(pool, lazy) };
 }

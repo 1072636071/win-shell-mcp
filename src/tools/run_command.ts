@@ -6,12 +6,11 @@
  * 不经过 shell，适合调用带空格路径或需精确参数的程序（如 ["C:\\Program Files\\app.exe", "a b"]）。
  */
 
-import { spawn } from "node:child_process";
 import { z } from "zod";
 import { ok, fail, type AnyToolResult } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { failFromError } from "../utils/errors.js";
-import { decodeBuffer } from "../encoding/detect.js";
+import { runCommand } from "../exec/run.js";
 import type { Tool } from "../registry.js";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -24,109 +23,6 @@ export type RunCommandResult = {
   signal: string | null;
   truncated: boolean;
 };
-
-async function spawnCommand(opts: {
-  command: string;
-  args: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  timeoutMs: number;
-  maxOutputBytes: number;
-  encoding?: "utf8" | "gbk";
-  stdin?: string;
-}): Promise<RunCommandResult> {
-  const {
-    command,
-    args,
-    cwd,
-    env,
-    timeoutMs,
-    maxOutputBytes,
-    encoding,
-    stdin,
-  } = opts;
-  const hasStdin = typeof stdin === "string";
-  const proc = spawn(command, args, {
-    cwd: cwd ?? process.cwd(),
-    env: { ...process.env, ...(env ?? {}) },
-    windowsHide: true,
-    stdio: hasStdin ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
-  });
-
-  // 写入 stdin 后关闭
-  if (hasStdin && proc.stdin) {
-    try {
-      proc.stdin.write(stdin as string);
-      proc.stdin.end();
-    } catch {
-      // 子进程已关闭 stdin，忽略 EPIPE
-    }
-  }
-
-  const stdoutChunks: Buffer[] = [];
-  const stderrChunks: Buffer[] = [];
-  let truncated = false;
-
-  const onData = (
-    buf: Buffer,
-    sink: (b: Buffer) => void,
-    acc: { total: number },
-  ) => {
-    const remaining = maxOutputBytes - acc.total;
-    if (remaining <= 0) {
-      // 已达预算上限，丢弃后续字节
-      truncated = true;
-      return;
-    }
-    // 保留预算内前缀；若本块局部越限则仅取前缀（尾截而不整块丢弃）
-    const slice = buf.length > remaining ? buf.subarray(0, remaining) : buf;
-    acc.total += slice.length;
-    if (slice.length < buf.length) truncated = true;
-    sink(slice);
-  };
-
-  const stdoutAcc = { total: 0 };
-  const stderrAcc = { total: 0 };
-  proc.stdout?.on("data", (b: Buffer) =>
-    onData(b, (c) => stdoutChunks.push(c), stdoutAcc),
-  );
-  proc.stderr?.on("data", (b: Buffer) =>
-    onData(b, (c) => stderrChunks.push(c), stderrAcc),
-  );
-
-  let spawnError: Error | null = null;
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    proc.kill("SIGKILL");
-  }, timeoutMs);
-  let signal: string | null = null;
-  const exitCode = await new Promise<number | null>((resolve) => {
-    proc.on("close", (c, sig) => {
-      signal = sig ?? null;
-      resolve(c);
-    });
-    proc.on("error", (e) => {
-      spawnError = e as Error;
-      resolve(null);
-    });
-  });
-  clearTimeout(timeout);
-
-  if (spawnError) throw spawnError;
-  if (timedOut) {
-    const err = new Error(
-      `命令执行超时（${timeoutMs}ms）`,
-    ) as NodeJS.ErrnoException;
-    err.code = ErrorCode.EXEC_TIMEOUT;
-    throw err;
-  }
-
-  // concat 后统一解码，避免 GBK 多字节序列在 chunk/截断边界被切断而乱码（对齐 shell_exec）
-  const stdout = decodeBuffer(Buffer.concat(stdoutChunks), encoding);
-  const stderr = decodeBuffer(Buffer.concat(stderrChunks), encoding);
-  return { stdout, stderr, exitCode, signal, truncated };
-}
 
 /**
  * run_command 输出 schema（描述 success data 结构，不含 ok 包装）。
@@ -195,21 +91,37 @@ const runCommandTool: Tool = {
       stdin?: string;
     };
     if (!command) return fail(ErrorCode.EINVAL, "command is required");
-    try {
-      const res = await spawnCommand({
-        command,
-        args: args ?? [],
-        cwd,
-        env,
-        timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        maxOutputBytes: maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
-        encoding,
-        stdin,
-      });
-      return ok(res);
-    } catch (e) {
-      return failFromError(e);
+    // 子进程机器委托给命令执行深模块（src/exec/run.ts）：spawn、输出字节预算、
+    // 超时进程树杀、GBK 解码、signal 一次收敛。
+    const outcome = await runCommand(command, args ?? [], {
+      cwd: typeof cwd === "string" && cwd.length > 0 ? cwd : undefined,
+      env: env !== undefined ? { ...process.env, ...env } : undefined,
+      timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      maxOutputBytes: maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
+      encoding,
+      stdin,
+    });
+
+    if (outcome.spawnError !== undefined) {
+      // 复现 spawn 失败语义（ENOENT 等经错误映射转标准码）
+      const err = new Error(outcome.spawnError.message) as NodeJS.ErrnoException;
+      if (outcome.spawnError.code !== undefined) err.code = outcome.spawnError.code;
+      return failFromError(err);
     }
+    if (outcome.timedOut) {
+      return fail(
+        ErrorCode.EXEC_TIMEOUT,
+        `命令执行超时（${timeoutMs ?? DEFAULT_TIMEOUT_MS}ms）`,
+      );
+    }
+
+    return ok({
+      stdout: outcome.stdout,
+      stderr: outcome.stderr,
+      exitCode: outcome.signal != null ? null : outcome.exitCode,
+      signal: outcome.signal ?? null,
+      truncated: outcome.stdoutTruncated || outcome.stderrTruncated,
+    });
   },
 };
 
