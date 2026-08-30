@@ -30,8 +30,11 @@ import { builtinTools } from "../../src/registry.js";
  * 工单 18 后未随中间 schema 增长重取基线，护栏已在 HEAD 失效（实测 53075）。
  * 工单 20（2026-08-28）：架构深化批量改动，net_download 超时错误文案
  * EXEC_TIMEOUT→NET_TIMEOUT（-1 字符），重取基线实测 53074。
+ * 提示词工程改造（2026-08-28）：text_grep / text_replace / search_content 的
+ * 双模语义收敛到 pattern 参数说明（单一来源），工具描述去掉复述与实现叙述，
+ * 重取基线实测 52836。
  */
-const METADATA_BUDGET = 53074;
+const METADATA_BUDGET = 52836;
 
 /** description 长度软上限（字符）。 */
 const DESCRIPTION_MAX = 150;
@@ -41,10 +44,12 @@ const DESCRIPTION_MAX = 150;
  *
  * 原则：仅当字段名 + 类型表达不了的陷阱语义确实需要保留时才豁免；
  * 豁免工具必须真实超长（下方有防死豁免断言），精简后应立即移除。
+ *
+ * 清空记录：text_replace 曾因双模陷阱语义豁免（237 字符）；该事实改由
+ * `pattern` 参数说明承载（src/utils/pattern.ts 的 patternConvention），
+ * 描述降至 100 字符后按规则移除豁免。
  */
-const DESCRIPTION_EXCEPTIONS: Readonly<Record<string, string>> = {
-  text_replace: "双模（literal/regex）陷阱语义，字段名表达不了",
-};
+const DESCRIPTION_EXCEPTIONS: Readonly<Record<string, string>> = {};
 
 describe("工单 01 元数据预算护栏", () => {
   it("JSON.stringify(listTools()) 长度 ≤ 预算常量", () => {

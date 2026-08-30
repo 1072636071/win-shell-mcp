@@ -3,6 +3,53 @@
 本文件记录 win-shell-mcp 的显著变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循 0.x 语义化（0.x 发布前窗口允许破坏性修改，正式发布后只加不改，见 ADR-0007）。
 
+## [Unreleased]
+
+### Added
+
+- **相对路径基准可注入**：新增 `src/config/cwd.ts`（与 `config/truncate.ts` 同形的
+  config 锥体叶子）。MCP stdio 入口读 `WIN_SHELL_CWD`，DSH 插件面读
+  `config.cwd`；未注入时基准仍实时取 `process.cwd()`（`chdir` 语义零破坏）。基准是
+  进程级唯一值：重复同值 no-op，异值注入抛错，不静默取其一。9 个
+  `path`/`cwd`/`pwd` 兜底点改为共用该基准。
+- **WShell 三模式 preset 注入 `cwd: !!js process.env.DSH_CWD ?? process.cwd()`**，
+  persona 相应陈述 `Relative paths resolve against {{cwd}}.` —— 模型不必再花一轮调
+  `pwd` 探相对路径基准。
+- **提示词工程文档**：`docs/提示词工程/`（README + 三模式提示词）。三模式**生效
+  英文全文**与**中文阅读对照**并列存放，中文版仅供阅读、不进入任何运行时；另附
+  每条 prompt 事实的唯一归属表与目录成本实测口径。
+- **两个护栏**：`tests/tools/guard-pattern-convention.test.ts`（双模语义只写在
+  `pattern` 参数说明里、描述不得复述）与 `tests/config/cwd.test.ts`
+  （基准注入/回落/冲突即抛）。
+
+### Changed
+
+- **pattern 字面量/正则双模语义收敛为单一来源**：`src/utils/pattern.ts` 新增
+  `patternConvention(flags)`，从 flags 白名单派生文本。此前该事实在
+  `text_grep` / `search_content` / `text_replace` 三条工具描述里各写一遍（措辞三样），
+  且与各自的 `pattern` 参数说明重复；现在每个工具只在其参数说明里出现一次，描述
+  只留 schema 表达不了的行为契约。`text_replace` 描述 237 → 100 字符，退出
+  `DESCRIPTION_EXCEPTIONS` 豁免清单；元数据总预算 53,074 → 52,836。
+- **批量模式的 persona 退回与标准模式逐字相同**：「多步操作优先一次完成」的引导
+  由 `batch_run` 工具描述独占（两种交付形态共用），批量模式与标准模式的差异只在
+  目录放行 `batch_run`。见 ADR-0018 修订记录。
+- **全量模式 persona 承载两条必要 guidance**（plan 行为边界、委派默认后台并行）：
+  它保留 `complete: true`，而 DSH 的装配收尾会把除 persona 以外的所有 prompt
+  section 丢弃，本组合挂的 plan 政策与原生工具 guidance（约 2.2K 字符）此前一个
+  字都到不了模型。`dsh-plan-mode` 必填的 `section` 值改为与 persona 的 plan 条款
+  逐字同源（648 → 576 字符），由单测断言一致。精简时曾把「用户的对话式同意不构成
+  批准」误写成「你自己的对话式同意」（主语错位），并漏掉「只能由 exit_plan_mode
+  成功或用户切换模式才离开 plan 模式」；两处已按原文语义回补。
+- **文档口径修正**：`docs/dsh/wshell-modes.md` 目录数按代码取 标准 64 / 批量 65
+  （lsp 早于 commit b8c76c2 移出标准与批量模式，文档未跟）；目录成本改用 DSH 实际
+  发送的 `{name, description, parameters}` 形状度量 —— 58 域工具 24,716 字符，其中
+  input schema 占 73%，旧「仅描述字符 + 3.5 字符/token」口径低估 4–5 倍。
+  `README.md` 补 `WIN_SHELL_TRUNCATE` 与 `WIN_SHELL_CWD` 小节。
+
+### 验证
+
+`npx tsc --noEmit` 通过；全量单测通过（含本轮新增用例）。
+
 ## [0.2.0] - 2026-08-25
 
 ### Added

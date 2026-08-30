@@ -17,6 +17,7 @@ import { readTextAutoDetect, splitLines } from "../utils/readText.js";
 import { isLikelyGBK, decodeBuffer } from "../encoding/detect.js";
 import {
   parsePattern,
+  patternConvention,
   prepareMatcher,
   REPLACE_PATTERN_FLAGS,
   SEARCH_PATTERN_FLAGS,
@@ -60,9 +61,7 @@ export const textGrepInputSchema = z.object({
   pattern: z
     .string()
     .min(1)
-    .describe(
-      "默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s）",
-    ),
+    .describe(patternConvention(SEARCH_PATTERN_FLAGS)),
   ignoreCase: z.boolean().optional(),
   context: z
     .number()
@@ -188,7 +187,7 @@ export const textGrepTool: Tool = {
   name: "text_grep",
   domain: "text",
   description:
-    "单文件搜匹配行（≈ grep）。pattern 默认字面量子串（元字符原样，反斜杠路径免转义）；/正则/ 包裹启用正则（flags i/m/s，体内 \\/）。歧义向字面量收敛。残余洞:/tmp/ 类短串被判正则，异常偏多附 hint。返回匹配行±context、count、patternMode。",
+    "单文件搜匹配行（≈ grep）。返回匹配行±context、count、patternMode。",
   inputSchema: textGrepInputSchema,
   outputSchema: textGrepOutputSchema,
   annotations: { readOnlyHint: true },
@@ -581,9 +580,7 @@ export const textReplaceInputSchema = z.object({
   pattern: z
     .string()
     .min(1)
-    .describe(
-      "默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s/g）",
-    ),
+    .describe(patternConvention(REPLACE_PATTERN_FLAGS, "g 表全量")),
   replacement: z
     .string()
     .describe(
@@ -1026,7 +1023,7 @@ export const textReplaceTool: Tool = {
   name: "text_replace",
   domain: "text",
   description:
-    "在文件中查找替换（≈ sed）。pattern 默认字面量子串（元字符原样、反斜杠路径免转义），replacement 纯字面插入（回引用不展开）；/正则/ 启用正则（flags i/m/s/g，replacement 支持 $1/$&/$$，g 表全量）。替换数量永不静默：0 命中报错；1 命中自动替换；多命中须 all:true 或 maxReplace:N 表态否则拒绝。write:true 原地写回（沿用源编码）。残余洞同搜索工具。返回 patternMode。",
+    "在文件中查找替换（≈ sed）。替换数量永不静默：0 命中报错；1 命中自动替换；多命中须 all:true 或 maxReplace:N 表态否则拒绝。write:true 原地写回（沿用源编码）。",
   inputSchema: textReplaceInputSchema,
   outputSchema: textReplaceOutputSchema,
   // write=true 时原地修改文件，destructiveHint: true

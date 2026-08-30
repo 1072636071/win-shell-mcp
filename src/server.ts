@@ -32,10 +32,13 @@ import {
   ENV_WIN_SHELL_TOOLS,
   ENV_WIN_SHELL_LAZY,
   ENV_WIN_SHELL_TRUNCATE,
+  ENV_WIN_SHELL_CWD,
   notExposedMessage,
   parseLazyMode,
   parseTruncateLimit,
+  parseCwdOverride,
 } from "./config/env.js";
+import { setDefaultCwd } from "./config/cwd.js";
 import { projectToolEntry, type ToolMcpEntry } from "./project.js";
 import {
   scopeMetaToolsToDeployment,
@@ -238,6 +241,12 @@ export async function startStdioServer(): Promise<Server> {
     throw new Error(truncateResult.reason);
   }
   setTruncateLimit(truncateResult.limit);
+
+  // WIN_SHELL_CWD：相对路径基准。未设置时不注入，基准继续实时取 process.cwd()。
+  const cwdOverride = parseCwdOverride(process.env[ENV_WIN_SHELL_CWD]);
+  if (cwdOverride !== undefined) {
+    setDefaultCwd(cwdOverride);
+  }
 
   const lazy = parseLazyMode(process.env[ENV_WIN_SHELL_LAZY]);
   const tables = assembleDeployment({

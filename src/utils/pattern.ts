@@ -27,6 +27,29 @@ export const SEARCH_PATTERN_FLAGS: readonly string[] = ['i', 'm', 's'];
 /** replace 场景合法 flags：搜索三标志外加 g（全量替换语义开关，ADR-0013 决策 2）。 */
 export const REPLACE_PATTERN_FLAGS: readonly string[] = [...SEARCH_PATTERN_FLAGS, 'g'];
 
+/**
+ * 模型可见的 pattern 双模语义说明（ADR-0013 决策 2 的对外口径）。
+ *
+ * 该事实的全部模型可见表述都以本函数为唯一来源：工具描述与 `pattern` 参数说明
+ * 从中取值，flags 段直接由白名单常量派生，白名单变更不会留下过期副本。
+ * 首尾斜杠歧义按 ADR-0013 保留在句内——模型事前避开比事后读 hint 少一轮。
+ *
+ * @param flags - 该工具接受的正则 flags 白名单
+ * @param tail - 该工具独有的补充口径（如 replace 的 `g` 与回引用），原样附在句末
+ * @returns 一句中文说明，不含句末标点，供描述拼接
+ */
+export function patternConvention(
+  flags: readonly string[],
+  tail = '',
+): string {
+  const base =
+    'pattern 默认按字面量子串匹配（元字符原样、反斜杠路径免转义），' +
+    '`/…/` 包裹按正则解析（flags ' +
+    flags.join('/') +
+    '）；歧义向字面量收敛，首尾斜杠的字面量会被判为正则';
+  return tail === '' ? base : `${base}；${tail}`;
+}
+
 /** pattern 双模解析结果。 */
 export type PatternParseResult =
   | { ok: true; mode: 'literal'; value: string }

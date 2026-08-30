@@ -8,6 +8,7 @@ import { z } from "zod";
 import { ok, fail } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
 import { toDisplay } from "../utils/path.js";
+import { getDefaultCwd } from "../config/cwd.js";
 import type { Tool } from "../registry.js";
 
 /** pwd 输出 schema：返回当前工作目录绝对路径。 */
@@ -23,7 +24,7 @@ const pwdTool: Tool = {
   outputSchema: pwdOutputSchema,
   annotations: { readOnlyHint: true },
   async handler() {
-    return ok({ cwd: toDisplay(process.cwd()) });
+    return ok({ cwd: toDisplay(getDefaultCwd()) });
   },
 };
 

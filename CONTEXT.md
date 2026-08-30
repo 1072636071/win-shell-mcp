@@ -38,7 +38,9 @@ win-shell-mcp —— AI 原生的跨平台命令抽象层。用 Node.js 实现�
 | 规范 JSON 值 | dsh 概念：工具主体返回的、匹配 output schema 的精确结构化值（canonical value），区别于 Native 渲染内容；win-shell-mcp 的 `AnyToolResult.data` 即规范值载体（memorial 006） |
 | outputSchema | 每工具声明的成功返回数据结构（zod→JSON Schema），一鱼三吃：MCP structuredContent + dsh defineTool 强制项 + Code Mode SDK 类型推导（memorial 006 / ADR-0014） |
 | JX 模式 | dsh 用户级 agent preset（会话工作模式）：标准能力 + 两条规则——工具优先 win-shell-mcp、过程事实沉淀进知识库 MCP（imagetutu/jxk）；权威模板在本仓库 `docs/dsh/`，部署于 `~/.dsh/.agent-presets/jx-mode/` |
-| pattern 双模约定 | pattern 类参数统一语义：默认按字面量子串匹配（`.` `\` `*` 等原样），`/…/` 包裹启用正则（flags：i/m/s，replace 另收 g）；判定规则严格、任何歧义一律向字面量收敛；结构似正则但 flags 非法则 EINVAL 报错（ADR-0013） |
+| pattern 双模约定 | pattern 类参数统一语义：默认按字面量子串匹配（`.` `\` `*` 等原样），`/…/` 包裹启用正则（flags：i/m/s，replace 另收 g）；判定规则严格、任何歧义一律向字面量收敛；结构似正则但 flags 非法则 EINVAL 报错（ADR-0013）。模型可见表述由 `src/utils/pattern.ts` 的 `patternConvention(flags)` 单源生成，只写在 `pattern` 参数说明里，工具描述不复述 |
+| 相对路径基准 | 各工具 `path`/`cwd` 参数缺省时的解析起点，`pwd` 报出的也是它。由部署注入：MCP 面 `WIN_SHELL_CWD`、DSH 插件面 `config.cwd`（WShell 三模式 preset 取 `DSH_CWD ?? process.cwd()`）；未注入时实时取进程 `process.cwd()`。基准是进程级唯一值，注入冲突即抛错不静默取舍（`src/config/cwd.ts`）。它同时是提示词事实：persona 用 `{{cwd}}` 陈述同一值，模型才不必多花一轮探路 |
+| 提示词单一归属 | 每条模型可见事实恰有一个归属地（persona / 工具描述 / 参数说明 / preset 目录构成），第二处复述就是漂移源。归属表与三模式生效提示词全文（英文）+ 中文阅读版见 `docs/提示词工程/`；批量归 `batch_run` 描述、双模归 `pattern` 参数说明、路径基准归 persona + preset 的 `cwd` 行、plan 政策与后台委派归全量 persona（ADR-0018 修订记录） |
 | 响错误 / 哑错误 | 误用后果分类：哑错误 = 调用方误用后仍得到看似正常的结果（如正则语义下 `foo.ts` 错配 `foopts`），坏数据带着流程继续跑；响错误 = 失败显式可见（0 命中 / 报错 + hint），调用方一轮内自纠。工具设计目标：把哑错误变响错误（ADR-0013 可观测层的立项原则） |
 | 命令执行模块 | 深模块（`src/exec/run.ts`）：统一拥有子进程执行机器（spawn、输出收集、超时、进程树终止、GBK 解码），接口只有 `runCommand`；shell_exec、pkg_run、git 均调用它（见 ADR-0003） |
 | batch_run | 批量编排 meta 工具：一次 CallToolRequest 内串行执行一串步骤，每步可附 `assert`（路径+操作符，eq/neq/gt/gte/lt/lte/in/re/truthy/falsy），步骤间以 `{{stepId.output.path}}` 模板引用前序输出（整串单引用保原类型）；任一步失败或断言不满足即短路。默认极简输出仅 `{ allOk, summary }`（失败附 `failedStep` 诊断），`verbose: true` 才返回每步完整 `steps`（ADR-0015 / memorial 007；工单 09 修订） |

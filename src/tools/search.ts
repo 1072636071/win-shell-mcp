@@ -21,7 +21,8 @@ import {
   type AnyToolResult,
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
-import { parsePattern, prepareMatcher, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
+import { parsePattern, prepareMatcher, patternConvention, SEARCH_PATTERN_FLAGS } from "../utils/pattern.js";
+import { resolveCwd } from "../config/cwd.js";
 import { buildSearchHint } from "../utils/hints.js";
 import { splitLines } from "../utils/readText.js";
 import { globToRegExp, isValidGlob } from "../utils/glob.js";
@@ -104,7 +105,7 @@ function parseExclude(rawExclude: unknown): AnyToolResult | RegExp[] {
 
 export const searchGlobInputSchema = z.object({
   pattern: z.string().min(1).describe("支持 *、**、?、[]"),
-  cwd: z.string().optional().describe("默认 process.cwd()"),
+  cwd: z.string().optional().describe("默认工作目录"),
   recursive: z.boolean().optional().describe("默认 true"),
   maxResults: z.number().int().positive().optional(),
   exclude: z
@@ -122,7 +123,7 @@ export async function searchGlobHandler(
   if (typeof pattern !== "string" || pattern.length === 0) {
     return fail(ErrorCode.EINVAL, "pattern 不能为空");
   }
-  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const cwd = resolveCwd(args["cwd"]);
   const recursive = (args["recursive"] as boolean | undefined) ?? true;
   const maxResults = args["maxResults"] as number | undefined;
 
@@ -193,10 +194,8 @@ export const searchContentInputSchema = z.object({
   pattern: z
     .string()
     .min(1)
-    .describe(
-      "默认字面量子串（元字符原样，反斜杠免转义）；/正则/ 启用正则（flags i/m/s）",
-    ),
-  cwd: z.string().optional().describe("默认 process.cwd()"),
+    .describe(patternConvention(SEARCH_PATTERN_FLAGS)),
+  cwd: z.string().optional().describe("默认工作目录"),
   glob: z.string().optional().describe("默认 **/*"),
   exclude: z
     .array(z.string())
@@ -221,7 +220,7 @@ export async function searchContentHandler(
   if (typeof pattern !== "string" || pattern.length === 0) {
     return fail(ErrorCode.EINVAL, "pattern 不能为空");
   }
-  const cwd = (args["cwd"] as string | undefined) ?? process.cwd();
+  const cwd = resolveCwd(args["cwd"]);
   const globPattern = (args["glob"] as string | undefined) ?? "**/*";
   const ignoreCase = (args["ignoreCase"] as boolean | undefined) ?? false;
   const maxResults = args["maxResults"] as number | undefined;
@@ -351,7 +350,7 @@ export const searchContentTool: Tool = {
   name: "search_content",
   domain: "search",
   description:
-    "跨文件递归搜内容（≈ grep -r），返回[{file,line,text}]。pattern 默认字面量子串（元字符原样，反斜杠路径免转义）；/正则/ 启用正则（flags i/m/s，体内 \\/）。向字面量收敛。残余洞/tmp/类短串判正则，异常偏多附hint。区别text_grep：跨文件。",
+    "跨文件递归搜内容（≈ grep -r），返回[{file,line,text}]。与 text_grep 唯一差别是搜索范围。",
   inputSchema: searchContentInputSchema,
   outputSchema: searchContentOutputSchema,
   annotations: { readOnlyHint: true },

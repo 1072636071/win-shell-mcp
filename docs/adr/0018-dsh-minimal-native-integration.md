@@ -34,3 +34,32 @@ DSH 极简模式（minimal preset）以「2 工具 + 单行 persona」取得更�
 - DSH 工具成组注册（tool-fs 4 个、tool-web 2 个一组），目录构成按组挂载，无法精确到单工具（除非自定义过滤，已否决复杂度）。
 - DSH 侧描述精简波及 ~20 个包、影响内置 minimal preset 锚定表面，需 DSH 侧重新验证；DSH 侧改动由该仓库 Agent Note/PR 流程约束。
 - 实施顺序建议：DSH 侧描述精简（全局受益）→ win-shell-mcp bundle 插件三 preset → 验证目录 token 与轨迹。
+
+## 修订记录
+
+### 2026-08-28 提示词工程改造（决策不变，四项口径修正）
+
+1. **批量规则的归属地从 persona 改到 `batch_run` 工具描述。** 原决策 2 写的是
+   「批量模式 = 标准模式 + persona 注入批量规则」。实施后发现该规则与
+   `batch_run` 描述里的引导句逐字重复，且 win-shell-mcp 有 MCP 与 DSH 两种交付
+   形态、MCP 形态没有 persona——只有工具描述能同时覆盖两侧。规则留在描述后，
+   三模式 persona 逐字相同，批量模式的差异只在目录（放行 `batch_run`）。
+2. **标准/批量目录数以代码为准：64 / 65，不含 lsp。** 正文写的「+ lsp = 65」是
+   PRD 期口径；commit b8c76c2 已把 `tool-lsp` 行从这两个 preset 移除（lsp 是可选
+   能力，非所有 DSH 部署安装）。需要 lsp 走全量模式。
+3. **persona 由「单行身份」扩为「身份 + 相对路径基准」，全量模式另带两条
+   guidance。** 两个动因：① 相对路径基准原先是模型的盲区（基准 = 宿主进程
+   cwd，模型无从得知，只能多花一轮调 `pwd`），现由 preset 的 `cwd` 行与
+   `{{cwd}}` 同源陈述；② `complete: true` 在 DSH 装配收尾会丢弃除 persona 以外的
+   所有 section，本组合挂的 plan 政策与 subagent/workflow/ralph/jobs 原生
+   guidance（约 2.2K 字符）都不渲染——不写进 persona，模型就拿到工具 schema 却
+   拿不到行为边界。取舍边界：只补影响"能不能安全做完"的两条。
+4. **目录 token 口径修正：必须含 input schema，且中英混排不能按英文折算。**
+   正文的「~4.5K 描述」与彼时表格只数 description 字符、按 3.5 字符/token 折算，
+   实测按 DSH 发给模型的 `{name, description, parameters}` 形状：58 域工具
+   24,716 字符，其中 input schema 占 73%、描述只占 15%，且描述与参数说明里 CJK
+   占约 34%。量级为 6.5–7.5K token 一档，旧值低估 4–5 倍。结论随之调整：目录
+   降本的真杠杆在 schema（参数数量、可选参数、近义工具合并），不在描述措辞。
+
+三模式生效提示词全文（英文）与中文阅读版、每条事实的归属地与把守门禁，见
+[docs/提示词工程/](../提示词工程/README.md)。

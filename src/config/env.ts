@@ -20,6 +20,28 @@ export const ENV_WIN_SHELL_LAZY = "WIN_SHELL_LAZY";
 /** `WIN_SHELL_TRUNCATE` —— 内容截断阈值环境变量名（工单 15-02）。 */
 export const ENV_WIN_SHELL_TRUNCATE = "WIN_SHELL_TRUNCATE";
 
+/** `WIN_SHELL_CWD` —— 相对路径基准目录环境变量名。 */
+export const ENV_WIN_SHELL_CWD = "WIN_SHELL_CWD";
+
+/**
+ * 解析 `WIN_SHELL_CWD` 相对路径基准。
+ *
+ * - undefined / 空串 / 纯空白 → undefined，即不注入，基准继续实时取
+ *   `process.cwd()`（零破坏）。
+ * - 其他值 → trim 后的目录字符串，交由调用方注入 `setDefaultCwd`。
+ *
+ * 不做存在性校验：基准目录可能由调用方稍后才创建，且 `path.resolve` 对不存在的
+ * 目录同样成立；把不存在的目录变成启动期硬错误对部署方收益为负。
+ *
+ * @param raw 环境变量原始字符串或 undefined（非 process.env 本身）
+ * @returns 注入用的基准目录，或 undefined 表示不注入
+ */
+export function parseCwdOverride(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 /** 白名单解析成功结果：names 为去重后的正名集合；空集合表示未配置白名单（全量）。 */
 export interface ToolsWhitelistOk {
   ok: true;

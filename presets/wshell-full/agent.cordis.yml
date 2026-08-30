@@ -1,6 +1,7 @@
 # The `wshell-full` (WShell 全量模式) agent preset: 以 DSH 官方 `standard`
 #（完整编码 agent）原生工具组合为基线，叠加 win-shell-mcp 全部命令工具，能力
-# 最大化；persona 保持单行极简。目录构成 = 58 win-shell 域工具 + DSH core
+# 最大化。persona = 极简身份 + 本模式独有的两条 guidance（plan 政策、默认后台
+# 并行委派）；目录构成 = 58 win-shell 域工具 + DSH core
 # 原生工具（subagent/subagent_fork/workflow/ralph/goal/jobs/fs/fs-search/
 # skill/todo/ask-user/web/plan-mode 等）。裁定见工单 06 评论：剔除
 # experimental/opt-in 包（@deepseek-ai/dsh-experimental-tool-agent-team、
@@ -14,12 +15,26 @@
 # report 属 host-plane 不在本组合挂。
 
 # ── identity ────────────────────────────────────────────────────────────────
-# 单行极简 persona（对齐官方 Minimal preset），不注入任何工具映射表或规则
-# 堆砌；complete 视为完整系统提示、includeRuntimeContext 不注入上下文快照。
+# 极简立场保留（complete 视为完整系统提示、不注入上下文快照），但必须自己
+# 承载两条 guidance：`complete:true` 在 dsh 的装配收尾会把除本段以外的所有
+# section 丢掉（system-prompt/src/index.ts 的 completeSection 分支），本组合
+# 挂的 plan-mode 段与 subagent/workflow/ralph/jobs 原生 guidance 段因此都不
+# 渲染。不补进 persona，模型就拿到工具 schema 却拿不到用法边界。
+# 取舍：只补影响"能不能安全做完"的两条，其余能力交给 schema 自述。
+# `{{cwd}}` 与下面 tool-win-shell 的 `cwd` 同源（DSH_CWD ?? process.cwd()）。
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: You are a helpful software engineer assistant.
+    text: >-
+      You are a helpful software engineer assistant. Relative paths resolve against {{cwd}}.
+      While plan mode is active, stay in it until exit_plan_mode succeeds or the user switches the session
+      mode. Read and search only: no edits, no formatters or code generation that rewrites tracked files,
+      no commits. Imperative requests mean plan the work, not do it; a user's conversational agreement,
+      including an answer confirming something you asked, approves nothing. Submit the finished
+      decision-complete plan as markdown with a # title through exit_plan_mode, as the only and final tool
+      call of that response; if a review rejects it, fold the feedback in and present again.
+      Delegate with subagent in the background by default: start independent delegations together in one
+      response and keep working meanwhile, and wait only when your next step needs that result.
     complete: true
     includeRuntimeContext: false
 
@@ -28,10 +43,12 @@
 # meta 工具（batch_run / tool_groups / list_domain_tools），win-shell 贡献
 # 58 域工具（与标准/批量模式同口径；全量模式为何仍剔 meta：meta 为目录导航
 # 工具，进全量目录属噪音，见工单 06 口径）。
+# `cwd` 把相对路径基准钉到会话工作目录，与 persona 的 {{cwd}} 同源。
 - id: tool-win-shell
   name: ./tool-win-shell.mjs
   config:
     exclude: [batch_run, tool_groups, list_domain_tools]
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
 
 # ── shell ───────────────────────────────────────────────────────────────────
 # 一次性 shell 栈按平台二选一（win32 挂 pwsh、POSIX 挂 bash），与原版
@@ -78,8 +95,17 @@
     - id: plan-mode
       name: '@deepseek-ai/dsh-plan-mode'
       config:
-        section: |
-              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it; a user's conversational agreement approves nothing. Explore first with non-mutating reads and searches, ground the plan in the actual repository, and do not edit files, run formatters, or commit while planning. When ready, call exit_plan_mode with the complete decision-complete plan as markdown starting with a # title; make it the only and final tool call in that response. If review rejects it, fold the feedback in and present again.
+        # dsh-plan-mode 的 Config 强制 `section` 为非空字符串，无法省略。上面
+        # persona 的 complete:true 会把本段排除在渲染之外，所以它是配置形状而非
+        # 模型可见文本；真正生效的是 persona 里那句同文的 plan 政策。
+        # 两处必须逐字一致，由 presets.test.ts 的同源断言把守（改一处即红）。
+        section: >-
+          While plan mode is active, stay in it until exit_plan_mode succeeds or the user switches the session
+          mode. Read and search only: no edits, no formatters or code generation that rewrites tracked files,
+          no commits. Imperative requests mean plan the work, not do it; a user's conversational agreement,
+          including an answer confirming something you asked, approves nothing. Submit the finished
+          decision-complete plan as markdown with a # title through exit_plan_mode, as the only and final tool
+          call of that response; if a review rejects it, fold the feedback in and present again.
 
 # ── delegation and workflows ────────────────────────────────────────────────
 # 与官方 `standard` preset 相同的 delegation 组合：subagents registry 在

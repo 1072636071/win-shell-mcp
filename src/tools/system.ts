@@ -12,6 +12,7 @@ import { z } from "zod";
 import { ok, withVerbose, type AnyToolResult } from "../contract/output.js";
 import { toFail } from "../utils/errors.js";
 import { IS_WIN } from "../utils/platform.js";
+import { getDefaultCwd, resolveCwd } from "../config/cwd.js";
 import type { Tool } from "../registry.js";
 
 /** 输入 schema：verbose 可选布尔。 */
@@ -99,7 +100,7 @@ export async function systemInfoHandler(
     arch: os.arch(),
     platform: os.platform(),
     hostname: os.hostname(),
-    cwd: process.cwd(),
+    cwd: getDefaultCwd(),
     node: process.version,
     time: new Date().toISOString(),
   };
@@ -169,7 +170,7 @@ export const systemInfoTool: Tool = {
  * 返回 { total, free, used, path }，单位字节。
  */
 
-/** 输入 schema：path 可选，默认 process.cwd()；all 可选，枚举所有磁盘。 */
+/** 输入 schema：path 可选，默认工作目录基准；all 可选，枚举所有磁盘。 */
 export const systemDiskInputSchema = z.object({
   path: z.string().optional().describe("默认当前工作目录"),
   all: z.boolean().optional().describe("枚举所有盘，返回 {disks}"),
@@ -351,8 +352,7 @@ export async function systemDiskHandler(
     return ok(result) as unknown as AnyToolResult;
   }
 
-  const path =
-    typeof rawPath === "string" && rawPath.length > 0 ? rawPath : process.cwd();
+  const path = resolveCwd(rawPath);
 
   try {
     const stats = await statfs(path);

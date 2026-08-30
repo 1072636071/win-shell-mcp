@@ -19,6 +19,7 @@ import {
   type AnyToolResult,
 } from "../contract/output.js";
 import { ErrorCode } from "../contract/errors.js";
+import { resolveCwd } from "../config/cwd.js";
 import { runCommand } from "../exec/run.js";
 import type { Tool } from "../registry.js";
 
@@ -77,14 +78,13 @@ function gitError(stderr: string, subcommand: string): string {
 }
 
 /**
- * 从参数中提取 cwd，默认 process.cwd()。
+ * 从参数中提取 cwd，默认部署注入的相对路径基准。
  *
  * @param args 工具参数
  * @returns 工作目录
  */
 function getCwd(args: Record<string, unknown>): string {
-  const raw = args["cwd"];
-  return typeof raw === "string" && raw.length > 0 ? raw : process.cwd();
+  return resolveCwd(args["cwd"]);
 }
 
 /**

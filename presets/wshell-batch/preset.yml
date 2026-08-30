@@ -1,3 +1,3 @@
 name: WShell 批量模式
-description: 基于 WShell 标准模式，persona 引导多步操作优先用 batch_run 一次完成。
+description: 与 WShell 标准模式同 persona、同组合，仅目录放行 batch_run；多步一次完成的引导住在该工具描述里。
 order: 7

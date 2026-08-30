@@ -14,6 +14,7 @@
 import { builtinTools, type Tool, type ToolAnnotations } from "./registry.js";
 import { callTool } from "./server.js";
 import { isOk } from "./contract/output.js";
+import { setDefaultCwd } from "./config/cwd.js";
 import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
 
 /** 插件名。 */
@@ -23,6 +24,15 @@ export const name = "tool-win-shell";
 export interface Config {
   /** 按工具名排除（不注册）。 */
   exclude?: string[];
+  /**
+   * 相对路径基准目录（`path`/`cwd` 参数缺省时的解析起点）。
+   *
+   * 省略即沿用宿主进程 `process.cwd()`。preset 通常写成
+   * `!!js process.env.DSH_CWD ?? process.cwd()`，与 DSH 会话目录同源，
+   * 提示词里的 `{{cwd}}` 才成立。基准是进程级唯一值：同一宿主进程内的
+   * 多个 preset 必须注入同一个值，注入不同值直接抛错。
+   */
+  cwd?: string;
 }
 
 /**
@@ -143,6 +153,7 @@ function projectTool(tool: Tool): DshToolDefinition {
  * @param config 插件配置
  */
 export function apply(ctx: CordisPluginContext, config: Config = {}): void {
+  if (config.cwd !== undefined) setDefaultCwd(config.cwd);
   const exclude = new Set(config.exclude ?? []);
   for (const tool of builtinTools) {
     if (exclude.has(tool.name)) continue;

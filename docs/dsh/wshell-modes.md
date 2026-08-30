@@ -2,7 +2,7 @@
 
 > 本文档是 WShell 标准/批量/全量三模式的**权威说明与使用指南**。三模式以
 > `win-shell-mcp` DSH **bundle 插件**提供：一条命令安装后，模式选择器出现三个
-> 「WShell」模式，各自以 native 全量注入、单行极简 persona 工作。
+> 「WShell」模式，各自以 native 全量注入、极简 persona（身份 + 相对路径基准）工作。
 >
 > 与 [JX 模式](./README.md) 并存（分列模式选择器），互不干扰。
 >
@@ -13,15 +13,22 @@
 ## 是什么
 
 WShell 是 win-shell-mcp 的 DSH 插件定制形态：用 `bundle` 插件一键安装三个 agent
-preset，使 DSH 会话 native 呈现 win-shell-mcp 的确定性命令工具（描述精简，
-30–80 字符/条）+ DSH 原生补缺，persona 全程单行极简（`You are a helpful software
-engineer assistant.`；`complete:true` / `includeRuntimeContext:false`）。
+preset，使 DSH 会话 native 呈现 win-shell-mcp 的确定性命令工具（工具描述平均 66
+字符/条）+ DSH 原生补缺。persona 全程 `complete:true` / `includeRuntimeContext:false`，
+正文只有身份句 + 相对路径基准句（`You are a helpful software engineer assistant.
+Relative paths resolve against {{cwd}}.`）；全量模式另带 plan 政策与后台并行委派两条
+guidance。提示词全文、每条事实的归属地与成本实测见
+[docs/提示词工程/](../提示词工程/README.md)。
 
 | 模式 | 目录 | 定位 |
 | --- | --- | --- |
-| **WShell 标准模式**（order 6） | 58 win-shell 域工具 + DSH 原生 fs 组（read/write/edit/read_image）+ web 组（web_fetch/web_search）+ lsp = 65 | 精确编码的默认选择：确定性命令替代冗长 shell/编辑器描述 |
-| **WShell 批量模式**（order 7） | 标准 + 放行 `batch_run`（win-shell 59）| 多步操作（读→改→写、批量改多文件）被 persona 引导用 `batch_run` 一次完成，减少往返 |
-| **WShell 全量模式**（order 8） | 58 win-shell + DSH 官方 `standard`（完整编码 agent）原生组合 | 能力最大化：win-shell 命令 + full coding-agent 编排（subagent/subagent_fork/workflow/ralph/goal/jobs/skill/todo/ask-user/plan-mode 等） |
+| **WShell 标准模式**（order 6） | 58 win-shell 域工具 + DSH 原生 fs 组（read/write/edit/read_image）+ web 组（web_fetch/web_search）= 64 | 精确编码的默认选择：确定性命令替代冗长 shell/编辑器描述 |
+| **WShell 批量模式**（order 7） | 标准 + 放行 `batch_run`（win-shell 59）= 65，**persona 与标准模式逐字相同** | 多步操作（读→改→写、批量改多文件）一次完成，减少往返；引导住在 `batch_run` 描述里，不进 persona |
+| **WShell 全量模式**（order 8） | 58 win-shell + DSH 官方 `standard`（完整编码 agent）原生组合 | 能力最大化：win-shell 命令 + full coding-agent 编排（subagent/subagent_fork/workflow/ralph/goal/jobs/skill/todo/ask-user/plan-mode 等）；persona 另带 plan 政策与后台并行委派 |
+
+> **标准/批量不含 lsp**：lsp 是可选能力、非所有 DSH 部署安装，commit b8c76c2 已把
+> `tool-lsp` 行从这两个 preset 移除。需要 lsp 的会话走全量模式（其官方 standard 底座
+> 含 lsp 条件注册）。
 
 > **全量模式口径**：原始 PRD 以 "~121 = 58 + DSH 全量原生" 粗估目录；经实施裁定
 > （工单 06 评论）取「DSH 官方 standard 组合 + win-shell」，剔除 experimental/
@@ -71,9 +78,9 @@ PRD 补充说明/dsh-web-ui 文档）。冲突不阻断共存，但同一插件�
 | 维度 | WShell 三模式（本 bundle） | JX 模式（`docs/dsh/README.md`） |
 | --- | --- | --- |
 | 方式 | native 全量注入 win-shell 命令工具 | standard 之上追问「工具优先 win-shell + 事实入知识库」 |
-| persona | 单行极简，无规则堆砌 | JX 身份 + 两条工作规则注入 |
+| persona | 极简（身份 + 相对路径基准），无规则堆砌 | JX 身份 + 两条工作规则注入 |
 | 知识库 | 无（不强制沉淀） | 强：事实入 jxk/imageTUTU |
-| 目录 | 标准 65 / 批量 66 / 全量（standard+win-shell） | standard 全量 + MCP 补层 |
+| 目录 | 标准 64 / 批量 65 / 全量（standard+win-shell） | standard 全量 + MCP 补层 |
 | 适用 | 精确编码、批量改动、编排任务 | 知识沉淀、长任务闭环 |
 
 共存：三模式独立命名、分列选择器，互不覆盖。按任务选：**精确编码 → 标准**、
@@ -87,6 +94,12 @@ PRD 补充说明/dsh-web-ui 文档）。冲突不阻断共存，但同一插件�
 
 ## Windows 注意事项
 
+- 相对路径基准：三模式的 `tool-win-shell` 行注入
+  `cwd: !!js process.env.DSH_CWD ?? process.cwd()`，把工具里 `path`/`cwd` 缺省的
+  解析起点钉到会话工作目录，persona 里的 `{{cwd}}` 才成立。不注入时基准是 DSH
+  宿主进程的 cwd，模型只能先调一次 `pwd` 探路。MCP 形态用 `WIN_SHELL_CWD` 环境
+  变量设同一基准。基准是进程级唯一值：同一宿主进程内多个 preset 必须注入同值，
+  注入不同值时挂载直接抛错（不静默取其一）。
 - DSH PTY 后端 linux/darwin-only：WShell 三模式目录以 win-shell-mcp 工具为主
   （全 one-shot、无持久 PTY 会话），不受影响；若会话需持久 shell，DSH 侧需按
   梁神模式先例走 Git Bash 无状态方案。
@@ -95,30 +108,33 @@ PRD 补充说明/dsh-web-ui 文档）。冲突不阻断共存，但同一插件�
 - 安装路径含非 ASCII 主目录（如 `C:\Users\姜**`）：bundle sync 走 per-entry
   复制而非 `fs.cpSync(recursive)`（Node 22 会崩溃），兼容 CJK 主目录。
 
-## 描述 token 预算（目录设计第一度量）
+## 目录成本预算（第一度量）
 
-原则（ADR-0016 优先级链、PRD 补充）：**描述 token 成本是目录设计的第一度量**。
+原则（ADR-0016 优先级链、PRD 补充）：**目录 token 成本是目录设计的第一度量**。
 新增/修改工具描述保持一行话风格；模型可见描述受 DSH `verify-tool-catalog`
-长度门禁约束（工单 03，默认 ≤200 字符，行为事实可放宽）。
+长度门禁约束（工单 03，默认 ≤200 字符，行为事实可放宽），本仓库另有
+`guard-metadata-budget.test.ts`（150 字符软上限 + 元数据总预算）。
 
-三模式目录描述成本（实测，win-shell registry + DSH 工单 03 收成数据）：
+按 DSH 实际发给模型的形状（`{name, description, parameters}` 序列化）实测：
 
-| 模式 | 描述字符 | 估算 token（~3.5 字符/token） |
-| --- | --- | --- |
-| WShell 标准模式 | 5,037 | ~1,439 |
-| WShell 批量模式 | 5,093（= 标准 + 56 字符批量规则） | ~1,455 |
-| WShell 全量模式 | 11,019（58 win 4,133 + 官方 standard 原生 ~6,886） | ~3,148 |
+| 范围 | 字符 | 其中 description | 其中 input schema |
+| --- | --- | --- | --- |
+| 58 win-shell 域工具 | 24,716 | 3,808（15%） | 17,971（73%） |
+| 59（放行 `batch_run`） | 25,646 | 3,808 + 150 | 17,971 + 780 |
 
-> PRD/ADR-0018 曾以 "~4.5K 描述" 粗估标准模式成本——该值为 PRD 阶段拍值，
-> 工单 07 实测（win-shell registry + DSH 收成）为 **5,037 字符**，以实测为准。
-> 全量按 POSIX(bash) 单侧计；WIN(pwsh) 原生略高（~6,892，因 pwsh 描述 1,039 vs
-> bash 795，两者之差即 shell 单侧选择差异），总 ~11,025 字符 ≈ 3.15K token。
-> token 按英文描述 ~3.5 字符/token 估算（保守 ~4 字符/token 时三模式分别约
-> 1,259 / 1,273 / 2,755）。
+> **旧口径作废**：本节曾以「标准模式 5,037 描述字符 ≈ 1,439 token」记账，两个错误
+> 叠加——① 只数 description，漏掉占目录 73% 的 input schema；② 对中英混排文本按
+> 英文的 3.5 字符/token 折算，而描述与参数说明里 CJK 占约 34%（接近 1 字符/token）。
+> 实际量级为 6.5–7.5K token 一档，旧值低估 4–5 倍。
 >
-> 对比：DSH 精简前全目录描述 21,627 字符 → 精简后 17,489（−19.1%，工单 03）；
-> WShell 标准模式 5.0K 字符 ≈ 原 DSH 全量的四分之一不到，是"描述 token 成本
-> 第一度量"下的务实形态。全量模式依赖 01/02/03 精简才能让 11K 字符的目录可接受。
+> 结论随之修正：目录降本的真杠杆在 **schema**（参数数量、可选参数、近义工具合并），
+> 不在描述措辞。描述继续抠字的收益是个位数百分比（本轮 pattern 约定收敛到参数说明
+> 一处，61 条元数据 53,074 → 52,836，−0.45%）。
+>
+> token 列为估算，校准方式：发一个只含工具目录的请求，读 `usage.prompt_tokens`
+> 回填本表，取代折算常数。归属表与完整分析见
+> [docs/提示词工程/README.md](../提示词工程/README.md)。
+
 
 ## 目录构成
 
@@ -127,10 +143,12 @@ PRD 补充说明/dsh-web-ui 文档）。冲突不阻断共存，但同一插件�
 `presets/wshell-*/`。
 
 ```yaml
-# 公共：persona 单行极简 + tool-win-shell（exclude 3 meta，58 域工具）
-# 标准/批量：+ tool-fs / tool-web / tool-lsp 三组
-# 批量：+ tool-win-shell 保留 batch_run（exclude 只剔 2 meta，win-shell 59）
-# 全量：+ DSH 官方 standard 原生组合（one-shot shell/fs/fs-search/jobs/skill/
+# 公共：persona（身份 + 相对路径基准 {{cwd}}，complete:true）
+#      + tool-win-shell（exclude 3 meta = 58 域工具；cwd 注入 DSH_CWD ?? process.cwd()）
+# 标准：+ tool-fs / tool-web 两组                       → 目录 64
+# 批量：exclude 只剔 2 meta（放行 batch_run，win-shell 59）→ 目录 65，persona 与标准逐字相同
+# 全量：persona 另带 plan 政策 + 后台并行委派两条 guidance
+#      + DSH 官方 standard 原生组合（one-shot shell/fs/fs-search/jobs/skill/
 #        goal/plan-mode/subagent/subagent_fork/workflow/ralph/ask-user/todo/web）
 ```
 
@@ -138,24 +156,31 @@ PRD 补充说明/dsh-web-ui 文档）。冲突不阻断共存，但同一插件�
 
 - **权威源 = `presets/wshell-*/`**（仓库）。修改 preset → `git` 提交发布 → 升级
   bundle → 重启 dsh web → 新会话验证（sync 自动把新 preset 刷进用户根）。
-- 模式配套单测：`tests/dsh-bundle/presets.test.ts`（结构/目录构成/persona 极简/
-  win-shell 注册数）与 `index.test.ts`（bundle 纳入 + sync）。
+- 模式配套单测：`tests/dsh-bundle/presets.test.ts`（结构 / 目录构成 / persona 正文
+  逐字契约 / 标准与批量 persona 一致 / 全量 persona 的 plan 条款与 plan-mode
+  `section` 同源 / `cwd` 注入行 / win-shell 注册数）、`index.test.ts`（bundle 纳入
+  + sync）。提示词事实归属另有 `tests/tools/guard-pattern-convention.test.ts` 与
+  `tests/tools/guard-metadata-budget.test.ts` 把守。
+- 改提示词必读 [docs/提示词工程/](../提示词工程/README.md)：每条事实的归属地与
+  对应门禁列在那里，写进第二处就会红灯。
 - 三模式从 iOS 选取时 meeting 首轮请求只带本模式的目录（无 MCP 补层依赖）。
 
 ## 文件清单
 
 ```
 presets/
-├── wshell-standard/            # WShell 标准模式（order 6，65 工具）
+├── wshell-standard/            # WShell 标准模式（order 6，64 工具）
 │   ├── preset.yml
 │   ├── agent.cordis.yml
 │   └── tool-win-shell.mjs
-├── wshell-batch/               # WShell 批量模式（order 7，66 工具）
+├── wshell-batch/               # WShell 批量模式（order 7，65 工具）
 │   └── ...
 └── wshell-full/                # WShell 全量模式（order 8，standard 组合 + win-shell）
     └── ...
 cordis.patch.yml                # bundle patch：insert wshell-bundle 行
 src/dsh-bundle/                 # sync/mountOnce/schema 实现
+src/config/cwd.ts               # 相对路径基准（persona {{cwd}} 的事实来源）
+docs/提示词工程/                 # 三模式提示词全文（英文生效 + 中文阅读）与归属表
 ```
 
 ## 端到端验证边界
@@ -180,7 +205,7 @@ src/dsh-bundle/                 # sync/mountOnce/schema 实现
 > 1. 在 DSH 开发机运行 `dsh plugin --profile web add win-shell-mcp`（或 `link:`/`github:` 方式）
 > 2. 重启 `dsh web` 进程（页面刷新不够）
 > 3. 新建会话，检查模式选择器出现三个「WShell」模式
-> 4. 选择标准模式，验证工具目录含 65 工具（58 win-shell + fs/web/lsp）
+> 4. 选择标准模式，验证工具目录含 64 工具（58 win-shell + fs 4 + web 2，不含 lsp）
 > 5. 选择批量模式，验证工具目录含 batch_run
 > 6. 选择全量模式，验证工具目录含 subagent/workflow 等编排工具
 > 7. 验证各模式工具调用正常、描述无截断/混乱

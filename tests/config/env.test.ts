@@ -3,9 +3,11 @@ import {
   ENV_WIN_SHELL_TOOLS,
   ENV_WIN_SHELL_LAZY,
   ENV_WIN_SHELL_TRUNCATE,
+  ENV_WIN_SHELL_CWD,
   parseToolsWhitelist,
   parseLazyMode,
   parseTruncateLimit,
+  parseCwdOverride,
 } from "../../src/config/env.js";
 
 /**
@@ -15,10 +17,29 @@ import {
 const CANONICAL = ["fs_list", "git_status", "shell_exec", "batch_run"];
 
 describe("ENV 变量名常量收敛", () => {
-  it("两个变量名的常量值与字面量一致", () => {
+  it("变量名的常量值与字面量一致", () => {
     expect(ENV_WIN_SHELL_TOOLS).toBe("WIN_SHELL_TOOLS");
     expect(ENV_WIN_SHELL_LAZY).toBe("WIN_SHELL_LAZY");
     expect(ENV_WIN_SHELL_TRUNCATE).toBe("WIN_SHELL_TRUNCATE");
+    expect(ENV_WIN_SHELL_CWD).toBe("WIN_SHELL_CWD");
+  });
+});
+
+describe("parseCwdOverride", () => {
+  it.each([
+    ["未设置", undefined],
+    ["空串", ""],
+    ["纯空白", "  \t "],
+  ] as ReadonlyArray<[string, string | undefined]>)("%s → 不注入", (_label, raw) => {
+    expect(parseCwdOverride(raw)).toBeUndefined();
+  });
+
+  it("正常值去除首尾空白后返回", () => {
+    expect(parseCwdOverride("  D:\\work\\space\\repo  ")).toBe("D:\\work\\space\\repo");
+  });
+
+  it("不校验目录存在性：不存在的路径原样返回", () => {
+    expect(parseCwdOverride("/no/such/dir/yet")).toBe("/no/such/dir/yet");
   });
 });
 

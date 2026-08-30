@@ -8,7 +8,7 @@
  * - config.exclude 过滤
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +19,7 @@ import {
   type CordisPluginContext,
 } from "../src/plugin.js";
 import { builtinTools } from "../src/registry.js";
+import { getDefaultCwd, resetDefaultCwd } from "../src/config/cwd.js";
 
 /** 内置工具总数（工单 12 起 59 个）。 */
 const EXPECTED_TOOL_COUNT = builtinTools.length;
@@ -187,5 +188,38 @@ describe("ToolCallError", () => {
       message: "not found",
     });
     expect(err.message).toBe("fs_read: not found");
+  });
+});
+
+describe("Config.cwd（相对路径基准注入）", () => {
+  afterEach(() => {
+    resetDefaultCwd();
+  });
+
+  const pwdHandler = () => {
+    const tool = builtinTools.find((entry) => entry.name === "pwd");
+    if (tool === undefined) throw new Error("pwd 工具缺失");
+    return tool.handler;
+  };
+
+  it("不注入时基准沿用进程工作目录", async () => {
+    const { ctx } = makeFakeCtx();
+    apply(ctx, {});
+    expect(getDefaultCwd()).toBe(process.cwd());
+  });
+
+  it("注入后 pwd 报出的就是该基准", async () => {
+    const base = join(tmpdir(), "wsm-plugin-cwd-base");
+    const { ctx } = makeFakeCtx();
+    apply(ctx, { cwd: base });
+    const result = await pwdHandler()({});
+    expect((result as { cwd?: string }).cwd).toBe(base.replace(/\\/g, "/"));
+  });
+
+  it("两个 preset 注入不同基准时挂载失败（基准是进程级唯一值）", () => {
+    const { ctx } = makeFakeCtx();
+    apply(ctx, { cwd: "/session/a" });
+    expect(() => apply(ctx, { cwd: "/session/b" })).toThrow(/进程级唯一值/);
+    expect(getDefaultCwd()).toBe("/session/a");
   });
 });
